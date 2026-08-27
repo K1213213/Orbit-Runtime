@@ -1,0 +1,37 @@
+{
+  "name": "orbit-agent-runtime",
+  "version": "0.1.0",
+  "description": "Deterministic · Provable · Governable — a plugin-based agent runtime kernel with hot plugin registration, provable fault isolation, full-chain traceability and sandboxed execution.",
+  "keywords": [
+    "agent",
+    "runtime",
+    "plugin",
+    "sandbox",
+    "circuit-breaker",
+    "traceability",
+    "deterministic-replay"
+  ],
+  "license": "MIT",
+  "main": "dist/src/core/orbitRuntimeHost.js",
+  "types": "dist/src/core/orbitRuntimeHost.d.ts",
+  "files": [
+    "dist",
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "clean": "node -e \"fs.rmSync('dist',{recursive:true,force:true})\"",
+    "test": "npm run build && node --test \"dist/test/*.test.js\"",
+    "demo": "npm run build && node dist/demo-host.js",
+    "prepublishOnly": "npm run clean && npm run build && npm test"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "devDependencies": {
+    "@types/node": "^26.4.0",
+    "typescript": "^5.9.3"
+  }
+}

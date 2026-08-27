@@ -3,6 +3,8 @@
 > **Deterministic · Provable · Governable**
 > A plugin-based agent runtime kernel with hot plugin registration, provable fault isolation, full-chain traceability and sandboxed execution.
 
+**English** · [简体中文](./README.zh-CN.md)
+
 Orbit Agent Runtime is a lightweight, dependency-free runtime host for plugin-based AI agents. All external capabilities (model access, storage, IO) are abstracted into **capability channels**; agents never call capabilities directly — everything goes through the channel hub. The kernel is layered with strict one-way dependencies, and every component is private with read-only copies exposed.
 
 ## Highlights

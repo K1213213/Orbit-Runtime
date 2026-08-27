@@ -38,6 +38,15 @@ runtime_host（顶层宿主入口）
 
 📐 详细架构图与设计决策说明：[docs/architecture.md](./docs/architecture.md) · [architecture.svg](./docs/architecture.svg)
 
+## Web 控制台
+
+[Orbit Console](./web/README.md) — 零依赖的 Web 管理控制台，通过 HTTP 驱动真实内核实例：生命周期、通道、插件、沙箱、轨迹、确定性重放实验室、影响域图与成本路由。
+
+```bash
+npm run build
+node web/bridge-server.mjs        # http://127.0.0.1:8899
+```
+
 ## 快速开始
 
 ```bash

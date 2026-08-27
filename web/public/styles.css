@@ -1,0 +1,983 @@
+/* ==================================================================
+   Orbit Console · Bio-Lineage 视觉系统（v2 · 开创性美工重构）
+   ==================================================================
+   设计概念 —— 「生命脉络 / Bio-Lineage」
+
+   Agent 运行时不是"仪表盘"，是一个活的共生体：
+     · 通道  = 血脉之源（gene / 供能者）        —— 绿色 · 能量核心
+     · 插件  = 神经节（neuron / 突触）           —— 紫色 · 脉冲棘突
+     · 沙箱  = 细胞体（cell / 培养皿）            —— 青色 · 细胞膜
+     · 依赖  = 血缘血脉线（bloodline）            —— 贝塞尔 + 粒子流动
+     · 故障  = 病变（lesion）沿血缘反向扩散        —— 猩红 · 扩散脉冲
+     · 预算  = 能量（ATP）随轮次消耗               —— 发光耗尽
+
+   技术特征（零依赖，纯 CSS + SVG）：
+     1. 细胞质背景：多层径向渐变 + SVG 噪点肌理（feTurbulence）
+     2. 玻璃细胞面板：半透明 + backdrop-filter + 顶部高光线 + 细胞壁辉光
+     3. 等离子能量边框：@property 驱动的 conic-gradient 旋转（Chromium/Edge）
+     4. 神经徽章：辉光核 + 呼吸光环
+     5. 血脉进度条：能量流动（animated gradient stripes）
+     6. 全部活性元素带"呼吸"：生命体征隐喻
+   ================================================================== */
+
+/* ---------- 设计令牌 ---------- */
+
+:root {
+  /* 深空细胞质 */
+  --void: #04060b;
+  --bg: #070b13;
+  --bg-soft: #0a101b;
+  --panel: rgba(14, 22, 36, 0.72);
+  --panel-2: rgba(18, 28, 46, 0.85);
+  --panel-3: #16233c;
+  --glass: rgba(255, 255, 255, 0.035);
+  --hairline: rgba(140, 180, 240, 0.12);
+  --hairline-strong: rgba(140, 190, 250, 0.22);
+
+  /* 文字（冷白光） */
+  --text: #e8f0fc;
+  --text-2: #a4b7d2;
+  --text-3: #5e7291;
+
+  /* 生命体色板 */
+  --gene: #3cf2a8;          /* 通道 · 基因绿 */
+  --plasma: #39e6ff;        /* 沙箱 · 等离子青 */
+  --neuron: #b78bff;        /* 插件 · 神经紫 */
+  --neuron-deep: #6a5cff;
+  --lesion: #ff5c7a;        /* 病变 · 猩红 */
+  --amber: #ffc46b;         /* 预警琥珀 */
+  --violet: #8f7bff;
+  --pink: #ff7ac6;
+
+  /* 辉光 */
+  --glow-plasma: rgba(57, 230, 255, 0.45);
+  --glow-neuron: rgba(183, 139, 255, 0.45);
+  --glow-gene: rgba(60, 242, 168, 0.4);
+  --glow-lesion: rgba(255, 92, 122, 0.5);
+
+  --radius: 14px;
+  --radius-sm: 8px;
+  --shadow: 0 18px 50px rgba(0, 0, 0, 0.5);
+  --sidebar-w: 236px;
+
+  --mono: ui-monospace, "Cascadia Code", "JetBrains Mono", Consolas, "Courier New", monospace;
+  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", Roboto, sans-serif;
+}
+
+/* @property：驱动等离子边框旋转（不支持的浏览器自动降级为静态渐变） */
+@property --angle {
+  syntax: "<angle>";
+  initial-value: 0deg;
+  inherits: false;
+}
+
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+
+/* ---------- 细胞质背景 ---------- */
+
+body {
+  margin: 0;
+  font-family: var(--sans);
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--text);
+  background:
+    radial-gradient(1100px 620px at 82% -12%, rgba(138, 123, 255, 0.10), transparent 58%),
+    radial-gradient(900px 520px at -8% 108%, rgba(57, 230, 255, 0.07), transparent 55%),
+    radial-gradient(700px 400px at 45% 45%, rgba(60, 242, 168, 0.035), transparent 60%),
+    var(--void);
+  position: relative;
+}
+
+/* 噪点肌理：SVG feTurbulence 生成细胞质颗粒，叠在最上层但不挡交互 */
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 9999;
+  opacity: 0.5;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)' opacity='0.05'/%3E%3C/svg%3E");
+}
+
+::selection { background: rgba(57, 230, 255, 0.3); color: #fff; }
+
+/* ---------- 布局骨架 ---------- */
+
+.sidebar {
+  position: fixed;
+  inset: 0 auto 0 0;
+  width: var(--sidebar-w);
+  display: flex;
+  flex-direction: column;
+  background: linear-gradient(180deg, rgba(10, 15, 26, 0.92), rgba(6, 9, 16, 0.94));
+  border-right: 1px solid var(--hairline);
+  backdrop-filter: blur(10px);
+  z-index: 20;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 20px 18px 16px;
+  border-bottom: 1px solid var(--hairline);
+  position: relative;
+}
+
+/* 品牌标志：环绕轨道粒子 */
+.brand-orb { width: 38px; height: 38px; color: var(--plasma); flex: none; filter: drop-shadow(0 0 6px var(--glow-plasma)); animation: breathe 4s ease-in-out infinite; }
+
+.brand-text { display: flex; flex-direction: column; line-height: 1.25; }
+.brand-text strong { font-size: 15.5px; letter-spacing: 0.3px; color: var(--text); text-shadow: 0 0 12px rgba(57, 230, 255, 0.35); }
+.brand-text span { font-size: 10.5px; color: var(--text-3); letter-spacing: 2.2px; text-transform: uppercase; }
+
+/* 侧栏导航：神经节按钮 */
+.nav { flex: 1; padding: 14px 10px; overflow-y: auto; }
+
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  width: 100%;
+  padding: 9.5px 13px;
+  margin-bottom: 3px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--text-2);
+  font: inherit;
+  font-size: 13.5px;
+  text-align: left;
+  cursor: pointer;
+  transition: all 0.18s;
+  position: relative;
+}
+
+.nav-item:hover {
+  background: var(--glass);
+  color: var(--text);
+  border-color: var(--hairline);
+}
+
+.nav-item.active {
+  color: #fff;
+  background: linear-gradient(90deg, rgba(57, 230, 255, 0.14), rgba(138, 123, 255, 0.10));
+  border-color: rgba(57, 230, 255, 0.28);
+  box-shadow: inset 0 0 20px rgba(57, 230, 255, 0.06), 0 0 16px rgba(57, 230, 255, 0.08);
+}
+
+/* 激活态左缘：等离子能量条 */
+.nav-item.active::before {
+  content: "";
+  position: absolute;
+  left: -1px; top: 20%; bottom: 20%;
+  width: 2.5px;
+  border-radius: 2px;
+  background: linear-gradient(180deg, var(--plasma), var(--neuron));
+  box-shadow: 0 0 8px var(--glow-plasma);
+}
+
+.nav-ico { width: 18px; text-align: center; color: var(--plasma); font-size: 13px; filter: drop-shadow(0 0 4px var(--glow-plasma)); }
+
+.sidebar-foot { padding: 14px 16px 18px; border-top: 1px solid var(--hairline); }
+
+/* 主机生命体征 */
+.host-pill {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 8px 12px;
+  border: 1px solid var(--hairline);
+  border-radius: 999px;
+  background: rgba(10, 16, 27, 0.7);
+  font-size: 12px;
+  color: var(--text-2);
+  letter-spacing: 0.3px;
+}
+
+.host-pill .dot {
+  width: 9px; height: 9px; border-radius: 50%;
+  background: var(--text-3);
+  transition: all 0.35s;
+}
+
+.host-pill.running .dot {
+  background: var(--gene);
+  box-shadow: 0 0 10px var(--glow-gene), 0 0 22px rgba(60, 242, 168, 0.3);
+  animation: pulse 2.2s ease-in-out infinite;
+}
+
+.host-pill.stopped .dot { background: var(--amber); box-shadow: 0 0 10px rgba(255, 196, 107, 0.5); }
+.host-pill.error .dot { background: var(--lesion); box-shadow: 0 0 10px var(--glow-lesion); animation: pulse 0.8s ease-in-out infinite; }
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.55; transform: scale(0.85); }
+}
+
+.port-hint { display: block; margin-top: 9px; font-size: 10.5px; color: var(--text-3); font-family: var(--mono); letter-spacing: 0.4px; }
+
+/* ---------- 主区域 ---------- */
+
+.main { margin-left: var(--sidebar-w); min-height: 100vh; display: flex; flex-direction: column; }
+
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 30px;
+  background: linear-gradient(180deg, rgba(7, 11, 19, 0.88), rgba(7, 11, 19, 0.55));
+  border-bottom: 1px solid var(--hairline);
+  backdrop-filter: blur(12px);
+}
+
+.page-title {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 650;
+  letter-spacing: 0.3px;
+  text-shadow: 0 0 18px rgba(57, 230, 255, 0.25);
+}
+
+.page-title::before {
+  content: "";
+  display: inline-block;
+  width: 4px; height: 15px;
+  margin-right: 11px;
+  border-radius: 2px;
+  vertical-align: -2px;
+  background: linear-gradient(180deg, var(--plasma), var(--neuron));
+  box-shadow: 0 0 8px var(--glow-plasma);
+}
+
+.topbar-actions { display: flex; align-items: center; gap: 10px; }
+
+.view { flex: 1; padding: 24px 30px 52px; max-width: 1320px; width: 100%; margin: 0 auto; }
+
+/* ---------- 玻璃细胞面板 ---------- */
+
+.card {
+  position: relative;
+  background: var(--panel);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  backdrop-filter: blur(8px);
+  overflow: hidden;
+}
+
+/* 细胞壁高光线 */
+.card::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(150, 200, 255, 0.35), transparent);
+}
+
+.card::after {
+  content: "";
+  position: absolute;
+  inset: auto -40% -60% auto;
+  width: 70%; height: 80%;
+  background: radial-gradient(closest-side, rgba(57, 230, 255, 0.05), transparent);
+  pointer-events: none;
+}
+
+.card:hover { border-color: rgba(57, 230, 255, 0.25); box-shadow: var(--shadow), inset 0 1px 0 rgba(255, 255, 255, 0.05), 0 0 24px rgba(57, 230, 255, 0.06); }
+
+.card-head {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--hairline);
+  background: linear-gradient(90deg, rgba(57, 230, 255, 0.05), transparent 60%);
+}
+
+.card-head h3 { margin: 0; font-size: 13.5px; font-weight: 650; letter-spacing: 0.2px; }
+.card-head .sub { font-size: 12px; color: var(--text-3); }
+.card-body { padding: 20px; }
+.card + .card { margin-top: 18px; }
+
+.grid { display: grid; gap: 18px; }
+.grid.cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.grid.cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.grid.cols-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+
+/* ---------- 生命体征统计卡 ---------- */
+
+.stat {
+  position: relative;
+  background: linear-gradient(160deg, rgba(16, 25, 41, 0.85), rgba(10, 16, 28, 0.9));
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius);
+  padding: 17px 19px;
+  overflow: hidden;
+  transition: transform 0.15s, border-color 0.15s;
+}
+
+.stat:hover { transform: translateY(-2px); border-color: rgba(57, 230, 255, 0.3); }
+
+/* 左缘能量条（色相由 --accent 注入） */
+.stat::before {
+  content: "";
+  position: absolute;
+  inset: 14% auto 14% 0;
+  width: 3px;
+  border-radius: 0 3px 3px 0;
+  background: var(--accent, var(--plasma));
+  box-shadow: 0 0 12px var(--accent, var(--glow-plasma));
+}
+
+/* 背景辉光 */
+.stat::after {
+  content: "";
+  position: absolute;
+  inset: auto -30% -80% auto;
+  width: 90%; height: 100%;
+  background: radial-gradient(closest-side, var(--accent, var(--plasma)), transparent);
+  opacity: 0.07;
+  pointer-events: none;
+}
+
+.stat .label { font-size: 12px; color: var(--text-2); display: flex; align-items: center; gap: 6px; letter-spacing: 0.4px; }
+.stat .value {
+  font-size: 31px; font-weight: 700;
+  font-family: var(--mono); line-height: 1.2;
+  margin-top: 5px; letter-spacing: -0.5px;
+  color: #fff;
+  text-shadow: 0 0 22px var(--accent, var(--glow-plasma));
+}
+.stat .foot { font-size: 11px; color: var(--text-3); margin-top: 7px; letter-spacing: 0.2px; }
+
+/* ---------- 等离子能量按钮 ---------- */
+
+.btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  border: 1px solid var(--hairline-strong);
+  background: linear-gradient(180deg, rgba(24, 36, 58, 0.8), rgba(14, 22, 38, 0.9));
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  padding: 8px 15px;
+  border-radius: 9px;
+  cursor: pointer;
+  transition: all 0.16s;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.btn:hover { border-color: var(--plasma); color: #fff; box-shadow: 0 0 16px rgba(57, 230, 255, 0.18), inset 0 0 12px rgba(57, 230, 255, 0.06); }
+.btn:active { transform: translateY(1px); }
+.btn:disabled { opacity: 0.4; cursor: not-allowed; box-shadow: none; }
+
+/* 主按钮：等离子旋转能量环（Chromium 用 @property 动画，其余降级） */
+.btn.primary {
+  background: linear-gradient(180deg, rgba(20, 32, 52, 0.85), rgba(12, 19, 33, 0.95));
+  border: 0;
+}
+
+.btn.primary::before {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  padding: 1.5px;
+  background: conic-gradient(from var(--angle), transparent 0%, var(--plasma) 12%, var(--neuron) 30%, transparent 45%, transparent 60%, var(--gene) 78%, transparent 100%);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  animation: plasma-rotate 5s linear infinite;
+  pointer-events: none;
+  opacity: 0.75;
+}
+
+.btn.primary:hover { box-shadow: 0 0 20px rgba(57, 230, 255, 0.25); }
+.btn.primary:disabled::before { animation: none; opacity: 0.2; }
+
+@keyframes plasma-rotate { to { --angle: 360deg; } }
+
+.btn.danger { color: var(--lesion); }
+.btn.danger:hover { border-color: var(--lesion); background: rgba(255, 92, 122, 0.08); box-shadow: 0 0 14px rgba(255, 92, 122, 0.2); }
+
+.btn.success { color: var(--gene); }
+.btn.success:hover { border-color: var(--gene); background: rgba(60, 242, 168, 0.08); box-shadow: 0 0 14px rgba(60, 242, 168, 0.2); }
+
+.btn.ghost { background: transparent; border-color: transparent; color: var(--text-2); }
+.btn.ghost:hover { color: var(--text); background: var(--glass); border-color: transparent; box-shadow: none; }
+
+.btn.sm { padding: 5px 11px; font-size: 12px; }
+
+.ico { font-style: normal; font-size: 13px; }
+
+/* ---------- 神经徽章 ---------- */
+
+.badge {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.4px;
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+
+.badge::before {
+  content: "";
+  width: 5px; height: 5px;
+  border-radius: 50%;
+  background: currentColor;
+  box-shadow: 0 0 6px currentColor;
+  flex: none;
+}
+
+.badge.accent { color: var(--plasma); background: rgba(57, 230, 255, 0.07); border-color: rgba(57, 230, 255, 0.3); }
+.badge.violet { color: var(--violet); background: rgba(138, 123, 255, 0.08); border-color: rgba(138, 123, 255, 0.32); }
+.badge.ok { color: var(--gene); background: rgba(60, 242, 168, 0.07); border-color: rgba(60, 242, 168, 0.3); }
+.badge.warn { color: var(--amber); background: rgba(255, 196, 107, 0.07); border-color: rgba(255, 196, 107, 0.32); }
+.badge.err { color: var(--lesion); background: rgba(255, 92, 122, 0.07); border-color: rgba(255, 92, 122, 0.32); }
+.badge.purple { color: var(--neuron); background: rgba(183, 139, 255, 0.08); border-color: rgba(183, 139, 255, 0.32); }
+.badge.pink { color: var(--pink); background: rgba(255, 122, 198, 0.08); border-color: rgba(255, 122, 198, 0.32); }
+.badge.neutral { color: var(--text-2); background: rgba(255, 255, 255, 0.04); border-color: var(--hairline-strong); }
+
+/* ---------- 数据表格：生物芯片 ---------- */
+
+.tbl-wrap { overflow-x: auto; }
+table.tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
+
+.tbl th {
+  text-align: left;
+  padding: 10px 15px;
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--text-3);
+  border-bottom: 1px solid var(--hairline);
+  background: linear-gradient(180deg, rgba(57, 230, 255, 0.04), transparent);
+  white-space: nowrap;
+}
+
+.tbl td { padding: 11px 15px; border-bottom: 1px solid rgba(140, 180, 240, 0.07); vertical-align: middle; }
+.tbl tbody tr { transition: background 0.15s; }
+.tbl tbody tr:hover { background: linear-gradient(90deg, rgba(57, 230, 255, 0.05), transparent); }
+.tbl tbody tr:last-child td { border-bottom: 0; }
+
+.mono { font-family: var(--mono); font-size: 12.5px; }
+
+/* ---------- 表单：神经输入端 ---------- */
+
+.field { margin-bottom: 15px; }
+.field label { display: block; font-size: 12px; color: var(--text-2); margin-bottom: 7px; font-weight: 550; letter-spacing: 0.3px; }
+.field label .req { color: var(--lesion); margin-left: 2px; }
+
+input[type="text"], input[type="number"], select, textarea {
+  width: 100%;
+  padding: 9px 12px;
+  background: rgba(5, 9, 16, 0.7);
+  border: 1px solid var(--hairline-strong);
+  border-radius: 9px;
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  outline: none;
+  transition: all 0.16s;
+}
+
+input:focus, select:focus, textarea:focus {
+  border-color: var(--plasma);
+  box-shadow: 0 0 0 3px rgba(57, 230, 255, 0.12), 0 0 14px rgba(57, 230, 255, 0.15);
+}
+
+textarea { min-height: 76px; resize: vertical; font-family: var(--mono); font-size: 12.5px; }
+
+.check-row { display: flex; align-items: center; gap: 9px; padding: 5.5px 0; font-size: 13px; cursor: pointer; transition: color 0.15s; }
+.check-row:hover { color: #fff; }
+.check-row input { width: 15px; height: 15px; accent-color: var(--plasma); cursor: pointer; }
+
+.form-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
+
+/* ---------- 生命体征提示条 ---------- */
+
+.alert {
+  display: flex;
+  gap: 11px;
+  align-items: flex-start;
+  padding: 12px 15px;
+  border-radius: 10px;
+  font-size: 13px;
+  border: 1px solid;
+  margin-bottom: 16px;
+  position: relative;
+  overflow: hidden;
+}
+
+.alert::after {
+  content: "";
+  position: absolute;
+  inset: auto -20% -120% auto;
+  width: 60%; height: 100%;
+  background: radial-gradient(closest-side, currentColor, transparent);
+  opacity: 0.05;
+  pointer-events: none;
+}
+
+.alert.err { color: #ffb3c1; background: rgba(255, 92, 122, 0.07); border-color: rgba(255, 92, 122, 0.35); }
+.alert.ok { color: #9df5cf; background: rgba(60, 242, 168, 0.06); border-color: rgba(60, 242, 168, 0.32); }
+.alert.info { color: #b8e8ff; background: rgba(96, 180, 255, 0.06); border-color: rgba(96, 180, 255, 0.3); }
+.alert.warn { color: #ffe1b0; background: rgba(255, 196, 107, 0.06); border-color: rgba(255, 196, 107, 0.32); }
+.alert .msg { flex: 1; }
+
+/* ---------- 玻璃 Toast ---------- */
+
+.toast-root {
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-width: 390px;
+}
+
+.toast {
+  display: flex;
+  align-items: flex-start;
+  gap: 11px;
+  padding: 12px 15px;
+  background: rgba(16, 25, 41, 0.9);
+  border: 1px solid var(--hairline-strong);
+  border-left: 3px solid var(--plasma);
+  border-radius: 10px;
+  box-shadow: var(--shadow), 0 0 18px rgba(57, 230, 255, 0.08);
+  backdrop-filter: blur(10px);
+  font-size: 13px;
+  animation: toast-in 0.25s cubic-bezier(0.2, 0.9, 0.3, 1.2);
+}
+
+.toast.ok { border-left-color: var(--gene); }
+.toast.err { border-left-color: var(--lesion); }
+.toast.warn { border-left-color: var(--amber); }
+
+@keyframes toast-in {
+  from { opacity: 0; transform: translateX(18px) scale(0.96); }
+  to { opacity: 1; transform: none; }
+}
+
+/* ---------- 空态 / 加载 ---------- */
+
+.empty { text-align: center; padding: 46px 20px; color: var(--text-3); font-size: 13px; }
+.empty .big { font-size: 28px; display: block; margin-bottom: 10px; opacity: 0.55; filter: drop-shadow(0 0 8px rgba(57, 230, 255, 0.3)); }
+
+.loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 46px;
+  color: var(--text-3);
+  font-size: 13px;
+  letter-spacing: 0.5px;
+}
+
+/* 等离子双环加载 */
+.spinner {
+  width: 20px; height: 20px;
+  border-radius: 50%;
+  background: conic-gradient(from 0deg, transparent 20%, var(--plasma) 55%, var(--neuron) 80%, transparent 100%);
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 2.5px), #000 calc(100% - 2px));
+  mask: radial-gradient(farthest-side, transparent calc(100% - 2.5px), #000 calc(100% - 2px));
+  animation: spin 0.8s linear infinite;
+  filter: drop-shadow(0 0 6px var(--glow-plasma));
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.skeleton {
+  border-radius: var(--radius);
+  background: linear-gradient(90deg, rgba(14, 22, 36, 0.7) 25%, rgba(22, 35, 60, 0.9) 50%, rgba(14, 22, 36, 0.7) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.4s infinite;
+  height: 120px;
+  border: 1px solid var(--hairline);
+}
+
+@keyframes shimmer { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+
+/* ---------- 总览：机制卡（神经节胞体） ---------- */
+
+.mech-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(285px, 1fr)); gap: 15px; }
+
+.mech {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px 18px;
+  background: linear-gradient(160deg, rgba(15, 24, 40, 0.8), rgba(9, 14, 25, 0.9));
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius);
+  cursor: pointer;
+  overflow: hidden;
+  transition: all 0.18s;
+}
+
+.mech::after {
+  content: "";
+  position: absolute;
+  inset: auto -25% -70% auto;
+  width: 80%; height: 90%;
+  background: radial-gradient(closest-side, rgba(57, 230, 255, 0.08), transparent);
+  pointer-events: none;
+}
+
+.mech:hover {
+  transform: translateY(-3px);
+  border-color: rgba(57, 230, 255, 0.35);
+  box-shadow: 0 0 26px rgba(57, 230, 255, 0.1), var(--shadow);
+}
+
+.mech .mech-head { display: flex; align-items: center; justify-content: space-between; }
+.mech .mech-tag {
+  font-family: var(--mono); font-size: 10.5px;
+  color: var(--plasma); letter-spacing: 1.4px;
+  text-shadow: 0 0 8px var(--glow-plasma);
+}
+.mech h4 { margin: 0; font-size: 14px; letter-spacing: 0.2px; }
+.mech p { margin: 0; font-size: 12.5px; color: var(--text-2); line-height: 1.6; }
+
+/* 追踪迷你流 */
+.mini-trace { display: flex; flex-direction: column; max-height: 340px; overflow-y: auto; }
+.mini-trace .t-entry { padding: 9px 15px; border-bottom: 1px solid rgba(140, 180, 240, 0.06); font-size: 12.5px; display: flex; gap: 11px; align-items: baseline; transition: background 0.15s; }
+.mini-trace .t-entry:hover { background: rgba(57, 230, 255, 0.04); }
+.mini-trace .t-entry:last-child { border-bottom: 0; }
+
+/* ---------- 沙箱：细胞培养舱 ---------- */
+
+.box-list { display: grid; gap: 16px; }
+
+.box-card {
+  position: relative;
+  background: linear-gradient(165deg, rgba(15, 24, 40, 0.82), rgba(9, 14, 25, 0.92));
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius);
+  overflow: hidden;
+  transition: border-color 0.18s, box-shadow 0.18s;
+}
+
+.box-card:hover { border-color: rgba(57, 230, 255, 0.28); box-shadow: 0 0 24px rgba(57, 230, 255, 0.07); }
+
+/* 培养舱顶缘营养线 */
+.box-card::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, var(--plasma), transparent);
+  opacity: 0.5;
+}
+
+.box-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 13px 17px;
+  border-bottom: 1px solid var(--hairline);
+  background: linear-gradient(90deg, rgba(57, 230, 255, 0.06), transparent);
+}
+
+.box-head .t { font-family: var(--mono); font-size: 13.5px; font-weight: 650; }
+.box-head .alias { color: var(--text-2); font-size: 12px; margin-left: 8px; }
+
+.box-body { padding: 15px 17px; }
+
+/* 能量（ATP）进度条：血液流动 */
+.cycle-bar {
+  height: 7px;
+  background: rgba(5, 9, 16, 0.8);
+  border: 1px solid var(--hairline);
+  border-radius: 999px;
+  overflow: hidden;
+  margin-top: 8px;
+}
+
+.cycle-bar > i {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--gene), var(--plasma), var(--neuron));
+  background-size: 200% 100%;
+  animation: energy-flow 2.2s linear infinite;
+  transition: width 0.4s ease;
+  box-shadow: 0 0 10px rgba(57, 230, 255, 0.45);
+}
+
+@keyframes energy-flow {
+  from { background-position: 200% 0; }
+  to { background-position: -200% 0; }
+}
+
+/* 对话气泡：突触交换 */
+.chat { display: flex; flex-direction: column; gap: 10px; margin-top: 13px; max-height: 310px; overflow-y: auto; }
+
+.msg { max-width: 88%; padding: 10px 14px; border-radius: 14px; font-size: 13px; line-height: 1.55; white-space: pre-wrap; word-break: break-word; }
+
+.msg.user {
+  align-self: flex-end;
+  background: linear-gradient(135deg, rgba(183, 139, 255, 0.18), rgba(138, 123, 255, 0.12));
+  border: 1px solid rgba(183, 139, 255, 0.32);
+  border-bottom-right-radius: 4px;
+}
+
+.msg.agent {
+  align-self: flex-start;
+  background: linear-gradient(135deg, rgba(14, 24, 42, 0.95), rgba(10, 17, 30, 0.95));
+  border: 1px solid rgba(57, 230, 255, 0.25);
+  border-bottom-left-radius: 4px;
+}
+
+.msg.sys {
+  align-self: center;
+  background: rgba(255, 92, 122, 0.08);
+  border: 1px solid rgba(255, 92, 122, 0.35);
+  color: #ffb3c1;
+  font-size: 12px;
+  border-radius: 999px;
+  padding: 6px 16px;
+}
+
+.msg .who { font-size: 10px; color: var(--text-3); margin-bottom: 4px; letter-spacing: 1px; text-transform: uppercase; }
+
+.run-bar { display: flex; gap: 9px; margin-top: 13px; }
+.run-bar input { flex: 1; }
+
+/* ---------- 追踪：神经信号流 ---------- */
+
+.trace-list { display: flex; flex-direction: column; max-height: 62vh; overflow-y: auto; font-family: var(--mono); font-size: 12.3px; }
+
+.t-entry {
+  display: grid;
+  grid-template-columns: 132px 152px 1fr;
+  gap: 12px;
+  padding: 10px 17px;
+  border-bottom: 1px solid rgba(140, 180, 240, 0.06);
+  align-items: baseline;
+  transition: background 0.15s;
+}
+
+.t-entry:hover { background: linear-gradient(90deg, rgba(57, 230, 255, 0.05), transparent); }
+.t-entry:last-child { border-bottom: 0; }
+
+.t-time { color: var(--text-3); white-space: nowrap; }
+.t-class { font-weight: 650; white-space: nowrap; }
+.t-payload { color: var(--text-2); word-break: break-all; line-height: 1.5; }
+
+.ec-AGENT_SINGLE_CYCLE_EXEC { color: var(--plasma); text-shadow: 0 0 10px var(--glow-plasma); }
+.ec-AGENT_CYCLE_LIMIT_HIT { color: var(--amber); text-shadow: 0 0 10px rgba(255, 196, 107, 0.4); }
+.ec-PLUGIN_UNIT_EXCEPTION { color: var(--lesion); text-shadow: 0 0 10px var(--glow-lesion); }
+.ec-CHANNEL_CALL { color: var(--violet); }
+.ec-BUDGET { color: var(--neuron); }
+.ec-OTHER { color: var(--text-2); }
+
+.filter-bar { display: flex; flex-wrap: wrap; gap: 11px; align-items: flex-end; padding: 15px 20px; }
+.filter-bar .field { margin: 0; flex: 1; min-width: 160px; }
+.filter-bar .field:nth-child(1) { flex: 1.4; }
+
+/* ---------- 回放：实验舱 ---------- */
+
+.replay-stage { display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; margin-top: 17px; }
+
+.stage-card {
+  position: relative;
+  background: linear-gradient(165deg, rgba(15, 24, 40, 0.82), rgba(9, 14, 25, 0.92));
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius);
+  padding: 17px;
+  overflow: hidden;
+}
+
+.stage-card::after {
+  content: "";
+  position: absolute;
+  inset: auto -25% -80% auto;
+  width: 70%; height: 90%;
+  background: radial-gradient(closest-side, rgba(183, 139, 255, 0.08), transparent);
+  pointer-events: none;
+}
+
+.stage-card .stage-name { font-size: 10.5px; letter-spacing: 1.6px; text-transform: uppercase; color: var(--text-3); margin-bottom: 9px; }
+.stage-card .stage-val { font-size: 27px; font-weight: 700; font-family: var(--mono); color: #fff; text-shadow: 0 0 20px rgba(57, 230, 255, 0.3); }
+.stage-card .stage-sub { font-size: 12px; color: var(--text-2); margin-top: 5px; }
+
+.chain-line { display: flex; align-items: center; gap: 8px; padding: 8px 0; border-bottom: 1px dashed rgba(140, 180, 240, 0.12); font-family: var(--mono); font-size: 12.3px; }
+.chain-line:last-child { border-bottom: 0; }
+.chain-line .idx { color: var(--text-3); width: 22px; flex: none; }
+
+/* ---------- 拓扑图：血缘谱系（Bio-Lineage） ---------- */
+
+.graph-shell { position: relative; }
+.graph-shell svg { display: block; width: 100%; height: auto; }
+
+/* 节点：细胞体（呼吸） */
+.graph-node { cursor: pointer; }
+.graph-node circle.node-ring { transition: r 0.25s ease, stroke 0.25s ease, stroke-width 0.25s ease; }
+
+.graph-node:hover circle.node-ring { filter: brightness(1.35); }
+
+/* 细胞膜外晕 */
+.graph-node .cell-halo {
+  opacity: 0.35;
+  transition: opacity 0.25s;
+}
+.graph-node:hover .cell-halo { opacity: 0.7; }
+
+.graph-node .node-label {
+  fill: var(--text);
+  font-size: 11.5px;
+  font-family: var(--sans);
+  letter-spacing: 0.2px;
+}
+
+/* 血缘血脉线：默认半透明流动 */
+.edge-line {
+  stroke: var(--hairline-strong);
+  stroke-width: 1.6;
+  fill: none;
+  stroke-dasharray: 5 7;
+  animation: blood-flow 1.6s linear infinite;
+  opacity: 0.65;
+  transition: opacity 0.25s;
+}
+
+@keyframes blood-flow {
+  to { stroke-dashoffset: -24; }
+}
+
+/* 病变：受影响的血缘线变猩红、加速流动 */
+.edge-line.hit {
+  stroke: var(--lesion);
+  stroke-width: 2.4;
+  opacity: 0.95;
+  filter: drop-shadow(0 0 5px var(--glow-lesion));
+  animation: blood-flow 0.5s linear infinite;
+}
+
+.edge-line.fade { opacity: 0.1; animation: none; }
+
+/* 血脉粒子（沿贝塞尔线流动的小能量点） */
+.blood-cell { animation: none; }
+
+/* 选中节点：病变中心 */
+.graph-node.lesioned circle.node-ring {
+  stroke: var(--lesion) !important;
+  filter: drop-shadow(0 0 10px var(--glow-lesion));
+}
+
+.graph-node.lesioned .cell-halo { opacity: 0.9; }
+
+.graph-legend { display: flex; flex-wrap: wrap; gap: 16px; padding: 12px 18px; font-size: 12px; color: var(--text-2); }
+.graph-legend .lg { display: inline-flex; align-items: center; gap: 7px; letter-spacing: 0.3px; }
+.graph-legend .sw { width: 11px; height: 11px; border-radius: 50%; display: inline-block; box-shadow: 0 0 8px currentColor; }
+
+.check-pair { display: flex; gap: 11px; align-items: flex-end; flex-wrap: wrap; }
+.check-pair .field { flex: 1; min-width: 180px; margin: 0; }
+
+/* ---------- 路由：能量预算 ---------- */
+
+.slider-row { display: flex; align-items: center; gap: 13px; }
+.slider-row input[type="range"] { flex: 1; accent-color: var(--plasma); }
+.slider-val { font-family: var(--mono); font-size: 13px; color: var(--plasma); min-width: 62px; text-align: right; text-shadow: 0 0 8px var(--glow-plasma); }
+
+.route-result {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  padding: 17px 19px;
+  border: 1px solid rgba(57, 230, 255, 0.35);
+  border-radius: var(--radius);
+  background: linear-gradient(120deg, rgba(57, 230, 255, 0.09), rgba(183, 139, 255, 0.06));
+  margin-top: 17px;
+  box-shadow: inset 0 0 30px rgba(57, 230, 255, 0.05);
+}
+
+.route-result .route-name { font-size: 19px; font-weight: 700; font-family: var(--mono); color: #fff; text-shadow: 0 0 16px var(--glow-plasma); }
+.route-result .route-desc { font-size: 12.5px; color: var(--text-2); }
+
+/* ---------- 工具 ---------- */
+
+.muted { color: var(--text-3); }
+.hint { font-size: 12px; color: var(--text-3); margin-top: 7px; letter-spacing: 0.2px; }
+.row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.spread { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
+.mt8 { margin-top: 8px; } .mt12 { margin-top: 12px; } .mt16 { margin-top: 16px; }
+.gap8 { gap: 8px; } .gap12 { gap: 12px; }
+
+kbd {
+  font-family: var(--mono);
+  font-size: 11px;
+  padding: 2px 7px;
+  border: 1px solid var(--hairline-strong);
+  border-radius: 5px;
+  background: rgba(10, 16, 27, 0.8);
+  color: var(--plasma);
+}
+
+/* 发光滚动条 */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, rgba(57, 230, 255, 0.25), rgba(138, 123, 255, 0.2));
+  border-radius: 6px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover { background: linear-gradient(180deg, rgba(57, 230, 255, 0.4), rgba(138, 123, 255, 0.35)); background-clip: padding-box; }
+::-webkit-scrollbar-track { background: transparent; }
+
+/* ---------- 通用呼吸 ---------- */
+
+@keyframes breathe {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.82; transform: scale(0.97); }
+}
+
+/* ---------- 响应式 ---------- */
+
+@media (max-width: 1024px) {
+  .grid.cols-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .grid.cols-3 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .replay-stage { grid-template-columns: 1fr; }
+  .t-entry { grid-template-columns: 100px 1fr; }
+  .t-payload { grid-column: 1 / -1; }
+}
+
+@media (max-width: 760px) {
+  .sidebar { width: 62px; }
+  .brand-text, .nav-item { font-size: 0; }
+  .nav-item { justify-content: center; padding: 11px 0; }
+  .nav-ico { font-size: 16px; }
+  .sidebar-foot { padding: 10px 8px; }
+  .host-pill span:last-child { display: none; }
+  .main { margin-left: 62px; }
+  .view { padding: 16px 14px 42px; }
+  .grid.cols-4, .grid.cols-3, .grid.cols-2 { grid-template-columns: 1fr; }
+  .topbar { padding: 12px 14px; }
+}

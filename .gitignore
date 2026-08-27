@@ -22,3 +22,6 @@ Thumbs.db
 # WorkBuddy project data (local only, not for publishing)
 .workbuddy/
 output/
+
+# Local dev screenshots (not part of the repository)
+.shots/

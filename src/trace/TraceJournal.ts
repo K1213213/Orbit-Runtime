@@ -24,6 +24,14 @@ export class TraceJournal {
     return this.entryList.filter((entry) => entry.agentBoxId === agentBoxId);
   }
 
+  public byPluginUnit(pluginUnitId: string): TraceJournalEntry[] {
+    return this.entryList.filter((entry) => entry.pluginUnitId === pluginUnitId);
+  }
+
+  public byEntryClass(entryClass: string): TraceJournalEntry[] {
+    return this.entryList.filter((entry) => entry.entryClass === entryClass);
+  }
+
   public snapshot(): TraceJournalEntry[] {
     return [...this.entryList];
   }

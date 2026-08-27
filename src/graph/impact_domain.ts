@@ -28,6 +28,18 @@ export class ImpactDomainGraph {
     this.dependents.get(dependency)!.add(dependent);
   }
 
+  /** Remove a node and every incident edge (e.g. when a sandbox is dropped). */
+  public removeNode(id: string): void {
+    for (const dependency of this.dependencies.get(id) ?? []) {
+      this.dependents.get(dependency)?.delete(id);
+    }
+    for (const dependent of this.dependents.get(id) ?? []) {
+      this.dependencies.get(dependent)?.delete(id);
+    }
+    this.dependencies.delete(id);
+    this.dependents.delete(id);
+  }
+
   /** Failure impact of `from`: every node that (transitively) depends on it. */
   public closure(from: string): Set<string> {
     const visited = new Set<string>();

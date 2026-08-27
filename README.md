@@ -38,6 +38,17 @@ runtime_host (top-level host)
 
 📐 Detailed diagrams & design rationale: [docs/architecture.md](./docs/architecture.md) · [architecture.svg](./docs/architecture.svg)
 
+## Web console
+
+[Orbit Console](./web/README.md) — a zero-dependency management console that
+drives a real kernel instance over HTTP: lifecycle, channels, plugins,
+sandboxes, trace, deterministic-replay lab, impact graph and cost routing.
+
+```bash
+npm run build
+node web/bridge-server.mjs        # http://127.0.0.1:8899
+```
+
 ## Getting started
 
 ```bash

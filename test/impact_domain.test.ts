@@ -33,3 +33,15 @@ test("outDegree: counts direct dependencies", () => {
   assert.equal(g.outDegree("hub"), 3);
   assert.equal(g.outDegree("unknown"), 0);
 });
+
+test("removeNode: drops the node and all incident edges", () => {
+  const g = new ImpactDomainGraph();
+  g.addEdge("p1", "kv-store");
+  g.addEdge("sandbox1", "kv-store");
+  g.removeNode("sandbox1");
+  assert.equal(g.hasNode("sandbox1"), false);
+  assert.deepEqual([...g.closure("kv-store")], ["p1"]);
+  g.removeNode("kv-store");
+  assert.equal(g.hasNode("kv-store"), false);
+  assert.deepEqual([...g.closure("p1")], []);
+});

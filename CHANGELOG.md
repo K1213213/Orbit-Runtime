@@ -55,9 +55,21 @@ provable isolation, governed routing).
   - Per-cycle sandbox budget with `BudgetExhaustedError`
 - **Engineering**
   - Zero runtime dependencies; dev deps only `typescript` + `@types/node`
-  - `node:test` suite (29 tests), demos (`demo-host`, `demo-replay`)
+  - `node:test` suite (43 tests), demos (`demo-host`, `demo-replay`)
   - Bilingual README (`README.md`, `README.zh-CN.md`), architecture diagram
     and design doc (`docs/`), Apache-2.0 license
+  - **Orbit Console** (`web/`): zero-dependency HTTP management console
+    driving a real kernel instance — lifecycle, channels, plugins, sandboxes,
+    trace, replay lab, impact graph, cost routing (Bio-Lineage visual design)
+
+### Fixed (consistency audit)
+
+- `TraceJournal` now exposes all four documented filters (`byPluginUnit`,
+  `byEntryClass` added); journal suite covers snapshots and copy isolation
+- `ImpactDomainGraph.removeNode` added (drops node and incident edges),
+  closing the "no node removal" gap surfaced by the console
+- Console plugin channel declares the kernel's exact `ChannelRuntimeMeta`
+  shape (`determinism` / `replayPolicy`)
 
 ### Changed
 

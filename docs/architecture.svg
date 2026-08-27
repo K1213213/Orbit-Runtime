@@ -1,0 +1,212 @@
+<svg viewBox="0 0 1600 1700" width="100%" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
+<title id="title">Orbit Agent Runtime — 系统架构图</title>
+<desc id="desc">分层架构、核心模块职责、运行时关键路径与生命周期四个视图</desc>
+<defs>
+  <marker id="arrGray" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+    <path d="M2 1L8 5L2 9" fill="none" stroke="#64748B" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  </marker>
+  <marker id="arrUp" viewBox="0 0 10 10" refX="5" refY="2" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+    <path d="M2 8L5 2L8 8" fill="none" stroke="#475569" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+  </marker>
+  <marker id="arrGreen" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+    <path d="M2 1L8 5L2 9" fill="none" stroke="#16A34A" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  </marker>
+  <marker id="arrRed" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+    <path d="M2 1L8 5L2 9" fill="none" stroke="#DC2626" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  </marker>
+  <marker id="arrAmber" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+    <path d="M2 1L8 5L2 9" fill="none" stroke="#D97706" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  </marker>
+</defs>
+
+<rect x="0" y="0" width="1600" height="1700" fill="#FFFFFF"/>
+
+<!-- ===================== ① 分层架构 ===================== -->
+<text x="60" y="52" font-size="24" font-weight="700" fill="#0F172A" font-family="Segoe UI, PingFang SC, Microsoft YaHei, Arial, sans-serif">① 分层架构 — 严格单向依赖（底层 → 顶层）</text>
+<rect x="60" y="70" width="1480" height="360" rx="14" fill="#F8FAFC" stroke="#CBD5E1" stroke-width="1.5"/>
+
+<path d="M55 422 L55 118" fill="none" stroke="#475569" stroke-width="2.5" marker-end="url(#arrUp)"/>
+<text x="18" y="270" font-size="14" font-weight="600" fill="#475569" font-family="Segoe UI, PingFang SC, Microsoft YaHei, Arial, sans-serif" transform="rotate(-90 18 270)">依赖方向</text>
+
+<rect x="90" y="374" width="1360" height="44" rx="8" fill="#E2E8F0"/>
+<text x="110" y="402" font-size="15" font-weight="600" fill="#1E293B" font-family="Segoe UI, PingFang SC, Microsoft YaHei, Arial, sans-serif">types · 领域契约 — 类型 / 枚举 / 接口（无任何逻辑）</text>
+
+<rect x="90" y="316" width="1360" height="44" rx="8" fill="#E2E8F0"/>
+<text x="110" y="344" font-size="15" font-weight="600" fill="#1E293B" font-family="Segoe UI, PingFang SC, Microsoft YaHei, Arial, sans-serif">utils · 工具支撑 — 版本解析（semver 子集）· 唯一 ID 生成</text>
+
+<rect x="90" y="258" width="1360" height="44" rx="8" fill="#E2E8F0"/>
+<text x="110" y="286" font-size="15" font-weight="600" fill="#1E293B" font-family="Segoe UI, PingFang SC, Microsoft YaHei, Arial, sans-serif">core · 内核异常 — OrbitDomainError 体系（errorToken / traceMarkId / pluginUnitId）</text>
+
+<rect x="90" y="200" width="330" height="44" rx="8" fill="#F1F5F9" stroke="#94A3B8" stroke-width="1"/>
+<text x="106" y="227" font-size="14" font-weight="600" fill="#1E293B" font-family="Segoe UI, PingFang SC, Microsoft YaHei, Arial, sans-serif">channel · 能力通道 — 注册 / 调度 / 超时 / 降级</text>
+<rect x="432" y="200" width="330" height="44" rx="8" fill="#F1F5F9" stroke="#94A3B8" stroke-width="1"/>
+<text x="448" y="227" font-size="14" font-weight="600" fill="#1E293B" font-family="Segoe UI, PingFang SC, Microsoft YaHei, Arial, sans-serif">pact · 插件规约 — 字段 / 版本 / 能力三查</text>
+<rect x="774" y="200" width="330" height="44" rx="8" fill="#F1F5F9" stroke="#94A3B8" stroke-width="1"/>
+<text x="790" y="227" font-size="14" font-weight="600" fill="#1E293B" font-family="Segoe UI, PingFang SC, Microsoft YaHei, Arial, sans-serif">safeguard · 安全防护 — 跳闸 · 插件级隔离</text>
+<rect x="1116" y="200" width="334" height="44" rx="8" fill="#F1F5F9" stroke="#94A3B8" stroke-width="1"/>
+<text x="1132" y="227" font-size="14" font-weight="600" fill="#1E293B" font-family="Segoe UI, PingFang SC, Microsoft YaHei, Arial, sans-serif">trace · 轨迹溯源 — 记录 / 快照 / 筛选</text>
+
+<rect x="90" y="142" width="1360" height="44" rx="8" fill="#DBEAFE"/>
+<text x="110" y="170" font-size="15" font-weight="600" fill="#1E3A8A" font-family="Segoe UI, PingFang SC, Microsoft YaHei, Arial, sans-serif">sandbox · 智能体沙箱 — 循环上限 · 每轮追踪 ID · 通道化模型调用</text>
+
+<rect x="90" y="84" width="1360" height="44" rx="8" fill="#DBEAFE"/>
+<text x="110" y="112" font-size="15" font-weight="600" fill="#1E3A8A" font-family="Segoe UI, PingFang SC, Microsoft YaHei, Arial, sans-serif">runtime_host · 顶层宿主 — 组件组装 · boot / shutdown · 门面 API</text>
+
+<text x="1480" y="100" font-size="13" fill="#D97706" text-anchor="end" font-family="Segoe UI, PingFang SC, Microsoft YaHei, Arial, sans-serif">设计要点：channel 不反向依赖 pact —— 能力裁决以注入函数 CapabilityGate 实现</text>
+<text x="1480" y="120" font-size="13" fill="#D97706" text-anchor="end" font-family="Segoe UI, PingFang SC, Microsoft YaHei, Arial, sans-serif">禁止反向依赖 / 循环依赖；内部状态私有，对外只读副本</text>
+
+<!-- ===================== ② 核心模块职责 ===================== -->
+<text x="60" y="492" font-size="24" font-weight="700" fill="#0F172A" font-family="Segoe UI, PingFang SC, Microsoft YaHei, Arial, sans-serif">② 核心模块 — 职责与边界</text>
+<rect x="60" y="510" width="1480" height="400" rx="14" fill="#F8FAFC" stroke="#CBD5E1" stroke-width="1.5"/>
+
+<g font-family="Segoe UI, PingFang SC, Microsoft YaHei, Arial, sans-serif">
+<rect x="60" y="530" width="272" height="34" rx="10" fill="#1E293B"/>
+<text x="74" y="552" font-size="14" font-weight="600" fill="#FFFFFF">runtime_host</text>
+<text x="74" y="588" font-size="13" font-weight="600" fill="#1E293B">OrbitRuntimeHost</text>
+<text x="74" y="612" font-size="12.5" fill="#475569">· bootHost / shutdownHost（反向释放）</text>
+<text x="74" y="634" font-size="12.5" fill="#475569">· 门面：registerPlugin / spawnAgentBox</text>
+<text x="74" y="656" font-size="12.5" fill="#475569">· 注入 CapabilityGate → channel 层</text>
+<text x="74" y="678" font-size="12.5" fill="#475569">· 注册内置通道（KV / LLM 模拟）</text>
+<text x="74" y="716" font-size="12.5" fill="#D97706">关：唯一装配点，生命周期统一</text>
+
+<rect x="356" y="530" width="272" height="34" rx="10" fill="#2563EB"/>
+<text x="370" y="552" font-size="14" font-weight="600" fill="#FFFFFF">channel</text>
+<text x="370" y="588" font-size="13" font-weight="600" fill="#1E293B">ChannelHub</text>
+<text x="370" y="612" font-size="12.5" fill="#475569">· 内置 / 插件通道注册表（插件优先）</text>
+<text x="370" y="634" font-size="12.5" fill="#475569">· 调用上下文池 save / get / delete</text>
+<text x="370" y="656" font-size="12.5" fill="#475569">· fireChannelCall：超时截断保护</text>
+<text x="370" y="678" font-size="12.5" fill="#475569">· fireChannelCallWithFallback：降级</text>
+<text x="370" y="700" font-size="12.5" fill="#475569">· providers：MemoryKv / LlmMock</text>
+<text x="370" y="738" font-size="12.5" fill="#2563EB">关：一切能力调用必经的唯一闸口</text>
+
+<rect x="652" y="530" width="272" height="34" rx="10" fill="#D97706"/>
+<text x="666" y="552" font-size="14" font-weight="600" fill="#FFFFFF">pact + safeguard</text>
+<text x="666" y="588" font-size="13" font-weight="600" fill="#1E293B">PluginPactVerifier</text>
+<text x="666" y="612" font-size="12.5" fill="#475569">· 字段完整性 / 版本兼容 / 能力声明</text>
+<text x="666" y="634" font-size="12.5" fill="#475569">· hasCapability → 供 CapabilityGate</text>
+<text x="666" y="656" font-size="13" font-weight="600" fill="#1E293B">PluginSandboxGuard</text>
+<text x="666" y="678" font-size="12.5" fill="#475569">· 每插件独立 TripProtector（Map）</text>
+<text x="666" y="700" font-size="12.5" fill="#475569">· 异常自动写入轨迹日志</text>
+<text x="666" y="738" font-size="12.5" fill="#D97706">关：非法插件注册即拦截 · 故障不扩散</text>
+
+<rect x="948" y="530" width="272" height="34" rx="10" fill="#7C3AED"/>
+<text x="962" y="552" font-size="14" font-weight="600" fill="#FFFFFF">trace</text>
+<text x="962" y="588" font-size="13" font-weight="600" fill="#1E293B">TraceJournal</text>
+<text x="962" y="612" font-size="12.5" fill="#475569">· 追加式 entryList（append-only）</text>
+<text x="962" y="634" font-size="12.5" fill="#475569">· entries / byTraceMark / byAgentBox</text>
+<text x="962" y="656" font-size="12.5" fill="#475569">· snapshot / restoreSnapshot</text>
+<text x="962" y="678" font-size="12.5" fill="#475569">· clear（shutdown 时清空）</text>
+<text x="962" y="716" font-size="12.5" fill="#7C3AED">关：全链路可审计 · 快照可回放</text>
+
+<rect x="1244" y="530" width="272" height="34" rx="10" fill="#16A34A"/>
+<text x="1258" y="552" font-size="14" font-weight="600" fill="#FFFFFF">sandbox</text>
+<text x="1258" y="588" font-size="13" font-weight="600" fill="#1E293B">AgentSandbox</text>
+<text x="1258" y="612" font-size="12.5" fill="#475569">· cycleCount / maxCycleRun 防死循环</text>
+<text x="1258" y="634" font-size="12.5" fill="#475569">· runSingleCycle：每轮新 traceMarkId</text>
+<text x="1258" y="656" font-size="12.5" fill="#475569">· 超限抛 CycleLimitReachedError</text>
+<text x="1258" y="678" font-size="13" font-weight="600" fill="#1E293B">SandboxPool</text>
+<text x="1258" y="700" font-size="12.5" fill="#475569">· spawn / get / remove / clear</text>
+<text x="1258" y="738" font-size="12.5" fill="#16A34A">关：资源池化管理 · 生命周期统一</text>
+</g>
+
+<!-- ===================== ③ 运行时关键路径 ===================== -->
+<text x="60" y="952" font-size="24" font-weight="700" fill="#0F172A" font-family="Segoe UI, PingFang SC, Microsoft YaHei, Arial, sans-serif">③ 运行时关键路径 — 一次 Agent 循环（runSingleCycle）</text>
+<rect x="60" y="970" width="1480" height="330" rx="14" fill="#F8FAFC" stroke="#CBD5E1" stroke-width="1.5"/>
+
+<g font-family="Segoe UI, PingFang SC, Microsoft YaHei, Arial, sans-serif">
+<rect x="90" y="994" width="200" height="52" rx="8" fill="#E2E8F0"/>
+<text x="190" y="1016" text-anchor="middle" font-size="14" font-weight="600" fill="#1E293B">调用方 Client</text>
+<text x="190" y="1034" text-anchor="middle" font-size="12" fill="#475569">宿主 / 上层业务</text>
+<rect x="320" y="994" width="220" height="52" rx="8" fill="#DBEAFE"/>
+<text x="430" y="1016" text-anchor="middle" font-size="14" font-weight="600" fill="#1E3A8A">AgentSandbox</text>
+<text x="430" y="1034" text-anchor="middle" font-size="12" fill="#475569">runSingleCycle</text>
+<rect x="570" y="994" width="210" height="52" rx="8" fill="#DBEAFE"/>
+<text x="675" y="1016" text-anchor="middle" font-size="14" font-weight="600" fill="#1E3A8A">ChannelHub</text>
+<text x="675" y="1034" text-anchor="middle" font-size="12" fill="#475569">fireChannelCall</text>
+<rect x="810" y="994" width="230" height="52" rx="8" fill="#FDF3E3"/>
+<text x="925" y="1016" text-anchor="middle" font-size="14" font-weight="600" fill="#92400E">CapabilityGate</text>
+<text x="925" y="1034" text-anchor="middle" font-size="12" fill="#475569">宿主注入的能力裁决</text>
+<rect x="1070" y="994" width="220" height="52" rx="8" fill="#E2E8F0"/>
+<text x="1180" y="1016" text-anchor="middle" font-size="14" font-weight="600" fill="#1E293B">LlmMockChannel</text>
+<text x="1180" y="1034" text-anchor="middle" font-size="12" fill="#475569">simulateChatRound</text>
+<rect x="1320" y="994" width="200" height="52" rx="8" fill="#F3E8FF"/>
+<text x="1420" y="1016" text-anchor="middle" font-size="14" font-weight="600" fill="#5B21B6">TraceJournal</text>
+<text x="1420" y="1034" text-anchor="middle" font-size="12" fill="#475569">append</text>
+
+<g font-size="13" fill="#334155">
+<line x1="190" y1="1046" x2="420" y2="1046" stroke="#64748B" stroke-width="1.5" marker-end="url(#arrGray)"/>
+<text x="300" y="1064" text-anchor="middle" font-size="12">① runSingleCycle(input)</text>
+
+<line x1="540" y1="1090" x2="660" y2="1090" stroke="#64748B" stroke-width="1.5" marker-end="url(#arrGray)"/>
+<text x="600" y="1108" text-anchor="middle" font-size="12">② fireChannelCall(LLM_ACCESS)</text>
+<text x="430" y="1090" font-size="12" fill="#475569">traceMarkId = gen(); cycleCount++</text>
+
+<line x1="780" y1="1134" x2="900" y2="1134" stroke="#D97706" stroke-width="1.5" marker-end="url(#arrAmber)"/>
+<text x="840" y="1152" text-anchor="middle" font-size="12">③ gate? hasCapability</text>
+<text x="840" y="1168" text-anchor="middle" font-size="11.5" fill="#B45309">仅当 ctx.pluginUnitId 存在</text>
+
+<line x1="1030" y1="1180" x2="1160" y2="1180" stroke="#64748B" stroke-width="1.5" marker-end="url(#arrGray)"/>
+<text x="1095" y="1198" text-anchor="middle" font-size="12">④ simulateChatRound(prompt)</text>
+<text x="1095" y="1214" text-anchor="middle" font-size="11.5" fill="#B45309">超时截断保护 maxWaitMs</text>
+
+<line x1="1180" y1="1230" x2="660" y2="1230" stroke="#64748B" stroke-width="1.5" marker-end="url(#arrGray)"/>
+<text x="920" y="1248" text-anchor="middle" font-size="12">⑤ 返回 llmOutput（通道封装，沙箱不直接依赖 LLM）</text>
+
+<line x1="540" y1="1270" x2="1405" y2="1270" stroke="#7C3AED" stroke-width="1.5" marker-end="url(#arrGray)" stroke-dasharray="6 4"/>
+<text x="975" y="1288" text-anchor="middle" font-size="12">⑥ journal.append(AGENT_SINGLE_CYCLE_EXEC) — 全关键行为落轨迹</text>
+</g>
+
+<text x="90" y="1296" font-size="12.5" fill="#DC2626" font-family="Segoe UI, PingFang SC, Microsoft YaHei, Arial, sans-serif">异常路径：③ gate 拒绝 → ChannelCallFaultError · 超时 → 截断 · cycleCount &gt; maxCycleRun → CycleLimitReachedError（均带 traceMarkId 可溯源）</text>
+
+<!-- ===================== ④ 生命周期 ===================== -->
+<text x="60" y="1352" font-size="24" font-weight="700" fill="#0F172A" font-family="Segoe UI, PingFang SC, Microsoft YaHei, Arial, sans-serif">④ 生命周期 — boot（自底向上）/ shutdown（自顶向下反向释放）</text>
+<rect x="60" y="1370" width="1480" height="300" rx="14" fill="#F8FAFC" stroke="#CBD5E1" stroke-width="1.5"/>
+
+<text x="90" y="1412" font-size="15" font-weight="600" fill="#166534" font-family="Segoe UI, PingFang SC, Microsoft YaHei, Arial, sans-serif">bootHost()</text>
+<g font-family="Segoe UI, PingFang SC, Microsoft YaHei, Arial, sans-serif">
+<rect x="90" y="1428" width="160" height="56" rx="8" fill="#F0FDF4" stroke="#16A34A" stroke-width="1"/>
+<text x="170" y="1450" text-anchor="middle" font-size="12.5" font-weight="600" fill="#166534">注册内置通道</text>
+<text x="170" y="1468" text-anchor="middle" font-size="11.5" fill="#475569">+ 注入 CapabilityGate</text>
+<rect x="286" y="1428" width="160" height="56" rx="8" fill="#F0FDF4" stroke="#16A34A" stroke-width="1"/>
+<text x="366" y="1450" text-anchor="middle" font-size="12.5" font-weight="600" fill="#166534">通道 setup</text>
+<text x="366" y="1468" text-anchor="middle" font-size="11.5" fill="#475569">setupAllBuiltInChannels</text>
+<rect x="482" y="1428" width="160" height="56" rx="8" fill="#F0FDF4" stroke="#16A34A" stroke-width="1"/>
+<text x="562" y="1450" text-anchor="middle" font-size="12.5" font-weight="600" fill="#166534">KV 清扫定时器启动</text>
+<text x="562" y="1468" text-anchor="middle" font-size="11.5" fill="#475569">每 5s 清理过期条目</text>
+<rect x="678" y="1428" width="160" height="56" rx="8" fill="#F0FDF4" stroke="#16A34A" stroke-width="1"/>
+<text x="758" y="1450" text-anchor="middle" font-size="12.5" font-weight="600" fill="#166534">就绪</text>
+<text x="758" y="1468" text-anchor="middle" font-size="11.5" fill="#475569">可对外提供服务</text>
+<line x1="250" y1="1456" x2="284" y2="1456" stroke="#16A34A" stroke-width="1.5" marker-end="url(#arrGreen)"/>
+<line x1="446" y1="1456" x2="480" y2="1456" stroke="#16A34A" stroke-width="1.5" marker-end="url(#arrGreen)"/>
+<line x1="642" y1="1456" x2="676" y2="1456" stroke="#16A34A" stroke-width="1.5" marker-end="url(#arrGreen)"/>
+</g>
+
+<text x="840" y="1412" font-size="15" font-weight="600" fill="#991B1B" font-family="Segoe UI, PingFang SC, Microsoft YaHei, Arial, sans-serif">shutdownHost()</text>
+<g font-family="Segoe UI, PingFang SC, Microsoft YaHei, Arial, sans-serif">
+<rect x="840" y="1428" width="120" height="56" rx="8" fill="#FEF2F2" stroke="#DC2626" stroke-width="1"/>
+<text x="900" y="1450" text-anchor="middle" font-size="12" font-weight="600" fill="#991B1B">沙箱池 clear</text>
+<text x="900" y="1468" text-anchor="middle" font-size="11" fill="#475569">sandboxPool</text>
+<rect x="972" y="1428" width="120" height="56" rx="8" fill="#FEF2F2" stroke="#DC2626" stroke-width="1"/>
+<text x="1032" y="1450" text-anchor="middle" font-size="12" font-weight="600" fill="#991B1B">规约表 clear</text>
+<text x="1032" y="1468" text-anchor="middle" font-size="11" fill="#475569">pactVerifier</text>
+<rect x="1104" y="1428" width="120" height="56" rx="8" fill="#FEF2F2" stroke="#DC2626" stroke-width="1"/>
+<text x="1164" y="1450" text-anchor="middle" font-size="12" font-weight="600" fill="#991B1B">防护器释放</text>
+<text x="1164" y="1468" text-anchor="middle" font-size="11" fill="#475569">releaseAllGuard</text>
+<rect x="1236" y="1428" width="120" height="56" rx="8" fill="#FEF2F2" stroke="#DC2626" stroke-width="1"/>
+<text x="1296" y="1450" text-anchor="middle" font-size="12" font-weight="600" fill="#991B1B">通道 teardown</text>
+<text x="1296" y="1468" text-anchor="middle" font-size="11" fill="#475569">含定时器清理</text>
+<rect x="1368" y="1428" width="120" height="56" rx="8" fill="#FEF2F2" stroke="#DC2626" stroke-width="1"/>
+<text x="1428" y="1450" text-anchor="middle" font-size="12" font-weight="600" fill="#991B1B">轨迹清空</text>
+<text x="1428" y="1468" text-anchor="middle" font-size="11" fill="#475569">traceJournal</text>
+<line x1="960" y1="1456" x2="970" y2="1456" stroke="#DC2626" stroke-width="1.5" marker-end="url(#arrRed)"/>
+<line x1="1092" y1="1456" x2="1102" y2="1456" stroke="#DC2626" stroke-width="1.5" marker-end="url(#arrRed)"/>
+<line x1="1224" y1="1456" x2="1234" y2="1456" stroke="#DC2626" stroke-width="1.5" marker-end="url(#arrRed)"/>
+<line x1="1356" y1="1456" x2="1366" y2="1456" stroke="#DC2626" stroke-width="1.5" marker-end="url(#arrRed)"/>
+</g>
+
+<rect x="90" y="1520" width="1400" height="96" rx="10" fill="#EFF6FF" stroke="#93C5FD" stroke-width="1"/>
+<text x="110" y="1546" font-size="14" font-weight="600" fill="#1E40AF" font-family="Segoe UI, PingFang SC, Microsoft YaHei, Arial, sans-serif">架构约束（资深架构审查项）</text>
+<text x="110" y="1572" font-size="13" fill="#1E3A8A" font-family="Segoe UI, PingFang SC, Microsoft YaHei, Arial, sans-serif">· 依赖单向：channel 层不 import pact 层，能力裁决经 CapabilityGate 注入，杜绝循环依赖</text>
+<text x="110" y="1596" font-size="13" fill="#1E3A8A" font-family="Segoe UI, PingFang SC, Microsoft YaHei, Arial, sans-serif">· 资源生命周期闭环：KV 清扫定时器 teardown 释放、通道调用超时定时器 finally 清理、无闭包驻留</text>
+<text x="110" y="1604" font-size="13" fill="#1E3A8A" font-family="Segoe UI, PingFang SC, Microsoft YaHei, Arial, sans-serif">· 错误语义正确：循环超限 / 重复沙箱 / 权限拒绝均为领域异常，而非魔法字符串或裸 Error</text>
+</svg>

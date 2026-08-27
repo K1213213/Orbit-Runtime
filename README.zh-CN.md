@@ -33,6 +33,8 @@ sandbox（智能体沙箱层）
 runtime_host（顶层宿主入口）
 ```
 
+📐 详细架构图与设计决策说明：[docs/architecture.md](./docs/architecture.md) · [architecture.svg](./docs/architecture.svg)
+
 ## 快速开始
 
 ```bash

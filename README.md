@@ -33,6 +33,8 @@ sandbox (agent sandbox layer)
 runtime_host (top-level host)
 ```
 
+📐 Detailed diagrams & design rationale: [docs/architecture.md](./docs/architecture.md) · [architecture.svg](./docs/architecture.svg)
+
 ## Getting started
 
 ```bash

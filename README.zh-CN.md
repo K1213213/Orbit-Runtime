@@ -98,4 +98,4 @@ test/             # 单元测试（node:test）
 
 ## 许可协议
 
-[MIT](./LICENSE)
+[Apache License 2.0](./LICENSE)

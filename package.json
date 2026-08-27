@@ -11,7 +11,7 @@
     "traceability",
     "deterministic-replay"
   ],
-  "license": "MIT",
+  "license": "Apache-2.0",
   "main": "dist/src/index.js",
   "types": "dist/src/index.d.ts",
   "files": [

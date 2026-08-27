@@ -97,4 +97,4 @@ test/             # unit tests (node:test)
 
 ## License
 
-[MIT](./LICENSE)
+[Apache License 2.0](./LICENSE)

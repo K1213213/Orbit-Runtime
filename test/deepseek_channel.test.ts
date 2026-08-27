@@ -52,6 +52,21 @@ test("DeepSeekChannel: surfaces API errors", async () => {
   await assert.rejects(channel.chatRound("hi"), /DeepSeek API error 401: invalid key/);
 });
 
+test("DeepSeekChannel: non-JSON responses fail with a friendly error", async () => {
+  const channel = new DeepSeekChannel({
+    apiKey: "sk-test",
+    fetchImpl: (async () => ({
+      ok: false,
+      status: 502,
+      statusText: "Bad Gateway",
+      json: async () => {
+        throw new SyntaxError("Unexpected token '<'");
+      }
+    })) as unknown as typeof fetch
+  });
+  await assert.rejects(channel.chatRound("hi"), /DeepSeek API returned a non-JSON response \(HTTP 502\)/);
+});
+
 test("DeepSeekChannel: rejects empty completions", async () => {
   const channel = new DeepSeekChannel({
     apiKey: "sk-test",

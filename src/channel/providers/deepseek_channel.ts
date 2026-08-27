@@ -81,7 +81,12 @@ export class DeepSeekChannel implements IChannelProvider {
       signal: AbortSignal.timeout(this.config.timeoutMs ?? DEFAULT_TIMEOUT_MS)
     });
 
-    const data = (await response.json()) as ChatCompletionResponse;
+    let data: ChatCompletionResponse;
+    try {
+      data = (await response.json()) as ChatCompletionResponse;
+    } catch {
+      throw new Error(`DeepSeek API returned a non-JSON response (HTTP ${response.status})`);
+    }
     if (!response.ok || data.error) {
       throw new Error(`DeepSeek API error ${response.status}: ${data.error?.message ?? response.statusText}`);
     }

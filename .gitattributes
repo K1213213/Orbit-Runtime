@@ -1,0 +1,15 @@
+# Normalize line endings: LF everywhere, regardless of platform.
+
+* text=auto eol=lf
+
+*.ts text eol=lf
+*.js text eol=lf
+*.mjs text eol=lf
+*.json text eol=lf
+*.md text eol=lf
+*.svg text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+
+*.png binary
+*.ico binary

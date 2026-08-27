@@ -83,6 +83,8 @@ body {
   line-height: 1.6;
   color: var(--text);
   background:
+    /* 左侧菜单栏背景带：贯穿整页高度（侧边栏 fixed 只覆盖视口，此处补齐滚动区） */
+    linear-gradient(180deg, rgba(10, 15, 26, 0.92), rgba(6, 9, 16, 0.94)) left top / var(--sidebar-w) 100% no-repeat,
     radial-gradient(1100px 620px at 82% -12%, rgba(138, 123, 255, 0.10), transparent 58%),
     radial-gradient(900px 520px at -8% 108%, rgba(57, 230, 255, 0.07), transparent 55%),
     radial-gradient(700px 400px at 45% 45%, rgba(60, 242, 168, 0.035), transparent 60%),
@@ -111,7 +113,8 @@ body::after {
   width: var(--sidebar-w);
   display: flex;
   flex-direction: column;
-  background: linear-gradient(180deg, rgba(10, 15, 26, 0.92), rgba(6, 9, 16, 0.94));
+  /* 不透明背景，与 body 左侧背景带一致（避免半透明叠加产生色差） */
+  background: linear-gradient(180deg, #0a0f1a, #060910);
   border-right: 1px solid var(--hairline);
   backdrop-filter: blur(10px);
   z-index: 20;

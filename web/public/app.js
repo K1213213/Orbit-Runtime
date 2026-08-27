@@ -4,6 +4,7 @@
  */
 import { api } from "./api.js";
 import { renderOverview } from "./views/overview.js";
+import { renderChannels } from "./views/channels.js";
 import { renderPlugins } from "./views/plugins.js";
 import { renderBoxes } from "./views/boxes.js";
 import { renderTrace } from "./views/trace.js";
@@ -17,6 +18,7 @@ import { renderRouting } from "./views/routing.js";
 
 const routes = [
   { path: "overview", title: "总览", render: renderOverview },
+  { path: "channels", title: "模型通道", render: renderChannels },
   { path: "plugins", title: "插件注册", render: renderPlugins },
   { path: "boxes", title: "沙箱对话", render: renderBoxes },
   { path: "trace", title: "追踪日志", render: renderTrace },

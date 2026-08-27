@@ -44,6 +44,8 @@ export const api = {
   channels: () => request("GET", "/api/channels"),
   registerPluginChannel: (kind) => request("POST", "/api/channels/plugin", { kind }),
   removePluginChannel: (kind) => request("POST", "/api/channels/plugin/remove", { kind }),
+  registerDeepSeek: (apiKey, model, temperature) => request("POST", "/api/channels/deepseek", { apiKey, model, temperature }),
+  removeDeepSeek: () => request("POST", "/api/channels/deepseek/remove"),
 
   plugins: () => request("GET", "/api/plugins"),
   registerPlugin: (pact) => request("POST", "/api/plugins", { pact }),

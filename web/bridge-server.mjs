@@ -25,6 +25,7 @@ import { OrbitRuntimeHost } from "../dist/src/core/orbitRuntimeHost.js";
 import { ChannelKind } from "../dist/src/types/orbitDomain.js";
 import { RecordJournal } from "../dist/src/replay/record_journal.js";
 import { ReplayEngine } from "../dist/src/replay/replay_engine.js";
+import { DeepSeekChannel } from "../dist/src/channel/providers/deepseek_channel.js";
 
 const __dirname = fileURLToPath(new URL(".", import.meta.url));
 const PUBLIC_DIR = join(__dirname, "public");
@@ -202,6 +203,39 @@ const api = {
       cost: base?.cost ?? { costPerCall: 0, latencyMs: 1, quality: 1 }
     });
     return { kind, type: "builtin" };
+  },
+
+  /* ---- real model provider (DeepSeek) ---- */
+
+  async registerDeepSeekChannel(body) {
+    await ensureRunning();
+    const apiKey = body?.apiKey;
+    if (!apiKey) throw new Error("apiKey required");
+    if (!/^sk-/.test(apiKey)) throw new Error("apiKey looks invalid (expected sk-...)");
+    const model = body?.model ?? "deepseek-chat";
+    host.channelHub.registerPluginExtChannel(
+      ChannelKind.LLM_ACCESS,
+      new DeepSeekChannel({ apiKey, model, temperature: body?.temperature })
+    );
+    channelRegistry.set("llm-access", {
+      type: "deepseek",
+      label: `DeepSeek · ${model}`,
+      cost: { costPerCall: 1, latencyMs: 800, quality: 0.98 }
+    });
+    return { kind: "llm-access", type: "deepseek", model };
+  },
+
+  async removeDeepSeekChannel() {
+    if (channelRegistry.get("llm-access")?.type !== "deepseek") {
+      throw new Error("llm-access is not powered by DeepSeek");
+    }
+    host.channelHub.removeExtChannel("llm-access");
+    channelRegistry.set("llm-access", {
+      type: "builtin",
+      label: "LLM Mock Channel",
+      cost: { costPerCall: 1, latencyMs: 320, quality: 1 }
+    });
+    return { kind: "llm-access", type: "builtin" };
   },
 
   /* ---- plugins ---- */
@@ -499,10 +533,14 @@ const server = http.createServer(async (req, res) => {
       if (method === "POST" && seg[0] === "host" && seg[1] === "shutdown") return ok(res, await api.shutdown());
 
       if (method === "GET" && seg[0] === "channels") return ok(res, await api.channels());
-      if (method === "POST" && seg[0] === "channels" && seg[1] === "plugin")
-        return ok(res, await api.registerPluginChannel(await readBody(req)));
       if (method === "POST" && seg[0] === "channels" && seg[1] === "plugin" && seg[2] === "remove")
         return ok(res, await api.removePluginChannel(await readBody(req)));
+      if (method === "POST" && seg[0] === "channels" && seg[1] === "plugin" && seg.length === 2)
+        return ok(res, await api.registerPluginChannel(await readBody(req)));
+      if (method === "POST" && seg[0] === "channels" && seg[1] === "deepseek" && seg[2] === "remove")
+        return ok(res, await api.removeDeepSeekChannel());
+      if (method === "POST" && seg[0] === "channels" && seg[1] === "deepseek" && seg.length === 2)
+        return ok(res, await api.registerDeepSeekChannel(await readBody(req)));
 
       if (method === "GET" && seg[0] === "plugins") return ok(res, await api.plugins());
       if (method === "POST" && seg[0] === "plugins") return ok(res, await api.registerPlugin(await readBody(req)));

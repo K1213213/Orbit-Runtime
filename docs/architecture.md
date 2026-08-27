@@ -90,7 +90,35 @@ AgentSandbox ──② fireChannelCall(LLM_ACCESS, ctx)──► ChannelHub
 
 **shutdown（自顶向下反向释放）**：沙箱池 `clear` → 规约表 `clear` → 防护器 `releaseAllGuard` → 通道 `teardown`（含定时器清理）→ 轨迹 `clear`。
 
-## 5. 设计决策记录（ADR 摘要）
+## 5. 三支柱（M2–M4）落地
+
+### 5.1 确定性重放（M2）
+
+**问题**：LLM 采样、随机数、时钟、调度时序任意一个变化，同样输入跑两遍就是两个结果——Agent 的 bug 无法稳定复现。
+
+**设计**：所有通道调用记录进 `RecordJournal`（按全局调用序号索引，输入摘要 + 输出冻结快照）；`ReplayEngine` 在重放模式下**查表注入**输出，零真实执行；对账（`reconcile`）按 digest 链校验重放轨迹与原始轨迹一致，任何篡改即报 `ReplayDriftError` 并定位到具体调用。
+
+**契约**：通道声明 `determinismMeta`（deterministic / stochastic / io-bound）；约定通道不得直调 `Math.random` / `Date.now`，随机与时钟经注入的 `RngSource` / `ClockSource`（`SeededRng` / `FixedClock`）获取。
+
+**实测**：3 轮循环真实执行 ~978ms → 重放 2ms，输出逐字节一致，`REPLAY VERIFIED`。
+
+### 5.2 故障影响域图论内核（M3）
+
+**问题**：传统隔离是"经验式统计保护"（熔断器），无法回答"谁坏了会波及谁"。
+
+**设计**：依赖关系建模为有向图（`dependent → dependency`），故障沿**反向边**传播。节点 x 的故障影响域 = x 的反向可达闭包（`ImpactDomainGraph.closure`）；**隔离定理**：a、b 互不落入对方闭包 ⇔ 二者故障互不波及（`areIndependent`）。闭包外零干预、零降级。
+
+**静态验证**：注册插件时断言"声明的通道依赖 ⊆ 声明的能力"（能力闭包校验），越权在注册期被图契约拦截。
+
+**差异化阈值**：插件依赖面越广（`outDegree` 越大），跳闸阈值越严（`max(2, 5 - outDegree)`）——精算式风险定价。
+
+### 5.3 成本感知路由（M4）
+
+**问题**：模型调用昂贵，运行时没有成本治理。
+
+**设计**：通道声明 `ChannelCostMeta`（成本 / 预期延迟 / 质量）；`CostRouter.choose` 在预算与延迟约束下选择最廉价候选；沙箱配置 `budgetPerCycle` 后，每轮调用前路由，预算不足抛 `BudgetExhaustedError`——**预测性治理（预算）与反应性保护（跳闸）双机制并存**。
+
+## 6. 设计决策记录（ADR 摘要）
 
 | 决策 | 备选 | 理由 |
 |---|---|---|
@@ -100,8 +128,9 @@ AgentSandbox ──② fireChannelCall(LLM_ACCESS, ctx)──► ChannelHub
 | 探测单次成功即恢复 | 采样窗口统计 | Agent 场景对瞬时抖动敏感，激进恢复 |
 | CommonJS + tsc | ESM/NodeNext | import 无扩展名，零打包零运行时依赖 |
 
-## 6. 已知边界与演进
+## 7. 已知边界与演进
 
-- 通道动态派发在 M2（确定性重放）中升级为带注入点的受控调度；
-- 故障隔离当前是插件维度；M3 计划引入**影响域图论内核**，把隔离边界从"经验保护"升级为"图论可证明"；
-- M4 计划为通道引入成本/延迟/质量属性，实现预算约束下的能力路由。
+- 确定性重放目前覆盖**通道调用层**（模型/存储）；调度时序的确定性依赖串行执行，多沙箱并发时需确定性调度器（后续演进）；
+- 影响域图基于静态声明（`declareChannelDeps` / `channelDeps`）构建，运行时动态依赖暂不自动发现；
+- 成本路由当前是单能力多候选的最小闭环，多模型市场 / 跨通道竞价是自然扩展方向；
+- 真实 LLM 通道（STOCHASTIC）的种子注入契约已就绪，等待第一个真实 provider 落地验证。

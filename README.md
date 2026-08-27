@@ -14,6 +14,9 @@ Orbit Agent Runtime is a lightweight, dependency-free runtime host for plugin-ba
 - **Trip protection** — per-plugin fault state machine (NORMAL → TRIPPED → PROBE), a plugin failure never takes down the host
 - **Trace journal** — full-chain records with snapshot & replay for audit and debugging
 - **Sandbox pool** — per-agent sandbox with cycle limits (anti-infinite-loop) and per-round trace IDs
+- **Deterministic replay (M2)** — record a run, replay it with zero model calls, byte-identical output, bank-style reconciliation (digest-chain verified)
+- **Provable isolation (M3)** — plugin/channel/sandbox dependencies as a graph; failure impact = reverse reachability closure, with an isolation theorem
+- **Cost-aware routing (M4)** — channels declare cost/latency/quality; agents run under per-cycle budgets
 - **Zero runtime dependencies** — pure TypeScript, strict mode, runs on Node.js ≥ 20
 
 ## Architecture
@@ -42,6 +45,7 @@ npm install        # installs typescript + @types/node (dev only)
 npm run build      # strict TypeScript compile → dist/
 npm test           # build + run unit tests (node:test)
 npm run demo       # build + run demo-host.ts (full lifecycle demo)
+npm run demo:replay  # deterministic replay: ~1s real run replayed in ~2ms
 ```
 
 Expected demo output highlights:
@@ -83,13 +87,13 @@ test/             # unit tests (node:test)
 
 ## Roadmap
 
-| Milestone | Content |
-|---|---|
-| M1 ✅ | Engineering skeleton: tsconfig, package, tests, demo entry, capability gate closed-loop |
-| M2 | **Deterministic replay** — record non-determinism (model responses, seeds, clock), replay with zero model calls, reconcile via digest chain (DSH does not have this) |
-| M3 | **Impact domain graph kernel** — fault isolation as reachability closure on a dependency graph, with an isolation theorem |
-| M4 | **Cost-aware routing** — channels declare cost/latency/quality, agents run under budget constraints |
-| M5 | Publication: docs, benchmarks, community |
+| Milestone | Content | Status |
+|---|---|---|
+| M1 | Engineering skeleton: tsconfig, package, tests, demo entry, capability gate closed-loop | ✅ Done |
+| M2 | **Deterministic replay** — record non-determinism, replay with zero model calls, digest-chain reconciliation | ✅ Done |
+| M3 | **Impact domain graph** — fault isolation as reverse reachability closure with an isolation theorem, static capability-closure verification | ✅ Done |
+| M4 | **Cost-aware routing** — channel cost/latency/quality profiles, per-cycle sandbox budgets | ✅ Done |
+| M5 | Benchmarks, plugin examples, CI, publishing | In progress |
 
 ## Design stance vs. existing frameworks
 

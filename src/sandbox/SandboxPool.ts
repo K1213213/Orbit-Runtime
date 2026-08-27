@@ -2,6 +2,7 @@ import { AgentSandbox } from "./AgentSandbox";
 import { ChannelHub } from "../channel/ChannelHub";
 import { TraceJournal } from "../trace/TraceJournal";
 import { SandboxSpawnRejectError } from "../core/orbitDomainError";
+import type { CostRouter } from "../routing/cost_routing";
 import type { AgentBoxConfig, AgentBoxId } from "../types/orbitDomain";
 
 /** Manages the lifecycle of agent sandboxes: spawn, lookup, removal, release. */
@@ -10,14 +11,15 @@ export class SandboxPool {
 
   public constructor(
     private readonly channelHub: ChannelHub,
-    private readonly traceJournal: TraceJournal
+    private readonly traceJournal: TraceJournal,
+    private readonly costRouter?: CostRouter
   ) {}
 
   public spawnSandbox(cfg: AgentBoxConfig): AgentSandbox {
     if (this.sandboxStore.has(cfg.agentBoxId)) {
       throw new SandboxSpawnRejectError(`agent sandbox ${cfg.agentBoxId} already exists`);
     }
-    const box = new AgentSandbox(cfg, this.channelHub, this.traceJournal);
+    const box = new AgentSandbox(cfg, this.channelHub, this.traceJournal, this.costRouter);
     this.sandboxStore.set(cfg.agentBoxId, box);
     return box;
   }

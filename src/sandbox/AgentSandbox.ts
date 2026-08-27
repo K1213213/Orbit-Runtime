@@ -1,31 +1,41 @@
 import { ChannelHub } from "../channel/ChannelHub";
 import { TraceJournal } from "../trace/TraceJournal";
-import { CycleLimitReachedError } from "../core/orbitDomainError";
+import { CycleLimitReachedError, BudgetExhaustedError } from "../core/orbitDomainError";
 import { makeUniqueMark } from "../utils/versionIdGen";
-import { ChannelKind, ChannelCallCtx, AgentBoxConfig, AgentBoxId, TraceMarkId } from "../types/orbitDomain";
+import type { CostRouter } from "../routing/cost_routing";
+import { ChannelKind, ChannelCallCtx, AgentBoxConfig, AgentBoxId, TraceMarkId, ReplayMode } from "../types/orbitDomain";
 
 const DEFAULT_CHANNEL_TIMEOUT_MS = 8_000;
 
 /**
  * One agent's execution sandbox: bounded cycle count, a fresh trace id per
  * round, and channel-mediated model access (never a direct LLM dependency).
+ * The configured replayMode drives deterministic record/replay execution;
+ * a per-cycle cost budget (M4) is enforced before each channel call.
  */
 export class AgentSandbox {
   public readonly agentBoxId: AgentBoxId;
   public readonly boxAlias: string;
   public readonly baseInstruct: string;
   public readonly maxCycleRun: number;
+  private readonly replayMode: ReplayMode;
+  private readonly budgetPerCycle?: number;
+  private readonly costRouter?: CostRouter;
   private cycleCount = 0;
 
   public constructor(
     cfg: AgentBoxConfig,
     private readonly channelHub: ChannelHub,
-    private readonly traceJournal: TraceJournal
+    private readonly traceJournal: TraceJournal,
+    costRouter?: CostRouter
   ) {
     this.agentBoxId = cfg.agentBoxId;
     this.boxAlias = cfg.boxAlias;
     this.baseInstruct = cfg.baseInstruct;
     this.maxCycleRun = cfg.maxCycleRun;
+    this.replayMode = cfg.replayMode ?? "live";
+    this.budgetPerCycle = cfg.budgetPerCycle;
+    this.costRouter = costRouter;
   }
 
   /** Run one reasoning cycle; throws CycleLimitReachedError when the budget is spent. */
@@ -47,14 +57,17 @@ export class AgentSandbox {
       );
     }
 
+    const channelKind = this.pickChannel(traceMarkId);
+
     const ctx: ChannelCallCtx = {
       traceMarkId,
       agentBoxId: this.agentBoxId,
-      maxWaitMs: DEFAULT_CHANNEL_TIMEOUT_MS
+      maxWaitMs: DEFAULT_CHANNEL_TIMEOUT_MS,
+      replayMode: this.replayMode
     };
 
     const llmOutput = await this.channelHub.fireChannelCall<string>(
-      ChannelKind.LLM_ACCESS,
+      channelKind,
       ctx,
       "simulateChatRound",
       `${this.baseInstruct}\nUser:${userInputText}`
@@ -75,5 +88,21 @@ export class AgentSandbox {
 
   public resetCycleCount(): void {
     this.cycleCount = 0;
+  }
+
+  /** M4: route to the cheapest fitting channel; fail when the budget cannot buy any. */
+  private pickChannel(traceMarkId: TraceMarkId): ChannelKind {
+    if (this.budgetPerCycle === undefined || !this.costRouter) {
+      return ChannelKind.LLM_ACCESS;
+    }
+    const chosen = this.costRouter.choose([ChannelKind.LLM_ACCESS], this.budgetPerCycle, DEFAULT_CHANNEL_TIMEOUT_MS);
+    if (chosen === undefined) {
+      throw new BudgetExhaustedError(
+        `agent sandbox ${this.agentBoxId} budget ${this.budgetPerCycle} too low for any channel`,
+        traceMarkId,
+        this.agentBoxId
+      );
+    }
+    return chosen;
   }
 }

@@ -1,5 +1,7 @@
 import type { IChannelProvider } from "../IChannelProvider";
 import type { ChannelCallCtx } from "../../types/orbitDomain";
+import type { ChannelRuntimeMeta } from "../../replay/determinism";
+import { DeterminismLevel } from "../../types/orbitDomain";
 
 const SWEEP_INTERVAL_MS = 5_000;
 
@@ -10,6 +12,11 @@ interface KvEntry {
 
 /** In-memory KV channel with TTL: entries expire lazily on read and on a sweep timer. */
 export class MemoryKvChannel implements IChannelProvider {
+  public readonly determinismMeta: ChannelRuntimeMeta = {
+    determinism: DeterminismLevel.IO_BOUND,
+    replayPolicy: "inject"
+  };
+
   private readonly innerKvMap = new Map<string, KvEntry>();
   private sweepTimer: ReturnType<typeof setInterval> | null = null;
 

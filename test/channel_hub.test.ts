@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { ChannelHub } from "../src/channel/ChannelHub";
 import { MemoryKvChannel } from "../src/channel/providers/MemoryKvChannel";
 import { LlmMockChannel } from "../src/channel/providers/LlmMockChannel";
-import { ChannelKind, ChannelCallCtx } from "../src/types/orbitDomain";
+import { ChannelKind, ChannelCallCtx, DeterminismLevel } from "../src/types/orbitDomain";
 
 function makeCtx(overrides: Partial<ChannelCallCtx> = {}): ChannelCallCtx {
   return { traceMarkId: "t-1", maxWaitMs: 1000, ...overrides };
@@ -25,7 +25,8 @@ test("插件扩展通道优先于内置通道", async () => {
   const fake = {
     setup: async () => {},
     teardown: async () => {},
-    simulateChatRound: async () => "fake-llm"
+    simulateChatRound: async () => "fake-llm",
+    determinismMeta: { determinism: DeterminismLevel.DETERMINISTIC }
   };
   hub.registerPluginExtChannel(ChannelKind.LLM_ACCESS, fake);
   const out = await hub.fireChannelCall<string>(
@@ -49,7 +50,8 @@ test("超时截断保护生效", async () => {
   const slow = {
     setup: async () => {},
     teardown: async () => {},
-    hang: () => new Promise<void>(() => {})
+    hang: () => new Promise<void>(() => {}),
+    determinismMeta: { determinism: DeterminismLevel.DETERMINISTIC }
   };
   hub.registerBuiltInChannel(ChannelKind.MEM_KV_STORE, slow);
   await assert.rejects(

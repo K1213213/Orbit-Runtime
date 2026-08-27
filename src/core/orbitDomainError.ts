@@ -51,3 +51,10 @@ export class CycleLimitReachedError extends OrbitDomainError {
     super(message, "CYCLE_LIMIT_REACHED", traceMarkId);
   }
 }
+
+/** Agent exceeded its per-cycle cost budget. */
+export class BudgetExhaustedError extends OrbitDomainError {
+  constructor(message: string, traceMarkId?: string, agentBoxId?: string) {
+    super(message, "BUDGET_EXHAUSTED", traceMarkId);
+  }
+}

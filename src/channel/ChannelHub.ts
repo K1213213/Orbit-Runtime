@@ -1,6 +1,9 @@
 import { ChannelCallFaultError } from "../core/orbitDomainError";
 import { IChannelProvider } from "./IChannelProvider";
+import { digestInputs } from "../utils/digest";
 import { ChannelKind, ChannelCallCtx } from "../types/orbitDomain";
+import type { ReplayEngine } from "../replay/replay_engine";
+import type { RecordJournal } from "../replay/record_journal";
 
 /** Injected by the host: decides whether a plugin may invoke a channel method. */
 export type CapabilityGate = (pluginUnitId: string, kind: ChannelKind, funcName: string) => boolean;
@@ -12,15 +15,32 @@ export type CapabilityGate = (pluginUnitId: string, kind: ChannelKind, funcName:
  * timeout; plugin-originated calls are additionally checked against the
  * capability gate (kept as an injected function so this layer never depends
  * on the pact layer above it).
+ *
+ * Record/replay: when a ReplayEngine is attached and the call context requests
+ * replay mode, the call is served from the recorded journal with zero real
+ * execution; in record mode the call output is appended to the journal.
  */
 export class ChannelHub {
   private readonly builtInChannelMap = new Map<ChannelKind, IChannelProvider>();
   private readonly pluginExtChannelMap = new Map<ChannelKind, IChannelProvider>();
   private readonly callContextPool = new Map<string, ChannelCallCtx>();
   private capabilityGate: CapabilityGate | null = null;
+  private replayEngine: ReplayEngine | null = null;
+  private recordJournal: RecordJournal | null = null;
+  private callCounter = 0;
 
   public attachCapabilityGate(gate: CapabilityGate): void {
     this.capabilityGate = gate;
+  }
+
+  /** Attach the replay engine that serves "replay" mode calls. */
+  public attachReplayEngine(engine: ReplayEngine): void {
+    this.replayEngine = engine;
+  }
+
+  /** Attach the journal that "record" mode calls are appended to. */
+  public attachRecordJournal(journal: RecordJournal): void {
+    this.recordJournal = journal;
   }
 
   public registerBuiltInChannel(kind: ChannelKind, provider: IChannelProvider): void {
@@ -83,6 +103,14 @@ export class ChannelHub {
       );
     }
 
+    // Replay fast path: serve the recorded output, never execute the channel.
+    if (ctx.replayMode === "replay" && this.replayEngine) {
+      const orderIndex = this.callCounter++;
+      const output = this.replayEngine.replayCall(kind, funcName, digestInputs(...inputArgs), orderIndex);
+      this.recordCall(kind, funcName, digestInputs(...inputArgs), output, 0);
+      return output as T;
+    }
+
     const method = (provider as unknown as Record<string, (...args: unknown[]) => Promise<unknown>>)[funcName];
     if (typeof method !== "function") {
       throw new ChannelCallFaultError(`method ${funcName} not found on channel ${kind}`, ctx.traceMarkId, ctx.pluginUnitId);
@@ -95,8 +123,13 @@ export class ChannelHub {
       }, ctx.maxWaitMs);
     });
 
+    const startedAt = Date.now();
     try {
-      return (await Promise.race([method.apply(provider, inputArgs), deadline])) as T;
+      const output = await Promise.race([method.apply(provider, inputArgs), deadline]);
+      if (ctx.replayMode === "record") {
+        this.recordCall(kind, funcName, digestInputs(...inputArgs), output, Date.now() - startedAt);
+      }
+      return output as T;
     } finally {
       if (timeoutHandle !== undefined) {
         clearTimeout(timeoutHandle);
@@ -137,5 +170,17 @@ export class ChannelHub {
     this.builtInChannelMap.clear();
     this.pluginExtChannelMap.clear();
     this.callContextPool.clear();
+    this.callCounter = 0;
+  }
+
+  private recordCall(kind: ChannelKind, funcName: string, inputDigest: string, output: unknown, durationMs: number): void {
+    if (!this.recordJournal) return;
+    this.recordJournal.append({
+      channelKind: kind,
+      funcName,
+      inputDigest,
+      outputSnapshot: structuredClone(output),
+      durationMs
+    });
   }
 }

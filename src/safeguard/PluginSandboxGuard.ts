@@ -5,12 +5,17 @@ import type { TraceMarkId, PluginUnitId } from "../types/orbitDomain";
 /**
  * Runs plugin business logic under a per-plugin trip protector and records
  * failures into the trace journal, so a failing plugin cannot take down the
- * host or other plugins.
+ * host or other plugins. An optional threshold resolver derives per-plugin
+ * protection strictness from the impact graph (M3): the wider a plugin's
+ * influence, the stricter its trip threshold.
  */
 export class PluginSandboxGuard {
   private readonly pluginTripMap = new Map<PluginUnitId, TripProtector>();
 
-  public constructor(private readonly traceJournal: TraceJournal) {}
+  public constructor(
+    private readonly traceJournal: TraceJournal,
+    private readonly thresholdResolver?: (pluginUnitId: string) => number
+  ) {}
 
   public async runPluginSafe<T>(
     pluginUnitId: PluginUnitId,
@@ -19,7 +24,8 @@ export class PluginSandboxGuard {
   ): Promise<T> {
     let protector = this.pluginTripMap.get(pluginUnitId);
     if (!protector) {
-      protector = new TripProtector();
+      const threshold = this.thresholdResolver?.(pluginUnitId);
+      protector = threshold !== undefined ? new TripProtector(threshold) : new TripProtector();
       this.pluginTripMap.set(pluginUnitId, protector);
     }
 

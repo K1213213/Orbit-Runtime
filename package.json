@@ -12,8 +12,8 @@
     "deterministic-replay"
   ],
   "license": "MIT",
-  "main": "dist/src/core/orbitRuntimeHost.js",
-  "types": "dist/src/core/orbitRuntimeHost.d.ts",
+  "main": "dist/src/index.js",
+  "types": "dist/src/index.d.ts",
   "files": [
     "dist",
     "src",

@@ -1,21 +1,20 @@
 import type { IChannelProvider } from "../IChannelProvider";
 import type { ChannelCallCtx } from "../../types/orbitDomain";
 
-/**
- * 内存KV能力通道，支持TTL自动过期回收
- */
-type KvStoreEntry = {
+const SWEEP_INTERVAL_MS = 5_000;
+
+interface KvEntry {
   payloadText: string;
   expireTimestamp: number | null;
-};
+}
 
+/** In-memory KV channel with TTL: entries expire lazily on read and on a sweep timer. */
 export class MemoryKvChannel implements IChannelProvider {
-  private innerKvMap = new Map<string, KvStoreEntry>();
+  private readonly innerKvMap = new Map<string, KvEntry>();
   private sweepTimer: ReturnType<typeof setInterval> | null = null;
 
   public async setup(_ctx: ChannelCallCtx): Promise<void> {
-    // 每5秒扫描清理过期KV条目
-    this.sweepTimer = setInterval(() => this.sweepExpiredEntries(), 5000);
+    this.sweepTimer = setInterval(() => this.sweepExpiredEntries(), SWEEP_INTERVAL_MS);
   }
 
   public async teardown(): Promise<void> {
@@ -26,20 +25,20 @@ export class MemoryKvChannel implements IChannelProvider {
     this.innerKvMap.clear();
   }
 
-  /** ttlMs=0代表永久有效 */
+  /** ttlMs <= 0 means the entry never expires. */
   public async writeEntry(key: string, payloadText: string, ttlMs: number): Promise<void> {
-    const expire = ttlMs > 0 ? Date.now() + ttlMs : null;
-    this.innerKvMap.set(key, { payloadText, expireTimestamp: expire });
+    const expireTimestamp = ttlMs > 0 ? Date.now() + ttlMs : null;
+    this.innerKvMap.set(key, { payloadText, expireTimestamp });
   }
 
   public async readEntry(key: string): Promise<string | null> {
-    const item = this.innerKvMap.get(key);
-    if (!item) return null;
-    if (item.expireTimestamp !== null && Date.now() > item.expireTimestamp) {
+    const entry = this.innerKvMap.get(key);
+    if (!entry) return null;
+    if (entry.expireTimestamp !== null && Date.now() > entry.expireTimestamp) {
       this.innerKvMap.delete(key);
       return null;
     }
-    return item.payloadText;
+    return entry.payloadText;
   }
 
   public async removeEntry(key: string): Promise<void> {
@@ -47,10 +46,10 @@ export class MemoryKvChannel implements IChannelProvider {
   }
 
   private sweepExpiredEntries(): void {
-    const nowTs = Date.now();
-    for (const [k, entry] of this.innerKvMap.entries()) {
-      if (entry.expireTimestamp !== null && nowTs > entry.expireTimestamp) {
-        this.innerKvMap.delete(k);
+    const now = Date.now();
+    for (const [key, entry] of this.innerKvMap.entries()) {
+      if (entry.expireTimestamp !== null && now > entry.expireTimestamp) {
+        this.innerKvMap.delete(key);
       }
     }
   }

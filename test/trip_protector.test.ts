@@ -10,8 +10,8 @@ test("连续失败达到阈值触发跳闸并快速拦截", async () => {
   };
   await assert.rejects(trip.execWithProtect(fail));
   await assert.rejects(trip.execWithProtect(fail));
-  assert.equal(trip.peekStatusCopy().runState, TripState.TRIPPED);
-  await assert.rejects(trip.execWithProtect(fail), /Trip protector active/);
+  assert.equal(trip.snapshot().state, TripState.TRIPPED);
+  await assert.rejects(trip.execWithProtect(fail), /trip protector active/);
 });
 
 test("冷却后进入探测，单次成功即恢复", async () => {
@@ -19,11 +19,11 @@ test("冷却后进入探测，单次成功即恢复", async () => {
   await assert.rejects(trip.execWithProtect(async () => {
     throw new Error("boom");
   }));
-  assert.equal(trip.peekStatusCopy().runState, TripState.TRIPPED);
+  assert.equal(trip.snapshot().state, TripState.TRIPPED);
   await new Promise((resolve) => setTimeout(resolve, 40));
   const ok = await trip.execWithProtect(async () => "ok");
   assert.equal(ok, "ok");
-  assert.equal(trip.peekStatusCopy().runState, TripState.NORMAL);
+  assert.equal(trip.snapshot().state, TripState.NORMAL);
 });
 
 test("成功后重置失败计数", async () => {
@@ -35,5 +35,5 @@ test("成功后重置失败计数", async () => {
   await assert.rejects(trip.execWithProtect(fail));
   await trip.execWithProtect(async () => "ok");
   await assert.rejects(trip.execWithProtect(fail));
-  assert.equal(trip.peekStatusCopy().runState, TripState.NORMAL);
+  assert.equal(trip.snapshot().state, TripState.NORMAL);
 });

@@ -14,7 +14,7 @@ const base: PluginUnitPact = {
 test("完整规约注册成功", () => {
   const verifier = new PluginPactVerifier();
   verifier.registerPluginUnit({ ...base }, "t1");
-  assert.deepEqual(verifier.getRegisteredPluginIdCopy(), ["p1"]);
+  assert.deepEqual(verifier.listPluginIds(), ["p1"]);
 });
 
 test("必填字段缺失被拒绝", () => {
@@ -29,14 +29,14 @@ test("版本不满足宿主最低依赖被拒绝", () => {
   const verifier = new PluginPactVerifier();
   assert.throws(
     () => verifier.registerPluginUnit({ ...base, edition: "0.9.0" }, "t1"),
-    /host edition requirement unsatisfied/
+    /does not satisfy host edition/
   );
 });
 
 test("重复注册被拒绝", () => {
   const verifier = new PluginPactVerifier();
   verifier.registerPluginUnit({ ...base }, "t1");
-  assert.throws(() => verifier.registerPluginUnit({ ...base }, "t1"), /already been registered/);
+  assert.throws(() => verifier.registerPluginUnit({ ...base }, "t1"), /already registered/);
 });
 
 test("能力声明鉴权", () => {

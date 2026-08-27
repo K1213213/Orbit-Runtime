@@ -3,22 +3,19 @@ import { TraceJournal } from "../trace/TraceJournal";
 import type { TraceMarkId, PluginUnitId } from "../types/orbitDomain";
 
 /**
- * 插件沙箱防护器：每个插件单元绑定独立跳闸保护器；捕获异常写入轨迹日志
- * 实现插件故障隔离，单个插件故障不击穿整个宿主运行时
+ * Runs plugin business logic under a per-plugin trip protector and records
+ * failures into the trace journal, so a failing plugin cannot take down the
+ * host or other plugins.
  */
 export class PluginSandboxGuard {
   private readonly pluginTripMap = new Map<PluginUnitId, TripProtector>();
-  private readonly traceJournal: TraceJournal;
 
-  constructor(journal: TraceJournal) {
-    this.traceJournal = journal;
-  }
+  public constructor(private readonly traceJournal: TraceJournal) {}
 
-  /** 在跳闸保护下执行插件业务逻辑；异常自动写入轨迹 */
   public async runPluginSafe<T>(
     pluginUnitId: PluginUnitId,
     traceMarkId: TraceMarkId,
-    businessFunc: () => Promise<T>
+    business: () => Promise<T>
   ): Promise<T> {
     let protector = this.pluginTripMap.get(pluginUnitId);
     if (!protector) {
@@ -27,15 +24,13 @@ export class PluginSandboxGuard {
     }
 
     try {
-      return await protector.execWithProtect(businessFunc);
+      return await protector.execWithProtect(business);
     } catch (err) {
-      this.traceJournal.appendTrace({
+      this.traceJournal.append({
         entryClass: "PLUGIN_UNIT_EXCEPTION",
         traceMarkId,
         pluginUnitId,
-        factPayload: {
-          errMsg: err instanceof Error ? err.message : String(err)
-        }
+        factPayload: { errMsg: err instanceof Error ? err.message : String(err) }
       });
       throw err;
     }

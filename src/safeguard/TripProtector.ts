@@ -1,79 +1,72 @@
 import { TripProtectionBlockError } from "../core/orbitDomainError";
 import { TripState } from "../types/orbitDomain";
 
+const DEFAULT_FAILURE_THRESHOLD = 5;
+const DEFAULT_COOLDOWN_MS = 10_000;
+
+export interface TripSnapshot {
+  state: TripState;
+  consecutiveFailures: number;
+}
+
 /**
- * 跳闸保护器：故障状态机，替代熔断器；
- * N次连续失败后进入跳闸；超时后进入探测模式；探测成功恢复正常
+ * Per-plugin fault state machine: consecutive failures open the trip,
+ * a cooldown then flips it to probe mode, and a single probe success
+ * restores normal operation (agent workloads recover fast from blips).
  */
 export class TripProtector {
-  private runState: TripState;
-  private consecutiveFailureCount: number;
-  private probeSuccessCount: number;
-  private readonly failureTriggerThreshold: number;
-  private readonly probeCoolDownMs: number;
-  private trippedAtTimestamp: number;
+  private state: TripState = TripState.NORMAL;
+  private consecutiveFailures = 0;
+  private probeSuccesses = 0;
+  private trippedAt = 0;
 
-  /**
-   * @param failureTriggerThreshold 连续失败多少次触发跳闸
-   * @param probeCoolDownMs 跳闸后冷却多久进入探测模式
-   */
-  constructor(failureTriggerThreshold = 5, probeCoolDownMs = 10000) {
-    this.runState = TripState.NORMAL;
-    this.consecutiveFailureCount = 0;
-    this.probeSuccessCount = 0;
-    this.failureTriggerThreshold = failureTriggerThreshold;
-    this.probeCoolDownMs = probeCoolDownMs;
-    this.trippedAtTimestamp = 0;
-  }
+  public constructor(
+    private readonly failureThreshold: number = DEFAULT_FAILURE_THRESHOLD,
+    private readonly cooldownMs: number = DEFAULT_COOLDOWN_MS
+  ) {}
 
-  public async execWithProtect<T>(targetLogic: () => Promise<T>): Promise<T> {
-    if (this.runState === TripState.TRIPPED) {
-      const now = Date.now();
-      if (now - this.trippedAtTimestamp > this.probeCoolDownMs) {
-        this.runState = TripState.PROBE;
+  public async execWithProtect<T>(target: () => Promise<T>): Promise<T> {
+    if (this.state === TripState.TRIPPED) {
+      if (Date.now() - this.trippedAt > this.cooldownMs) {
+        this.state = TripState.PROBE;
       } else {
-        throw new TripProtectionBlockError("Trip protector active, execution blocked");
+        throw new TripProtectionBlockError("trip protector active, execution blocked");
       }
     }
 
     try {
-      const result = await targetLogic();
-      this.handleBusinessSuccess();
+      const result = await target();
+      this.onSuccess();
       return result;
     } catch (err) {
-      this.handleBusinessFail();
+      this.onFailure();
       throw err;
     }
   }
 
-  private handleBusinessSuccess(): void {
-    if (this.runState === TripState.PROBE) {
-      this.probeSuccessCount += 1;
-      // Agent业务场景：探测一次成功即恢复正常，区别通用库N次策略
-      if (this.probeSuccessCount >= 1) {
-        this.runState = TripState.NORMAL;
-        this.consecutiveFailureCount = 0;
-        this.probeSuccessCount = 0;
+  public snapshot(): TripSnapshot {
+    return { state: this.state, consecutiveFailures: this.consecutiveFailures };
+  }
+
+  private onSuccess(): void {
+    if (this.state === TripState.PROBE) {
+      this.probeSuccesses += 1;
+      if (this.probeSuccesses >= 1) {
+        this.state = TripState.NORMAL;
+        this.consecutiveFailures = 0;
+        this.probeSuccesses = 0;
       }
     } else {
-      this.consecutiveFailureCount = 0;
+      this.consecutiveFailures = 0;
     }
   }
 
-  private handleBusinessFail(): void {
-    this.consecutiveFailureCount += 1;
-    this.probeSuccessCount = 0;
-    if (this.runState === TripState.PROBE || this.consecutiveFailureCount >= this.failureTriggerThreshold) {
-      this.runState = TripState.TRIPPED;
-      this.trippedAtTimestamp = Date.now();
+  private onFailure(): void {
+    this.consecutiveFailures += 1;
+    this.probeSuccesses = 0;
+    if (this.state === TripState.PROBE || this.consecutiveFailures >= this.failureThreshold) {
+      this.state = TripState.TRIPPED;
+      this.trippedAt = Date.now();
     }
-  }
-
-  /** 获取保护器当前状态副本 */
-  public peekStatusCopy(): { runState: TripState; consecutiveFailureCount: number } {
-    return {
-      runState: this.runState,
-      consecutiveFailureCount: this.consecutiveFailureCount
-    };
   }
 }

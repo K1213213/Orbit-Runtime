@@ -1,40 +1,53 @@
 /**
- * Orbit宿主领域异常集合
- * 所有业务异常均继承OrbitDomainError；携带链路标记用于轨迹日志记录
+ * Domain error hierarchy. Every error carries an error token plus optional
+ * trace/plugin ids so the journal can attribute failures precisely.
  */
-
 export class OrbitDomainError extends Error {
   public readonly errorToken: string;
   public readonly traceMarkId?: string;
   public readonly pluginUnitId?: string;
 
-  constructor(msg: string, errToken: string, traceMarkId?: string, pluginUnitId?: string) {
-    super(msg);
+  constructor(message: string, errorToken: string, traceMarkId?: string, pluginUnitId?: string) {
+    super(message);
     this.name = this.constructor.name;
-    this.errorToken = errToken;
+    this.errorToken = errorToken;
     this.traceMarkId = traceMarkId;
     this.pluginUnitId = pluginUnitId;
-    Object.setPrototypeOf(this, OrbitDomainError.prototype);
+    Object.setPrototypeOf(this, new.target.prototype);
   }
 }
 
-/** 插件单元规约校验失败 */
+/** Plugin pact validation failed. */
 export class PluginPactRejectError extends OrbitDomainError {
-  constructor(msg: string, traceMarkId?: string, pluginUnitId?: string) {
-    super(msg, "PLUGIN_PACT_REJECT", traceMarkId, pluginUnitId);
+  constructor(message: string, traceMarkId?: string, pluginUnitId?: string) {
+    super(message, "PLUGIN_PACT_REJECT", traceMarkId, pluginUnitId);
   }
 }
 
-/** 能力通道调用异常 */
+/** Capability channel call failed (missing channel, timeout, capability denied). */
 export class ChannelCallFaultError extends OrbitDomainError {
-  constructor(msg: string, traceMarkId?: string, pluginUnitId?: string) {
-    super(msg, "CHANNEL_CALL_FAULT", traceMarkId, pluginUnitId);
+  constructor(message: string, traceMarkId?: string, pluginUnitId?: string) {
+    super(message, "CHANNEL_CALL_FAULT", traceMarkId, pluginUnitId);
   }
 }
 
-/** 跳闸保护触发，拒绝执行 */
+/** Trip protector is open and rejected the execution. */
 export class TripProtectionBlockError extends OrbitDomainError {
-  constructor(msg: string, traceMarkId?: string, pluginUnitId?: string) {
-    super(msg, "TRIP_PROTECTION_BLOCK", traceMarkId, pluginUnitId);
+  constructor(message: string, traceMarkId?: string, pluginUnitId?: string) {
+    super(message, "TRIP_PROTECTION_BLOCK", traceMarkId, pluginUnitId);
+  }
+}
+
+/** Sandbox creation rejected (e.g. duplicate id). */
+export class SandboxSpawnRejectError extends OrbitDomainError {
+  constructor(message: string, traceMarkId?: string) {
+    super(message, "SANDBOX_SPAWN_REJECT", traceMarkId);
+  }
+}
+
+/** Agent exceeded its per-run cycle budget. */
+export class CycleLimitReachedError extends OrbitDomainError {
+  constructor(message: string, traceMarkId?: string, agentBoxId?: string) {
+    super(message, "CYCLE_LIMIT_REACHED", traceMarkId);
   }
 }

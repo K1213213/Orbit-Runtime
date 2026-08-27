@@ -5,12 +5,16 @@ import { TraceJournal } from "../trace/TraceJournal";
 import { PluginSandboxGuard } from "../safeguard/PluginSandboxGuard";
 import { PluginPactVerifier } from "../pact/PluginPactVerifier";
 import { SandboxPool } from "../sandbox/SandboxPool";
-import { ChannelKind, ChannelCallCtx } from "../types/orbitDomain";
 import { makeUniqueMark } from "../utils/versionIdGen";
+import type { AgentSandbox } from "../sandbox/AgentSandbox";
+import { ChannelKind, ChannelCallCtx, PluginUnitPact, AgentBoxConfig, CapabilityKey } from "../types/orbitDomain";
+
+const HOST_DEFAULT_TIMEOUT_MS = 10_000;
 
 /**
- * Orbit运行时宿主：顶层组装入口
- * 自底向上实例全部组件；注册内置能力通道；统一宿主生命周期
+ * Top-level assembly: wires every component bottom-up and owns the host
+ * lifecycle. Components stay public for advanced scenarios (custom channels,
+ * audit), but day-to-day use should go through the facade methods below.
  */
 export class OrbitRuntimeHost {
   public readonly channelHub: ChannelHub;
@@ -19,46 +23,54 @@ export class OrbitRuntimeHost {
   public readonly pluginPactVerifier: PluginPactVerifier;
   public readonly sandboxPool: SandboxPool;
 
-  constructor() {
+  public constructor() {
     this.channelHub = new ChannelHub();
     this.traceJournal = new TraceJournal();
     this.pluginSandboxGuard = new PluginSandboxGuard(this.traceJournal);
     this.pluginPactVerifier = new PluginPactVerifier();
     this.sandboxPool = new SandboxPool(this.channelHub, this.traceJournal);
 
-    // 权限裁决闭环：插件发起的通道调用必须先通过规约能力声明校验
+    // Close the capability loop: plugin-originated channel calls must pass the
+    // declared-capability check. Injected as a function so the channel layer
+    // never depends on the pact layer above it.
     this.channelHub.attachCapabilityGate((pluginUnitId, kind, funcName) =>
-      this.pluginPactVerifier.hasCapability(pluginUnitId, requiredCapabilityOf(kind, funcName))
+      this.pluginPactVerifier.hasCapability(pluginUnitId, requiredCapability(kind, funcName))
     );
 
     this.channelHub.registerBuiltInChannel(ChannelKind.MEM_KV_STORE, new MemoryKvChannel());
     this.channelHub.registerBuiltInChannel(ChannelKind.LLM_ACCESS, new LlmMockChannel());
   }
 
-  /** 宿主启动，执行全部内置通道setup */
   public async bootHost(): Promise<void> {
-    const bootCtx: ChannelCallCtx = {
-      traceMarkId: makeUniqueMark(),
-      maxWaitMs: 10000
-    };
-    await this.channelHub.setupAllBuiltInChannels(bootCtx);
+    await this.channelHub.setupAllBuiltInChannels(this.newHostCtx());
   }
 
-  /** 宿主停止，反向顺序teardown释放全部资源 */
+  /** Reverse-order teardown: pool -> pact -> guards -> channels -> journal. */
   public async shutdownHost(): Promise<void> {
-    this.sandboxPool.releasePool();
-    this.pluginPactVerifier.clearRegistry();
+    this.sandboxPool.clear();
+    this.pluginPactVerifier.clear();
     this.pluginSandboxGuard.releaseAllGuard();
     await this.channelHub.teardown();
-    this.traceJournal.clearAllTrace();
+    this.traceJournal.clear();
+  }
+
+  // Facade -----------------------------------------------------------
+
+  public registerPlugin(pact: PluginUnitPact): void {
+    this.pluginPactVerifier.registerPluginUnit(pact, makeUniqueMark());
+  }
+
+  public spawnAgentBox(cfg: AgentBoxConfig): AgentSandbox {
+    return this.sandboxPool.spawnSandbox(cfg);
+  }
+
+  private newHostCtx(): ChannelCallCtx {
+    return { traceMarkId: makeUniqueMark(), maxWaitMs: HOST_DEFAULT_TIMEOUT_MS };
   }
 }
 
-/** 通道方法 → 所需能力声明的最小映射 */
-function requiredCapabilityOf(
-  kind: ChannelKind,
-  funcName: string
-): "channel:write" | "channel:read" | "sandbox:spawn" {
+/** Minimal mapping from a channel method to its required capability. */
+function requiredCapability(kind: ChannelKind, funcName: string): CapabilityKey {
   if (kind === ChannelKind.MEM_KV_STORE) {
     return funcName === "writeEntry" || funcName === "removeEntry" ? "channel:write" : "channel:read";
   }

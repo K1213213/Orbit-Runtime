@@ -1,73 +1,79 @@
-import type { AgentBoxConfig, AgentBoxId, TraceMarkId, ChannelCallCtx } from "../types/orbitDomain";
 import { ChannelHub } from "../channel/ChannelHub";
 import { TraceJournal } from "../trace/TraceJournal";
+import { CycleLimitReachedError } from "../core/orbitDomainError";
 import { makeUniqueMark } from "../utils/versionIdGen";
-import { ChannelKind } from "../types/orbitDomain";
+import { ChannelKind, ChannelCallCtx, AgentBoxConfig, AgentBoxId, TraceMarkId } from "../types/orbitDomain";
+
+const DEFAULT_CHANNEL_TIMEOUT_MS = 8_000;
 
 /**
- * Agent独立沙箱实例，维护循环计数、指令上下文；单次业务循环执行
+ * One agent's execution sandbox: bounded cycle count, a fresh trace id per
+ * round, and channel-mediated model access (never a direct LLM dependency).
  */
 export class AgentSandbox {
   public readonly agentBoxId: AgentBoxId;
   public readonly boxAlias: string;
   public readonly baseInstruct: string;
   public readonly maxCycleRun: number;
-  private cycleCounter: number;
-  private readonly channelHub: ChannelHub;
-  private readonly traceJournal: TraceJournal;
+  private cycleCount = 0;
 
-  constructor(cfg: AgentBoxConfig, hub: ChannelHub, journal: TraceJournal) {
+  public constructor(
+    cfg: AgentBoxConfig,
+    private readonly channelHub: ChannelHub,
+    private readonly traceJournal: TraceJournal
+  ) {
     this.agentBoxId = cfg.agentBoxId;
     this.boxAlias = cfg.boxAlias;
     this.baseInstruct = cfg.baseInstruct;
     this.maxCycleRun = cfg.maxCycleRun;
-    this.cycleCounter = 0;
-    this.channelHub = hub;
-    this.traceJournal = journal;
   }
 
-  /** 执行一轮思考处理周期 */
+  /** Run one reasoning cycle; throws CycleLimitReachedError when the budget is spent. */
   public async runSingleCycle(userInputText: string): Promise<string> {
     const traceMarkId: TraceMarkId = makeUniqueMark();
-    this.cycleCounter += 1;
+    this.cycleCount += 1;
 
-    if (this.cycleCounter > this.maxCycleRun) {
-      this.traceJournal.appendTrace({
+    if (this.cycleCount > this.maxCycleRun) {
+      this.traceJournal.append({
         entryClass: "AGENT_CYCLE_LIMIT_HIT",
         traceMarkId,
         agentBoxId: this.agentBoxId,
-        factPayload: { currentCycle: this.cycleCounter, maxCycle: this.maxCycleRun }
+        factPayload: { currentCycle: this.cycleCount, maxCycle: this.maxCycleRun }
       });
-      return "Sandbox halt: reached maximum cycle run limit";
+      throw new CycleLimitReachedError(
+        `agent sandbox ${this.agentBoxId} reached cycle limit ${this.maxCycleRun}`,
+        traceMarkId,
+        this.agentBoxId
+      );
     }
 
-    const callCtx: ChannelCallCtx = {
+    const ctx: ChannelCallCtx = {
       traceMarkId,
       agentBoxId: this.agentBoxId,
-      maxWaitMs: 8000
+      maxWaitMs: DEFAULT_CHANNEL_TIMEOUT_MS
     };
 
     const llmOutput = await this.channelHub.fireChannelCall<string>(
       ChannelKind.LLM_ACCESS,
-      callCtx,
+      ctx,
       "simulateChatRound",
       `${this.baseInstruct}\nUser:${userInputText}`
     );
 
-    this.traceJournal.appendTrace({
+    this.traceJournal.append({
       entryClass: "AGENT_SINGLE_CYCLE_EXEC",
       traceMarkId,
       agentBoxId: this.agentBoxId,
-      factPayload: { userInputText, llmOutput, cycleCounter: this.cycleCounter }
+      factPayload: { userInputText, llmOutput, cycleCounter: this.cycleCount }
     });
     return llmOutput;
   }
 
-  public peekCycleCounter(): number {
-    return this.cycleCounter;
+  public cycleCountNow(): number {
+    return this.cycleCount;
   }
 
-  public resetCycleCounter(): void {
-    this.cycleCounter = 0;
+  public resetCycleCount(): void {
+    this.cycleCount = 0;
   }
 }

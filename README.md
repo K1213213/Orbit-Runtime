@@ -43,11 +43,11 @@ npm run demo       # build + run demo-host.ts (full lifecycle demo)
 Expected demo output highlights:
 
 ```
-[cap] 插件调用 LLM 通道（channel:read）→ 放行成功
-[cap] 插件调用 KV 写（未声明 channel:write）→ 被能力裁决拒绝
-[sandbox] 第 3 轮（超限）→ Sandbox halt: reached maximum cycle run limit
-[guard] 插件异常已被隔离并自动落轨迹（宿主继续运行）
-[trace] 轨迹共 5 条：...
+[cap] plugin -> LLM channel (channel:read): allowed
+[cap] plugin -> KV write (undeclared channel:write): rejected
+[sandbox] round 3 rejected (budget spent): agent sandbox box.demo-1 reached cycle limit 2
+[guard] plugin crash isolated and journaled (host keeps running)
+[trace] 5 entries: AGENT_SINGLE_CYCLE_EXEC / AGENT_CYCLE_LIMIT_HIT / PLUGIN_UNIT_EXCEPTION ...
 ```
 
 ## Repository layout

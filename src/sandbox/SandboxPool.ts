@@ -1,44 +1,40 @@
 import { AgentSandbox } from "./AgentSandbox";
-import type { AgentBoxConfig, AgentBoxId } from "../types/orbitDomain";
 import { ChannelHub } from "../channel/ChannelHub";
 import { TraceJournal } from "../trace/TraceJournal";
+import { SandboxSpawnRejectError } from "../core/orbitDomainError";
+import type { AgentBoxConfig, AgentBoxId } from "../types/orbitDomain";
 
-/**
- * Agent沙箱池：统一管理全部Agent沙箱实例的创建、查询、销毁生命周期
- */
+/** Manages the lifecycle of agent sandboxes: spawn, lookup, removal, release. */
 export class SandboxPool {
   private readonly sandboxStore = new Map<AgentBoxId, AgentSandbox>();
-  private readonly channelHub: ChannelHub;
-  private readonly traceJournal: TraceJournal;
 
-  constructor(hub: ChannelHub, journal: TraceJournal) {
-    this.channelHub = hub;
-    this.traceJournal = journal;
-  }
+  public constructor(
+    private readonly channelHub: ChannelHub,
+    private readonly traceJournal: TraceJournal
+  ) {}
 
-  /** 生成一个全新Agent沙箱实例放入池内 */
   public spawnSandbox(cfg: AgentBoxConfig): AgentSandbox {
     if (this.sandboxStore.has(cfg.agentBoxId)) {
-      throw new Error(`Agent sandbox ${cfg.agentBoxId} already exists in pool`);
+      throw new SandboxSpawnRejectError(`agent sandbox ${cfg.agentBoxId} already exists`);
     }
-    const boxIns = new AgentSandbox(cfg, this.channelHub, this.traceJournal);
-    this.sandboxStore.set(cfg.agentBoxId, boxIns);
-    return boxIns;
+    const box = new AgentSandbox(cfg, this.channelHub, this.traceJournal);
+    this.sandboxStore.set(cfg.agentBoxId, box);
+    return box;
   }
 
-  public pickSandbox(boxId: AgentBoxId): AgentSandbox | undefined {
+  public get(boxId: AgentBoxId): AgentSandbox | undefined {
     return this.sandboxStore.get(boxId);
   }
 
-  public dropSandbox(boxId: AgentBoxId): void {
+  public remove(boxId: AgentBoxId): void {
     this.sandboxStore.delete(boxId);
   }
 
-  public getAllSandboxIdCopy(): AgentBoxId[] {
+  public listSandboxIds(): AgentBoxId[] {
     return Array.from(this.sandboxStore.keys());
   }
 
-  public releasePool(): void {
+  public clear(): void {
     this.sandboxStore.clear();
   }
 }

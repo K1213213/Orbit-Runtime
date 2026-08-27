@@ -1,22 +1,22 @@
 import type { IChannelProvider } from "../IChannelProvider";
 import type { ChannelCallCtx } from "../../types/orbitDomain";
 
-/**
- * LLM访问模拟通道，用于单元测试与演示，内置网络延迟模拟
- */
-export class LlmMockChannel implements IChannelProvider {
-  public async setup(_ctx: ChannelCallCtx): Promise<void> {
-  }
+const DEFAULT_LATENCY_MS = 320;
 
-  public async teardown(): Promise<void> {
-  }
+/** Mock LLM channel for tests and demos; simulates network latency. */
+export class LlmMockChannel implements IChannelProvider {
+  public constructor(private readonly latencyMs: number = DEFAULT_LATENCY_MS) {}
+
+  public async setup(_ctx: ChannelCallCtx): Promise<void> {}
+
+  public async teardown(): Promise<void> {}
 
   public async simulateChatRound(rawPrompt: string): Promise<string> {
-    await this.mockIoDelay(320);
-    return `[Llm‑Sim] Input content:${rawPrompt}`;
+    await this.delay(this.latencyMs);
+    return `[Llm-Sim] Input content:${rawPrompt}`;
   }
 
-  private mockIoDelay(waitMs: number): Promise<void> {
-    return new Promise(resolve => setTimeout(resolve, waitMs));
+  private delay(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 }

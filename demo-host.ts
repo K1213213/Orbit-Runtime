@@ -45,7 +45,7 @@ async function main(): Promise<void> {
   const llmOut = await host.channelHub.fireChannelCall<string>(
     ChannelKind.LLM_ACCESS,
     pluginCtx,
-    "simulateChatRound",
+    "chatRound",
     "Hello Orbit"
   );
   console.log(`[cap] plugin -> LLM channel (channel:read): allowed, got "${llmOut}"`);

@@ -114,3 +114,24 @@ test/             # 单元测试（node:test）
 ## 许可协议
 
 [Apache License 2.0](./LICENSE)
+
+## 接入真实模型（DeepSeek）
+
+内置 LLM 通道为测试用模拟实现；运行时将真实 DeepSeek provider 注册为插件扩展通道即可覆盖（插件通道优先于内置）：
+
+```ts
+import { OrbitRuntimeHost, DeepSeekChannel, ChannelKind } from "orbit-agent-runtime";
+
+const host = new OrbitRuntimeHost();
+await host.bootHost();
+host.channelHub.registerPluginExtChannel(
+  ChannelKind.LLM_ACCESS,
+  new DeepSeekChannel({ apiKey: process.env.DEEPSEEK_API_KEY, model: "deepseek-chat" })
+);
+```
+
+确定性重放无需改动：先记录真实运行，再零 API 调用精确重放、输出逐字节一致。
+
+```bash
+DEEPSEEK_API_KEY=sk-xxx npm run demo:deepseek
+```

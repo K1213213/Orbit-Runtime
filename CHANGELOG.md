@@ -55,7 +55,9 @@ provable isolation, governed routing).
   - Per-cycle sandbox budget with `BudgetExhaustedError`
 - **Engineering**
   - Zero runtime dependencies; dev deps only `typescript` + `@types/node`
-  - `node:test` suite (43 tests), demos (`demo-host`, `demo-replay`)
+  - `node:test` suite (48 tests), demos (`demo-host`, `demo-replay`, `demo-deepseek`)
+  - **Real model provider**: OpenAI-compatible `DeepSeekChannel` (zero extra
+    deps, built-in fetch); LLM channel method standardized to `chatRound`
   - Bilingual README (`README.md`, `README.zh-CN.md`), architecture diagram
     and design doc (`docs/`), Apache-2.0 license
   - **Orbit Console** (`web/`): zero-dependency HTTP management console

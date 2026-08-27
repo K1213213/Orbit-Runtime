@@ -69,7 +69,7 @@ export class AgentSandbox {
     const llmOutput = await this.channelHub.fireChannelCall<string>(
       channelKind,
       ctx,
-      "simulateChatRound",
+      "chatRound",
       `${this.baseInstruct}\nUser:${userInputText}`
     );
 

@@ -18,7 +18,7 @@ export class LlmMockChannel implements IChannelProvider {
 
   public async teardown(): Promise<void> {}
 
-  public async simulateChatRound(rawPrompt: string): Promise<string> {
+  public async chatRound(rawPrompt: string): Promise<string> {
     await this.delay(this.latencyMs);
     return `[Llm-Sim] Input content:${rawPrompt}`;
   }

@@ -26,6 +26,7 @@
     "test": "npm run build && node --test \"dist/test/*.test.js\"",
     "demo": "npm run build && node dist/demo-host.js",
     "demo:replay": "npm run build && node dist/demo-replay.js",
+    "demo:deepseek": "npm run build && node dist/demo-deepseek.js",
     "prepublishOnly": "npm run clean && npm run build && npm test"
   },
   "engines": {

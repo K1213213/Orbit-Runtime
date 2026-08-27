@@ -6,6 +6,8 @@ export type { CapabilityGate } from "./channel/ChannelHub";
 export type { IChannelProvider } from "./channel/IChannelProvider";
 export { MemoryKvChannel } from "./channel/providers/MemoryKvChannel";
 export { LlmMockChannel } from "./channel/providers/LlmMockChannel";
+export { DeepSeekChannel } from "./channel/providers/deepseek_channel";
+export type { DeepSeekChannelConfig } from "./channel/providers/deepseek_channel";
 export { PluginPactVerifier } from "./pact/PluginPactVerifier";
 export { TripProtector } from "./safeguard/TripProtector";
 export type { TripSnapshot } from "./safeguard/TripProtector";

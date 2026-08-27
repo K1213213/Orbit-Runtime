@@ -115,3 +115,27 @@ test/             # unit tests (node:test)
 ## License
 
 [Apache License 2.0](./LICENSE)
+
+## Connect a real model (DeepSeek)
+
+The built-in LLM channel is a mock for tests; swap in the real DeepSeek
+provider (OpenAI-compatible, zero extra deps) at runtime — plugin channels
+take precedence over built-ins:
+
+```ts
+import { OrbitRuntimeHost, DeepSeekChannel, ChannelKind } from "orbit-agent-runtime";
+
+const host = new OrbitRuntimeHost();
+await host.bootHost();
+host.channelHub.registerPluginExtChannel(
+  ChannelKind.LLM_ACCESS,
+  new DeepSeekChannel({ apiKey: process.env.DEEPSEEK_API_KEY, model: "deepseek-chat" })
+);
+```
+
+Deterministic replay works unchanged: record a live run, then replay with
+zero API calls and byte-identical output.
+
+```bash
+DEEPSEEK_API_KEY=sk-xxx npm run demo:deepseek
+```

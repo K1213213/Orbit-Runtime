@@ -45,8 +45,8 @@ test("ReplayEngine: replayCall serves the frozen output", () => {
   const journal = new RecordJournal();
   const engine = new ReplayEngine(journal);
   const digest = digestInputs("hello");
-  journal.append({ channelKind: ChannelKind.LLM_ACCESS, funcName: "simulateChatRound", inputDigest: digest, outputSnapshot: "hello-back", durationMs: 320 });
-  const out = engine.replayCall(ChannelKind.LLM_ACCESS, "simulateChatRound", digest, 0);
+  journal.append({ channelKind: ChannelKind.LLM_ACCESS, funcName: "chatRound", inputDigest: digest, outputSnapshot: "hello-back", durationMs: 320 });
+  const out = engine.replayCall(ChannelKind.LLM_ACCESS, "chatRound", digest, 0);
   assert.equal(out, "hello-back");
 });
 
@@ -54,9 +54,9 @@ test("ReplayEngine: missing call and signature drift throw ReplayDriftError", ()
   const journal = new RecordJournal();
   const engine = new ReplayEngine(journal);
   const digest = digestInputs("x");
-  journal.append({ channelKind: ChannelKind.LLM_ACCESS, funcName: "simulateChatRound", inputDigest: digest, outputSnapshot: "o", durationMs: 1 });
-  assert.throws(() => engine.replayCall(ChannelKind.LLM_ACCESS, "simulateChatRound", digest, 5), ReplayDriftError);
-  assert.throws(() => engine.replayCall(ChannelKind.MEM_KV_STORE, "simulateChatRound", digest, 0), ReplayDriftError);
+  journal.append({ channelKind: ChannelKind.LLM_ACCESS, funcName: "chatRound", inputDigest: digest, outputSnapshot: "o", durationMs: 1 });
+  assert.throws(() => engine.replayCall(ChannelKind.LLM_ACCESS, "chatRound", digest, 5), ReplayDriftError);
+  assert.throws(() => engine.replayCall(ChannelKind.MEM_KV_STORE, "chatRound", digest, 0), ReplayDriftError);
 });
 
 test("Reconcile: identical chains pass, tampered output is located", () => {
@@ -82,11 +82,11 @@ test("Hub integration: record then replay reproduces identical output", async ()
 
   const journal = new RecordJournal();
   hub.attachRecordJournal(journal);
-  const live = await hub.fireChannelCall<string>(ChannelKind.LLM_ACCESS, makeCtx({ replayMode: "record" }), "simulateChatRound", "ping");
+  const live = await hub.fireChannelCall<string>(ChannelKind.LLM_ACCESS, makeCtx({ replayMode: "record" }), "chatRound", "ping");
   assert.equal(journal.size(), 1);
 
   hub.attachReplayEngine(new ReplayEngine(journal));
-  const replayed = await hub.fireChannelCall<string>(ChannelKind.LLM_ACCESS, makeCtx({ replayMode: "replay" }), "simulateChatRound", "ping");
+  const replayed = await hub.fireChannelCall<string>(ChannelKind.LLM_ACCESS, makeCtx({ replayMode: "replay" }), "chatRound", "ping");
   assert.equal(replayed, live);
 
   await hub.teardown();

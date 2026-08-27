@@ -72,7 +72,7 @@ class EchoPluginChannel {
   determinismMeta = { determinism: "deterministic", replayPolicy: "inject" };
   async setup() {}
   async teardown() {}
-  async simulateChatRound(input) {
+  async chatRound(input) {
     const text = String(input);
     const lastLine = text.split("\n").filter(Boolean).pop() ?? text;
     return `[echo-plugin] ${lastLine.replace(/^User:/, "")}`;

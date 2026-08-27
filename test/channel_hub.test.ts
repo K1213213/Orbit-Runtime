@@ -25,14 +25,14 @@ test("插件扩展通道优先于内置通道", async () => {
   const fake = {
     setup: async () => {},
     teardown: async () => {},
-    simulateChatRound: async () => "fake-llm",
+    chatRound: async () => "fake-llm",
     determinismMeta: { determinism: DeterminismLevel.DETERMINISTIC }
   };
   hub.registerPluginExtChannel(ChannelKind.LLM_ACCESS, fake);
   const out = await hub.fireChannelCall<string>(
     ChannelKind.LLM_ACCESS,
     makeCtx({ maxWaitMs: 5000 }),
-    "simulateChatRound",
+    "chatRound",
     "hi"
   );
   assert.equal(out, "fake-llm");

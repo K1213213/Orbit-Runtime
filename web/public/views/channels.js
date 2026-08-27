@@ -49,7 +49,8 @@ export async function renderChannels(root) {
     );
   } else {
     const keyF = input("password", "", "sk-…（仅保存在内存，不落盘）");
-    const modelF = input("text", "deepseek-chat", "模型：deepseek-chat / deepseek-reasoner");
+    const modelF = input("text", "deepseek-chat", "模型：deepseek-chat / gpt-4o / qwen-plus …");
+    const baseF = input("text", "https://api.deepseek.com", "API 地址（默认 DeepSeek，可换 OpenAI/通义/Kimi/Ollama 等兼容端点）");
     const tempF = input("number", "1.0", "temperature（可选）");
     tempF.style.width = "120px";
 
@@ -59,6 +60,8 @@ export async function renderChannels(root) {
       keyF,
       el("label", "field", `<span>模型</span>`),
       modelF,
+      el("label", "field", `<span>API 地址</span>`),
+      baseF,
       el("label", "field", `<span>Temperature</span>`),
       tempF
     );
@@ -70,8 +73,13 @@ export async function renderChannels(root) {
         return;
       }
       try {
-        await api.registerDeepSeek(key, modelF.value.trim() || "deepseek-chat", Number(tempF.value) || undefined);
-        toast("DeepSeek 通道已接入");
+        await api.registerDeepSeek(
+          key,
+          modelF.value.trim() || "deepseek-chat",
+          Number(tempF.value) || undefined,
+          baseF.value.trim() || undefined
+        );
+        toast("OpenAI 兼容通道已接入");
         renderChannels(root);
       } catch (err) {
         toast(err.message, "danger");
@@ -79,7 +87,7 @@ export async function renderChannels(root) {
     });
 
     dsBody.append(
-      el("p", "sub", "注册后沙箱对话（boxes 页）将走真实 DeepSeek 模型；回放实验室（replay 页）仍可零 API 调用精确重放。"),
+      el("p", "sub", "注册后沙箱对话（boxes 页）将走真实模型；支持任意 OpenAI 兼容端点（DeepSeek / OpenAI / 通义 / Kimi / Ollama…）；回放实验室（replay 页）仍可零 API 调用精确重放。"),
       form,
       el("div", "btn-row", btn("接入 DeepSeek", "primary", null, form))
     );

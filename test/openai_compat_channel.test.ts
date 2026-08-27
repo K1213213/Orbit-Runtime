@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { DeepSeekChannel } from "../src/channel/providers/deepseek_channel";
+import { DeepSeekChannel, OpenAICompatChannel } from "../src/channel/providers/openai_compat_channel";
 
 /** Minimal fake fetch returning a canned chat completion. */
 function fakeFetchOk(content: string, calls: { url: string; init: RequestInit }[]): typeof fetch {
@@ -49,7 +49,7 @@ test("DeepSeekChannel: chatRound posts OpenAI-compatible payload and returns con
 
 test("DeepSeekChannel: surfaces API errors", async () => {
   const channel = new DeepSeekChannel({ apiKey: "sk-bad", fetchImpl: fakeFetchError(401, "invalid key") });
-  await assert.rejects(channel.chatRound("hi"), /DeepSeek API error 401: invalid key/);
+  await assert.rejects(channel.chatRound("hi"), /LLM API error 401: invalid key/);
 });
 
 test("DeepSeekChannel: non-JSON responses fail with a friendly error", async () => {
@@ -64,7 +64,7 @@ test("DeepSeekChannel: non-JSON responses fail with a friendly error", async () 
       }
     })) as unknown as typeof fetch
   });
-  await assert.rejects(channel.chatRound("hi"), /DeepSeek API returned a non-JSON response \(HTTP 502\)/);
+  await assert.rejects(channel.chatRound("hi"), /LLM API returned a non-JSON response \(HTTP 502\)/);
 });
 
 test("DeepSeekChannel: rejects empty completions", async () => {
@@ -78,4 +78,23 @@ test("DeepSeekChannel: rejects empty completions", async () => {
 test("DeepSeekChannel: replay contract is stochastic + inject", () => {
   const channel = new DeepSeekChannel({ apiKey: "sk-test", fetchImpl: fakeFetchOk("x", []) });
   assert.deepEqual(channel.determinismMeta, { determinism: "stochastic", seedable: true, replayPolicy: "inject" });
+});
+
+test("OpenAICompatChannel: works against any compatible endpoint", async () => {
+  const calls: { url: string; init: RequestInit }[] = [];
+  const channel = new OpenAICompatChannel({
+    apiKey: "sk-ollama",
+    baseUrl: "http://localhost:11434/v1",
+    model: "llama3",
+    fetchImpl: fakeFetchOk("local answer", calls)
+  });
+  const out = await channel.chatRound("hi");
+  assert.equal(out, "local answer");
+  assert.equal(calls[0].url, "http://localhost:11434/v1/chat/completions");
+  const body = JSON.parse(String(calls[0].init.body)) as { model: string };
+  assert.equal(body.model, "llama3");
+});
+
+test("OpenAICompatChannel: requires an api key", () => {
+  assert.throws(() => new OpenAICompatChannel({ apiKey: "", baseUrl: "https://x" }), /apiKey/);
 });

@@ -139,3 +139,23 @@ zero API calls and byte-identical output.
 ```bash
 DEEPSEEK_API_KEY=sk-xxx npm run demo:deepseek
 ```
+
+### Any OpenAI-compatible model
+
+`OpenAICompatChannel` works against **any** OpenAI-compatible endpoint —
+just point `baseUrl` at it:
+
+```ts
+import { OpenAICompatChannel } from "orbit-agent-runtime";
+
+// DeepSeek / OpenAI / Qwen / Kimi / GLM / Ollama / vLLM ...
+host.channelHub.registerPluginExtChannel(ChannelKind.LLM_ACCESS, new OpenAICompatChannel({
+  apiKey: process.env.LLM_API_KEY,
+  baseUrl: "https://dashscope.aliyuncs.com/compatible-mode", // example: Qwen
+  model: "qwen-plus"
+}));
+```
+
+Non-OpenAI protocols (Anthropic Claude, Google Gemini) each need a small
+`IChannelProvider` adapter (~20 lines); record/replay/isolation/routing are
+protocol-agnostic.

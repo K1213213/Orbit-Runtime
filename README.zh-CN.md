@@ -135,3 +135,20 @@ host.channelHub.registerPluginExtChannel(
 ```bash
 DEEPSEEK_API_KEY=sk-xxx npm run demo:deepseek
 ```
+
+### 任意 OpenAI 兼容模型
+
+`OpenAICompatChannel` 支持**任意** OpenAI 兼容端点——把 `baseUrl` 指过去即可：
+
+```ts
+import { OpenAICompatChannel } from "orbit-agent-runtime";
+
+// DeepSeek / OpenAI / 通义 / Kimi / GLM / Ollama / vLLM ...
+host.channelHub.registerPluginExtChannel(ChannelKind.LLM_ACCESS, new OpenAICompatChannel({
+  apiKey: process.env.LLM_API_KEY,
+  baseUrl: "https://dashscope.aliyuncs.com/compatible-mode", // 示例：通义千问
+  model: "qwen-plus"
+}));
+```
+
+非 OpenAI 协议（Anthropic Claude、Google Gemini）各需一个约 20 行的 `IChannelProvider` 适配器；重放/隔离/路由机制与协议无关。

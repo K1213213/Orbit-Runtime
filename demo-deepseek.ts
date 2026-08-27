@@ -8,7 +8,7 @@
  *       DEEPSEEK_MODEL=deepseek-reasoner npm run demo:deepseek (optional)
  */
 import { OrbitRuntimeHost } from "./src/core/orbitRuntimeHost";
-import { DeepSeekChannel } from "./src/channel/providers/deepseek_channel";
+import { DeepSeekChannel } from "./src/channel/providers/openai_compat_channel";
 import { ChannelKind, AgentBoxConfig } from "./src/types/orbitDomain";
 
 const PROMPT = "Reply with exactly one short sentence explaining why reproducibility matters for AI agents.";

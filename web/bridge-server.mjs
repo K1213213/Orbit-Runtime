@@ -25,7 +25,7 @@ import { OrbitRuntimeHost } from "../dist/src/core/orbitRuntimeHost.js";
 import { ChannelKind } from "../dist/src/types/orbitDomain.js";
 import { RecordJournal } from "../dist/src/replay/record_journal.js";
 import { ReplayEngine } from "../dist/src/replay/replay_engine.js";
-import { DeepSeekChannel } from "../dist/src/channel/providers/deepseek_channel.js";
+import { DeepSeekChannel } from "../dist/src/channel/providers/openai_compat_channel.js";
 
 const __dirname = fileURLToPath(new URL(".", import.meta.url));
 const PUBLIC_DIR = join(__dirname, "public");
@@ -213,16 +213,19 @@ const api = {
     if (!apiKey) throw new Error("apiKey required");
     if (!/^sk-/.test(apiKey)) throw new Error("apiKey looks invalid (expected sk-...)");
     const model = body?.model ?? "deepseek-chat";
+    // baseUrl optional: defaults to DeepSeek, but any OpenAI-compatible
+    // endpoint works (OpenAI, Qwen, Kimi, GLM, Ollama, vLLM, ...).
+    const baseUrl = body?.baseUrl || undefined;
     host.channelHub.registerPluginExtChannel(
       ChannelKind.LLM_ACCESS,
-      new DeepSeekChannel({ apiKey, model, temperature: body?.temperature })
+      new DeepSeekChannel({ apiKey, model, temperature: body?.temperature, baseUrl })
     );
     channelRegistry.set("llm-access", {
       type: "deepseek",
-      label: `DeepSeek · ${model}`,
+      label: `${baseUrl ?? "DeepSeek"} · ${model}`,
       cost: { costPerCall: 1, latencyMs: 800, quality: 0.98 }
     });
-    return { kind: "llm-access", type: "deepseek", model };
+    return { kind: "llm-access", type: "deepseek", model, baseUrl: baseUrl ?? "https://api.deepseek.com" };
   },
 
   async removeDeepSeekChannel() {

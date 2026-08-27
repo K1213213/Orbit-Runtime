@@ -133,3 +133,11 @@ web/
     ├── api.js            # fetch 封装
     └── views/            # 7 个视图模块（ES Modules，零构建）
 ```
+
+## 模型通道页
+
+`#channels` 视图支持**任意 OpenAI 兼容端点**（DeepSeek / OpenAI / 通义 / Kimi / Ollama…）：
+
+- API Key 仅存运行时内存，不落盘、不回显
+- 填写 API 地址（baseUrl）即可切换提供方；留空 key 可用于本地无认证端点（如 Ollama）
+- 注册后沙箱对话走真实模型，回放实验室仍零 API 调用精确重放

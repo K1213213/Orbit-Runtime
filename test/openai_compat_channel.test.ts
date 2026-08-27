@@ -24,8 +24,8 @@ function fakeFetchError(status: number, message: string): typeof fetch {
   })) as unknown as typeof fetch;
 }
 
-test("DeepSeekChannel: requires an api key", () => {
-  assert.throws(() => new DeepSeekChannel({ apiKey: "" }), /apiKey/);
+test("DeepSeekChannel: requires an api key field (empty allowed for unauthenticated endpoints)", () => {
+  assert.throws(() => new DeepSeekChannel({ apiKey: undefined as unknown as string }), /apiKey/);
 });
 
 test("DeepSeekChannel: chatRound posts OpenAI-compatible payload and returns content", async () => {
@@ -95,6 +95,37 @@ test("OpenAICompatChannel: works against any compatible endpoint", async () => {
   assert.equal(body.model, "llama3");
 });
 
-test("OpenAICompatChannel: requires an api key", () => {
-  assert.throws(() => new OpenAICompatChannel({ apiKey: "", baseUrl: "https://x" }), /apiKey/);
+test("OpenAICompatChannel: requires an api key field (empty allowed for unauthenticated endpoints)", () => {
+  assert.throws(
+    () => new OpenAICompatChannel({ apiKey: undefined as unknown as string, baseUrl: "https://x" }),
+    /apiKey/
+  );
+  // empty key is legal: local endpoints like Ollama need no auth
+  const channel = new OpenAICompatChannel({ apiKey: "", baseUrl: "http://localhost:11434/v1" });
+  assert.ok(channel);
+});
+
+test("OpenAICompatChannel: omits Authorization header when key is empty", async () => {
+  const calls: { url: string; init: RequestInit }[] = [];
+  const channel = new OpenAICompatChannel({
+    apiKey: "",
+    baseUrl: "http://localhost:11434/v1",
+    fetchImpl: fakeFetchOk("local", calls)
+  });
+  await channel.chatRound("hi");
+  const headers = calls[0].init.headers as Record<string, string>;
+  assert.equal(headers.Authorization, undefined);
+});
+
+test("OpenAICompatChannel: timeout surfaces a friendly error", async () => {
+  const timeoutError = new Error("The operation was aborted due to timeout");
+  timeoutError.name = "TimeoutError";
+  const channel = new OpenAICompatChannel({
+    apiKey: "sk-test",
+    baseUrl: "https://x",
+    fetchImpl: (async () => {
+      throw timeoutError;
+    }) as unknown as typeof fetch
+  });
+  await assert.rejects(channel.chatRound("hi"), /timed out/);
 });

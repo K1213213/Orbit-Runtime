@@ -210,8 +210,7 @@ const api = {
   async registerDeepSeekChannel(body) {
     await ensureRunning();
     const apiKey = body?.apiKey;
-    if (!apiKey) throw new Error("apiKey required");
-    if (!/^sk-/.test(apiKey)) throw new Error("apiKey looks invalid (expected sk-...)");
+    if (apiKey === undefined || apiKey === null) throw new Error("apiKey required (empty allowed for unauthenticated endpoints like Ollama)");
     const model = body?.model ?? "deepseek-chat";
     // baseUrl optional: defaults to DeepSeek, but any OpenAI-compatible
     // endpoint works (OpenAI, Qwen, Kimi, GLM, Ollama, vLLM, ...).

@@ -3,7 +3,7 @@ import type { ChannelRuntimeMeta } from "../../replay/determinism";
 import { DeterminismLevel } from "../../types/orbitDomain";
 
 export interface OpenAICompatChannelConfig {
-  /** API key for the chosen provider. */
+  /** API key; empty string is allowed for unauthenticated endpoints (e.g. local Ollama). */
   apiKey: string;
   /** API base URL, e.g. "https://api.openai.com" or "https://api.deepseek.com". */
   baseUrl: string;
@@ -46,14 +46,16 @@ export class OpenAICompatChannel implements IChannelProvider {
   private readonly model: string;
   private readonly baseUrl: string;
   private readonly fetchImpl: typeof fetch;
+  private readonly timeoutMs: number;
 
   public constructor(protected readonly config: OpenAICompatChannelConfig) {
-    if (!config.apiKey) {
-      throw new Error("OpenAICompatChannel requires an apiKey");
+    if (config.apiKey === undefined || config.apiKey === null) {
+      throw new Error("OpenAICompatChannel requires an apiKey (empty string is allowed for unauthenticated endpoints like Ollama)");
     }
     this.model = config.model ?? DEFAULT_MODEL;
     this.baseUrl = config.baseUrl.replace(/\/+$/, "");
     this.fetchImpl = config.fetchImpl ?? fetch;
+    this.timeoutMs = config.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   }
 
   public async setup(): Promise<void> {}
@@ -71,15 +73,25 @@ export class OpenAICompatChannel implements IChannelProvider {
     if (this.config.maxTokens !== undefined) body.max_tokens = this.config.maxTokens;
     if (this.config.seed !== undefined) body.seed = this.config.seed;
 
-    const response = await this.fetchImpl(`${this.baseUrl}/chat/completions`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${this.config.apiKey}`
-      },
-      body: JSON.stringify(body),
-      signal: AbortSignal.timeout(this.config.timeoutMs ?? DEFAULT_TIMEOUT_MS)
-    });
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (this.config.apiKey !== "") {
+      headers.Authorization = `Bearer ${this.config.apiKey}`;
+    }
+
+    let response: Response;
+    try {
+      response = await this.fetchImpl(`${this.baseUrl}/chat/completions`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(this.timeoutMs)
+      });
+    } catch (err) {
+      if (err instanceof Error && (err.name === "TimeoutError" || err.name === "AbortError")) {
+        throw new Error(`LLM API timed out after ${this.timeoutMs}ms`);
+      }
+      throw err;
+    }
 
     let data: ChatCompletionResponse;
     try {

@@ -38,6 +38,10 @@ runtime_host (top-level host)
 
 📐 Detailed diagrams & design rationale: [docs/architecture.md](./docs/architecture.md) · [architecture.svg](./docs/architecture.svg)
 
+📜 Architecture charter (three axioms · governance profiles · kernel admission gate): [docs/VISION.md](./docs/VISION.md)
+🛠 Upgrade plan & blocker resolutions: [docs/UPGRADE_PLAN.md](./docs/UPGRADE_PLAN.md)
+📈 Product plan: [docs/PRODUCT_PLAN.md](./docs/PRODUCT_PLAN.md)
+
 ## Web console
 
 [Orbit Console](./web/README.md) — a zero-dependency management console that

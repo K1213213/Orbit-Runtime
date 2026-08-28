@@ -38,6 +38,10 @@ runtime_host（顶层宿主入口）
 
 📐 详细架构图与设计决策说明：[docs/architecture.md](./docs/architecture.md) · [architecture.svg](./docs/architecture.svg)
 
+📜 架构宪章（三条公理 · 四档治理 · 内核准入清单）：[docs/VISION.md](./docs/VISION.md)
+🛠 升级方案与阻断项解决：[docs/UPGRADE_PLAN.md](./docs/UPGRADE_PLAN.md)
+📈 产品规划：[docs/PRODUCT_PLAN.md](./docs/PRODUCT_PLAN.md)
+
 ## Web 控制台
 
 [Orbit Console](./web/README.md) — 零依赖的 Web 管理控制台，通过 HTTP 驱动真实内核实例：生命周期、通道、插件、沙箱、轨迹、确定性重放实验室、影响域图与成本路由。

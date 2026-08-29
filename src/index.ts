@@ -43,13 +43,14 @@ export type { GatewayCheckers } from "./gateway/types";
 export type { GatewayCallRecord } from "./replay/record_journal";
 
 // W8: pure-function token budget + context compressor.
-export { TokenBudgetEngine, DEFAULT_TOKEN_BUDGET_CONFIG } from "./gateway/TokenBudgetEngine";
+export { TokenBudgetEngine, DEFAULT_TOKEN_BUDGET_CONFIG, compressPayload, decompressPayload, isCompressedPayload, packSnapshot } from "./gateway/TokenBudgetEngine";
 export type {
   TokenBudgetConfig,
   CompressionLevel,
   BudgetStrategy,
   CompressResult,
-  BudgetDecision
+  BudgetDecision,
+  CompressedPayload
 } from "./gateway/TokenBudgetEngine";
 
 export { ImpactDomainGraph } from "./graph/impact_domain";

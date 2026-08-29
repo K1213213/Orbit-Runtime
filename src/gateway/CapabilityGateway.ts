@@ -7,6 +7,7 @@ import { TripProtectionBlockError } from "../core/orbitDomainError";
 import { makeUniqueMark } from "../utils/versionIdGen";
 import { ChannelKind, ChannelCallCtx, ReplayMode, GatewayDecision, RunVersionFingerprint } from "../types/orbitDomain";
 import { GatewayCheckers, RunFingerprintDriftError } from "./types";
+import { packSnapshot, isCompressedPayload, decompressPayload } from "../gateway/TokenBudgetEngine";
 
 export interface GatewayInvokeParams {
   kind: ChannelKind;
@@ -118,7 +119,11 @@ export class CapabilityGateway {
     }
     this.replaySeq += 1;
     this.lastDecision = record.decision ?? null;
-    return structuredClone(record.outputSnapshot) as T;
+    // W9: a compressed-at-rest snapshot is transparently decompressed so the
+    // consumer receives the identical original value it saw on the live path.
+    const raw = record.outputSnapshot;
+    const served = isCompressedPayload(raw) ? decompressPayload(raw) : raw;
+    return structuredClone(served) as T;
   }
 
   // --- record / live --------------------------------------------------
@@ -137,15 +142,6 @@ export class CapabilityGateway {
       throw new TripProtectionBlockError("trip protector active, execution blocked (gateway)", ctx?.traceMarkId, pluginId);
     }
 
-    const decision: GatewayDecision = {
-      tripAllowed,
-      pactPass: pluginId ? this.checkers.pactPass(pluginId, kind, funcName) : true,
-      budget: this.checkers.budgetDecision(pluginId ?? ""),
-      compression: this.checkers.compression(),
-      route: this.checkers.route(pluginId ?? ""),
-      rateLimited: pluginId ? this.checkers.rateLimited(pluginId) : false
-    };
-
     const baseCtx: ChannelCallCtx = {
       traceMarkId: ctx?.traceMarkId ?? `gw-${makeUniqueMark()}`,
       pluginUnitId: pluginId,
@@ -160,17 +156,37 @@ export class CapabilityGateway {
     const run = () => this.hub.fireChannelCall<T>(kind, baseCtx, funcName, ...args);
     const output = trip ? await trip.execWithProtect(run) : await run();
 
+    // Now that the output exists, compute the payload-aware compression
+    // decision and assemble the full governance decision snapshot.
+    const comp = this.checkers.compression(output);
+    const decision: GatewayDecision = {
+      tripAllowed,
+      pactPass: pluginId ? this.checkers.pactPass(pluginId, kind, funcName) : true,
+      budget: this.checkers.budgetDecision(pluginId ?? ""),
+      compression: { level: comp.level, applied: comp.applied },
+      route: this.checkers.route(pluginId ?? ""),
+      rateLimited: pluginId ? this.checkers.rateLimited(pluginId) : false
+    };
+
     // W8: feed the output back to the budget engine (LLM strings) so cumulative
     // token usage drives the NEXT call's budget decision. Deterministic and
     // executed only on the live path — replay never reaches here.
     if (pluginId) this.checkers.accountTokens?.(pluginId, output);
+
+    // W9: compress the stored snapshot at rest when the policy says so. The
+    // consumer still receives the ORIGINAL `output` (returned below) — this is
+    // a storage optimization, never a semantic trim, so live and replay remain
+    // byte-identical (axioms A1/A2 hold).
+    const packed = comp.applied ? packSnapshot(output, comp.level) : { served: output, applied: false, bytesSaved: 0 };
+    decision.compression.applied = packed.applied;
+    decision.compression.bytesSaved = packed.bytesSaved;
 
     const runFingerprint = this.checkers.fingerprint();
     this.journal?.append({
       channelKind: kind,
       funcName,
       inputDigest,
-      outputSnapshot: output,
+      outputSnapshot: packed.served,
       durationMs: 0,
       decision,
       runFingerprint

@@ -36,8 +36,13 @@ export interface GatewayDecision {
   pactPass: boolean;
   /** Token-budget decision for the call (allow / shrink / stop). */
   budget: { allow: boolean; strategy: "normal" | "shrink" | "stop" };
-  /** Context-compression policy applied before an LLM-bound call. */
-  compression: { level: "conservative" | "normal" | "aggressive"; applied: boolean };
+  /**
+   * Context-compression policy recorded for the call. `applied` reflects
+   * whether the stored output snapshot was actually compressed at rest (a
+   * storage optimization, transparent to the consumer); `bytesSaved` is the
+   * measured saving when `applied` is true.
+   */
+  compression: { level: "conservative" | "normal" | "aggressive"; applied: boolean; bytesSaved?: number };
   /** Routing decision: native channel vs PAE adapter. */
   route: "native" | "pae";
   /** Whether the call was rate-limited at record time. */

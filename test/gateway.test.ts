@@ -14,7 +14,8 @@ import {
   LlmMockChannel,
   digestInputs,
   RunFingerprintDriftError,
-  ReplayDriftError
+  ReplayDriftError,
+  isCompressedPayload
 } from "../src/index";
 import type { GatewayCheckers } from "../src/gateway/types";
 
@@ -356,5 +357,53 @@ test("gateway: cumulative LLM usage moves budget strategy normal -> shrink", asy
   await host.capabilityInvoke({ kind: ChannelKind.LLM_ACCESS, pluginId: "llm1", funcName: "chatRound", args: ["prompt"], mode: "live" });
   // Second call: ~5000 tokens already accounted (> compressAboveTokens) -> shrink.
   assert.equal(journal.get(1)!.decision!.budget.strategy, "shrink");
+  await host.shutdownHost();
+});
+
+// W9: compression is actually applied to the STORED snapshot (not merely
+// decided), yet the consumer receives the original value and replay reproduces
+// it byte-for-byte — proof that storage compression preserves axioms A1/A2.
+test("gateway: large output is compressed at rest while replay stays byte-identical", async () => {
+  const host = makeHost();
+  await host.bootHost();
+  class BigLlmChannel extends LlmMockChannel {
+    public override async chatRound(): Promise<string> {
+      return "z".repeat(20000); // ~20 KB serialized -> exceeds compressThresholdBytes
+    }
+  }
+  host.channelHub.registerPluginExtChannel(ChannelKind.LLM_ACCESS, new BigLlmChannel());
+  host.registerPlugin({
+    id: "llm2",
+    displayName: "LLM2",
+    edition: "1.0.0",
+    requireHostMinEdition: "1.0.0",
+    allowCapabilities: ["channel:read"]
+  });
+  const journal = host.beginRecording();
+  const out = await host.capabilityInvoke({
+    kind: ChannelKind.LLM_ACCESS,
+    pluginId: "llm2",
+    funcName: "chatRound",
+    args: ["p"],
+    mode: "live"
+  });
+
+  const rec = journal.get(0)!;
+  assert.equal(rec.decision!.compression.applied, true);
+  assert.ok((rec.decision!.compression.bytesSaved ?? 0) > 0);
+  // The stored snapshot is the compressed envelope, NOT the raw 20 KB string.
+  assert.equal(isCompressedPayload(rec.outputSnapshot), true);
+
+  host.attachReplayEngine(journal);
+  const replayed = await host.capabilityInvoke({
+    kind: ChannelKind.LLM_ACCESS,
+    pluginId: "llm2",
+    funcName: "chatRound",
+    args: ["p"],
+    mode: "replay"
+  });
+  // Consumer-transparent: replay returns the identical original string.
+  assert.equal(replayed, out);
+  assert.equal(replayed, "z".repeat(20000));
   await host.shutdownHost();
 });

@@ -15,8 +15,8 @@ export interface GatewayCheckers {
   rateLimited: (pluginId: string) => boolean;
   /** Routing decision: native channel vs PAE adapter. */
   route: (pluginId: string) => "native" | "pae";
-  /** Context-compression policy applied before an LLM call. */
-  compression: () => { level: "conservative" | "normal" | "aggressive"; applied: boolean };
+  /** Payload-aware context-compression decision (storage compression at rest). */
+  compression: (output: unknown) => { level: "conservative" | "normal" | "aggressive"; applied: boolean };
   /** Build the run-version fingerprint for the current configuration. */
   fingerprint: () => RunVersionFingerprint;
   /**

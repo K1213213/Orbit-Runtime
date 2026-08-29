@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { deflateSync, inflateSync } from "node:zlib";
 
 /**
  * Pure-function token budget + context compressor (W8).
@@ -25,6 +26,9 @@ export interface TokenBudgetConfig {
   compressAboveTokens: number;
   /** Fraction of tokens kept when trimming, per compression level. */
   trimRatio: Record<CompressionLevel, number>;
+  /** Serialized-byte threshold above which the stored output snapshot is
+   * compressed at rest (deflate). A storage optimization, not a semantic trim. */
+  compressThresholdBytes: number;
   /** Master switch; when false the engine is a no-op pass-through. */
   enabled: boolean;
 }
@@ -33,6 +37,7 @@ export const DEFAULT_TOKEN_BUDGET_CONFIG: TokenBudgetConfig = {
   maxTokensPerCall: 8192,
   compressAboveTokens: 4096,
   trimRatio: { conservative: 0.9, normal: 0.75, aggressive: 0.5 },
+  compressThresholdBytes: 2048,
   enabled: true
 };
 
@@ -128,6 +133,23 @@ export class TokenBudgetEngine {
   }
 
   /**
+   * Payload-aware storage-compression decision. Pure function of the output's
+   * serialized size and the config — no RNG, no clock. Decides whether the
+   * stored snapshot should be compressed at rest and at which level. The actual
+   * (de)compression is performed by `packSnapshot` / `decompressPayload`; this
+   * method only chooses the policy so the decision can be recorded verbatim and
+   * replayed without re-execution.
+   */
+  public decideCompression(output: unknown): { level: CompressionLevel; applied: boolean } {
+    if (!this.config.enabled) return { level: "normal", applied: false };
+    const bytes = serializedByteLength(output);
+    if (bytes <= this.config.compressThresholdBytes) return { level: "normal", applied: false };
+    if (bytes > this.config.compressThresholdBytes * 4) return { level: "aggressive", applied: true };
+    if (bytes > this.config.compressThresholdBytes * 2) return { level: "normal", applied: true };
+    return { level: "conservative", applied: true };
+  }
+
+  /**
    * Stable hash of the threshold config. Fed into RunVersionFingerprint so a
    * trace recorded under different budget/compression thresholds surfaces as a
    * clean config-drift (RunFingerprintDriftError), not a digest mismatch.
@@ -140,4 +162,67 @@ export class TokenBudgetEngine {
   public reset(): void {
     this.usage.clear();
   }
+}
+
+/** Serialized UTF-8 byte length of a value (its JSON form). */
+export function serializedByteLength(value: unknown): number {
+  return Buffer.byteLength(JSON.stringify(value ?? null), "utf8");
+}
+
+/** Compressed storage envelope for a recorded output snapshot. */
+export interface CompressedPayload {
+  __orbitCompressed: "v1";
+  algo: "deflate";
+  level: CompressionLevel;
+  /** Original serialized byte length (before deflate). */
+  bytes: number;
+  /** Bytes saved vs the raw JSON form (negative when deflate did not help). */
+  saved: number;
+  /** base64 of the deflated JSON. */
+  data: string;
+}
+
+/** Type guard for a compressed storage envelope. */
+export function isCompressedPayload(v: unknown): v is CompressedPayload {
+  return typeof v === "object" && v !== null && (v as { __orbitCompressed?: unknown }).__orbitCompressed === "v1";
+}
+
+/**
+ * Pure deterministic compression of a value into a storage envelope. Uses the
+ * built-in `node:zlib` deflate (no external deps, fully deterministic given
+ * the input). The envelope round-trips exactly through `decompressPayload`.
+ */
+export function compressPayload(value: unknown, level: CompressionLevel): CompressedPayload {
+  const json = JSON.stringify(value ?? null);
+  const raw = Buffer.byteLength(json, "utf8");
+  const deflated = deflateSync(Buffer.from(json, "utf8"));
+  return {
+    __orbitCompressed: "v1",
+    algo: "deflate",
+    level,
+    bytes: raw,
+    saved: raw - deflated.length,
+    data: deflated.toString("base64")
+  };
+}
+
+/** Inverse of `compressPayload` — restores the exact original value. */
+export function decompressPayload(p: CompressedPayload): unknown {
+  const buf = Buffer.from(p.data, "base64");
+  return JSON.parse(inflateSync(buf).toString("utf8"));
+}
+
+/**
+ * Compress a recorded output for storage ONLY when it actually saves space.
+ * Returns the storage form (`served`) plus an honest `applied` flag and the
+ * measured byte savings; when deflate does not help, the original is kept
+ * untouched (so small payloads are never bloated by an envelope).
+ */
+export function packSnapshot(
+  output: unknown,
+  level: CompressionLevel
+): { served: unknown; applied: boolean; bytesSaved: number } {
+  const env = compressPayload(output, level);
+  if (env.saved <= 0) return { served: output, applied: false, bytesSaved: 0 };
+  return { served: env, applied: true, bytesSaved: env.saved };
 }

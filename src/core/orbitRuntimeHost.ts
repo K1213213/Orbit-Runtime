@@ -73,7 +73,7 @@ export class OrbitRuntimeHost {
       budgetDecision: (pluginId) => this.tokenBudget.budgetPolicy(pluginId),
       rateLimited: () => false,
       route: () => (this.paeAdapterKinds.size > 0 ? "pae" : "native"),
-      compression: () => this.tokenBudget.compressionPolicy(),
+      compression: (output) => this.tokenBudget.decideCompression(output),
       fingerprint: () => ({
         kernelVersion: KERNEL_VERSION,
         pactVersions: {},

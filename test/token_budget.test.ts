@@ -1,12 +1,21 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { TokenBudgetEngine, DEFAULT_TOKEN_BUDGET_CONFIG } from "../src/gateway/TokenBudgetEngine";
+import {
+  TokenBudgetEngine,
+  DEFAULT_TOKEN_BUDGET_CONFIG,
+  compressPayload,
+  decompressPayload,
+  isCompressedPayload,
+  packSnapshot,
+  type CompressedPayload
+} from "../src/gateway/TokenBudgetEngine";
 
 // A tight config so thresholds are easy to assert against.
 const TIGHT: typeof DEFAULT_TOKEN_BUDGET_CONFIG = {
   maxTokensPerCall: 100,
   compressAboveTokens: 50,
   trimRatio: { conservative: 0.9, normal: 0.5, aggressive: 0.25 },
+  compressThresholdBytes: 64,
   enabled: true
 };
 
@@ -72,4 +81,46 @@ test("engine: configHash is stable per config and changes with the thresholds", 
   assert.equal(a, b); // stable across instances
   const c = new TokenBudgetEngine({ ...DEFAULT_TOKEN_BUDGET_CONFIG, maxTokensPerCall: 4096 }).configHash();
   assert.notEqual(a, c); // drift is detectable
+});
+
+test("engine: decideCompression is payload-aware and threshold-driven", () => {
+  const e = new TokenBudgetEngine(TIGHT); // compressThresholdBytes = 64
+  // Below threshold -> no compression, "normal" level.
+  assert.deepEqual(e.decideCompression("hello"), { level: "normal", applied: false });
+  // ~102 bytes: just above threshold, within 2x -> applied, conservative.
+  const mid = "x".repeat(100);
+  const dMid = e.decideCompression(mid);
+  assert.equal(dMid.applied, true);
+  assert.equal(dMid.level, "conservative");
+  // ~302 bytes: above 4x threshold -> aggressive, applied.
+  assert.deepEqual(e.decideCompression("x".repeat(300)), { level: "aggressive", applied: true });
+  // Small objects stay uncompressed.
+  assert.deepEqual(e.decideCompression({ a: 1 }), { level: "normal", applied: false });
+});
+
+test("engine: compressPayload/decompressPayload round-trips and is deterministic", () => {
+  for (const v of ["hello world", { a: [1, 2, 3], b: "x" }, 42, null, ["a", "b"], true]) {
+    const env = compressPayload(v, "normal");
+    assert.equal(isCompressedPayload(env), true);
+    assert.deepEqual(decompressPayload(env), v);
+    // Determinism: identical input -> identical envelope bytes.
+    assert.equal(env.data, compressPayload(v, "normal").data);
+  }
+  assert.equal(isCompressedPayload("not compressed"), false);
+  assert.equal(isCompressedPayload(null), false);
+});
+
+test("engine: packSnapshot keeps the original when deflate does not save space", () => {
+  const small = "hi"; // tiny -> deflate enlarges -> original kept, not applied
+  const p = packSnapshot(small, "normal");
+  assert.equal(p.applied, false);
+  assert.equal(p.bytesSaved, 0);
+  assert.equal(p.served, small);
+  // Large repeated payload -> deflate clearly helps.
+  const big = "y".repeat(5000);
+  const q = packSnapshot(big, "aggressive");
+  assert.equal(q.applied, true);
+  assert.ok(q.bytesSaved > 0);
+  assert.equal(isCompressedPayload(q.served), true);
+  assert.deepEqual(decompressPayload(q.served as CompressedPayload), big);
 });

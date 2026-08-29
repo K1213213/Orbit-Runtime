@@ -29,6 +29,7 @@ Orbit Agent Runtime is a lightweight, dependency-free runtime host for plugin-ba
 - **Cost-aware routing (M4)** — channels declare cost/latency/quality; agents run under per-cycle budgets
 - **Unified gateway (W7)** — `capabilityInvoke` is the determinism boundary: every call's governance decision (trip / pact / budget / rate-limit / route / compression) is recorded and restored on replay, and config drift is reported distinctly from digest drift
 - **Token budget + compression (W8)** — `TokenBudgetEngine` is a pure-function (no `Math.random`/`Date.now`) token estimator and deterministic head-trim compressor; budget/route decisions are now computed from the engine and channel registry, and its threshold config is hashed into the run fingerprint for drift detection
+- **Payload-aware storage compression (W9)** — large recorded outputs are transparently `deflate`-compressed at rest via `packSnapshot` (zero external deps), while the consumer always receives the original value and replay reproduces it byte-for-byte; the `compression` decision (`level` / `applied` / `bytesSaved`) is recorded for audit
 - **Zero runtime dependencies** — pure TypeScript, strict mode, runs on Node.js ≥ 20
 
 ## Architecture

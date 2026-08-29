@@ -27,14 +27,14 @@
 - [x] 架构文档体系（architecture / VISION / UPGRADE_PLAN / PRODUCT_PLAN）
 - [x] 内核六大机制 + 三支柱（M1–M4，测试全绿）
 - [x] 零运行时依赖 + strict TypeScript
-- [ ] OpenAI 兼容 provider 生产化（种子注入契约）
-- [ ] FileChannel / ShellChannel 真实工具通道
-- [ ] JSONL 轨迹持久化（跨进程重放）
-- [ ] `orbit` CLI 三件套（record / replay / diff）
-- [ ] `npx orbit` 零配置体验 + npm 发布
-- [ ] CI（lint + build + test + replay-compat 门禁）
-- [ ] 快速上手文档 + demo 视频 + 技术博客《Agent bug 为什么不可复现》
-- [ ] GitHub 仓库公开：landing 页、issue 模板、讨论区
+- [x] OpenAI 兼容 provider 生产化（9 类故障分类 + 确定性退避 + 种子注入契约）
+- [x] FileChannel / ShellChannel 真实工具通道（路径监狱 / 命令白名单）
+- [x] JSONL 轨迹持久化（跨进程重放，原子写）
+- [x] `orbit` CLI 三件套（record / replay / diff，零额外依赖）
+- [x] npm 发布演练通过（`npm publish --dry-run` 无告警）；`npx orbit` 待真实发布
+- [x] CI（Node 20/22 矩阵 + build/test/demo + replay-compat 门禁 + CLI smoke）
+- [ ] 快速上手文档（README/guide 已完成）+ demo 视频 + 技术博客《Agent bug 为什么不可复现》（待做）
+- [ ] GitHub 仓库公开：landing 页、讨论区（issue/PR 模板已完成，待公开仓库 + landing）
 
 > 就绪清单与 §5.2 MVP 范围一一对应：清单勾完 = P0.3 开源发布条件满足。
 

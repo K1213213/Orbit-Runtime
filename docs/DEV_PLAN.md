@@ -45,10 +45,10 @@
 |---|---|---|---|
 | **W1** | ① `OpenAICompatChannel` 生产化：超时/重试/错误分类、STOCHASTIC 种子注入契约落地（`response_format`/`seed` 参数透传）② FileChannel（read/write/list，IO_BOUND 快照注入语义） | `src/channel/providers/*.ts` + 单测 | 真实 DeepSeek 跑通 5 步流程 record→replay 逐字节一致 |
 | **W2** | ③ ShellChannel（命令白名单 + 超时 + IO_BOUND）④ `replay_compat.test.ts` 套件建立（File/Shell/OpenAICompat 各补用例）⑤ JSONL 轨迹持久化（RecordJournal 落盘/加载，跨进程重放） | Shell 通道 + `src/replay/persistence.ts` + JSONL 用例 | **P0.1 完成**：关掉网络重放跨进程轨迹，输出一致 |
-| **W3** | ⑥ `orbit` CLI：`record <script>` / `replay <trace>` / `diff <a> <b>`（bin 字段 + shebang，零额外依赖） | `bin/orbit.mjs` + `package.json` bin | 本机三命令闭环；diff 能定位 digest 链断裂点 |
-| **W4** | ⑦ CLI 打磨：错误信息、退出码、`--json` 输出 ⑧ 快速上手文档（README Getting Started 重写为 CLI 优先）+ "写一个可重放通道"开发者指南 | docs/guide.md | 内部试用：非作者按文档 10 分钟跑通 |
-| **W5** | ⑨ CI（GitHub Actions：lint+build+test+demo，Node 20/22 双版本矩阵）⑩ `npx orbit` 验证 + npm 发包演练（dry-run）⑪ issue/PR 模板、GitHub Discussions | `.github/workflows/ci.yml` | CI 全绿；`npm publish --dry-run` 无告警 |
-| **W6** | ⑫ **公开发布**：npm publish、GitHub 仓库公开、landing README 首屏、技术博客《Agent bug 为什么不可复现》 | v0.1.0 tag | **P0.3 完成**；就绪清单 14/14 |
+| **W3** | ⑥ `orbit` CLI：`record <script>` / `replay <trace>` / `diff <a> <b>`（bin 字段 + shebang，零额外依赖） | `bin/orbit.mjs` + `package.json` bin | ✅ 本机三命令闭环；diff 能定位 digest 链断裂点（集成测试 4/4） |
+| **W4** | ⑦ CLI 打磨：错误信息、退出码、`--json` 输出 ⑧ 快速上手文档（README Getting Started 重写为 CLI 优先）+ "写一个可重放通道"开发者指南 | docs/guide.md | ✅ 双语 README CLI 优先 + guide.md |
+| **W5** | ⑨ CI（GitHub Actions：lint+build+test+demo，Node 20/22 双版本矩阵）⑩ npm 发包演练（dry-run）⑪ issue/PR 模板 | `.github/workflows/ci.yml` | ✅ CI 矩阵 + `npm publish --dry-run` 无告警 + 模板 |
+| **W6** | ⑫ **公开发布**：npm publish、GitHub 仓库公开、landing README 首屏、技术博客《Agent bug 为什么不可复现》 | v0.1.0 tag | ⏳ 待用户动作：真实 npm publish + 仓库公开 + landing/blog |
 
 **波次 1 门禁**（每周检查）：59+ 测试零回归 · strict 编译零错误 · 每个新通道带 replay 用例 · 零运行时依赖不破（CLI 用 node 内置模块）。
 
@@ -115,3 +115,5 @@
 | 日期 | 变更 |
 |---|---|
 | 2026-08-29 | v1.0 首版：确立"产品先行、架构随行"三波次排期 |
+| 2026-08-29 | W1–W2 落地（commit 4a6585d）：provider 生产化 + File/Shell 通道 + JSONL 持久化 + replay_compat 门禁，59→119 测试 |
+| 2026-08-29 | W3–W5 落地：orbit CLI 三命令（bin/orbit.mjs，零额外依赖）+ 集成测试 4 例 + CLI 优先 README/guide + CI 矩阵 + issue/PR 模板 + npm dry-run 通过。波次 1 工程完成，仅余 W6 真实发布（用户动作） |

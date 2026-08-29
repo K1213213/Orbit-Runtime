@@ -24,6 +24,7 @@ Orbit Agent Runtime is a lightweight, dependency-free runtime host for plugin-ba
 - **Trace journal** — full-chain records with snapshot & replay for audit and debugging
 - **Sandbox pool** — per-agent sandbox with cycle limits (anti-infinite-loop) and per-round trace IDs
 - **Deterministic replay (M2)** — record a run, replay it with zero model calls, byte-identical output, bank-style reconciliation (digest-chain verified)
+- **`orbit` CLI (M6)** — `record` / `replay` / `diff` over the kernel; reproducibility in three commands, zero extra dependencies
 - **Provable isolation (M3)** — plugin/channel/sandbox dependencies as a graph; failure impact = reverse reachability closure, with an isolation theorem
 - **Cost-aware routing (M4)** — channels declare cost/latency/quality; agents run under per-cycle budgets
 - **Zero runtime dependencies** — pure TypeScript, strict mode, runs on Node.js ≥ 20
@@ -63,12 +64,48 @@ npm run build
 node web/bridge-server.mjs        # http://127.0.0.1:8899
 ```
 
-## Getting started
+## Getting started — the deterministic-replay loop
+
+The headline feature is *reproducibility*: record a real run, replay it with
+**zero** model calls, and prove the two chains are byte-identical. You drive it
+with the `orbit` CLI (zero extra dependencies — ships in `bin/`, runs on Node ≥ 20).
 
 ```bash
-npm install        # installs typescript + @types/node (dev only)
-npm run build      # strict TypeScript compile → dist/
-npm test           # build + run unit tests (node:test)
+npm install        # dev deps only (typescript + @types/node)
+npm run build      # strict TypeScript compile → dist/ (also builds the CLI)
+
+# 1) write a script — it receives a ctx with channel access
+cat > agent.mjs <<'EOF'
+export default async function (ctx) {
+  const reply = await ctx.llm.chat("summarize: the sky is blue");
+  const seen  = await ctx.call(ctx.ChannelKind.MEM_KV_STORE, "readEntry", "last");
+  return { reply, seen };
+}
+EOF
+
+# 2) record a live run → captures every channel call into a trace
+node bin/orbit.mjs record agent.mjs --out trace.jsonl
+#   ✓ recorded 2 channel calls from agent.mjs
+#   trace : trace.jsonl      (JSONL, atomic write)
+#   meta  : trace.jsonl.meta.json  (driving script + sanitized config)
+
+# 3) replay with ZERO real calls → reconcile the digest chain
+node bin/orbit.mjs replay trace.jsonl
+#   original calls : 2   replayed calls : 2
+#   result         : ✓ VERIFIED — digest chain consistent
+
+# 4) diff two traces — locate the first divergence
+node bin/orbit.mjs diff trace.jsonl trace.jsonl
+#   result: ✓ identical call chains
+```
+
+That is the whole product in four commands: a stranger can be reproducible in
+under ten minutes. Every command accepts `--json` for machine-readable output.
+
+### Lower-level API & demos
+
+```bash
+npm test           # build + run unit tests (node:test) — 120+ cases
 npm run demo       # build + run demo-host.ts (full lifecycle demo)
 npm run demo:replay  # deterministic replay: ~1s real run replayed in ~2ms
 ```
@@ -82,6 +119,52 @@ Expected demo output highlights:
 [guard] plugin crash isolated and journaled (host keeps running)
 [trace] 5 entries: AGENT_SINGLE_CYCLE_EXEC / AGENT_CYCLE_LIMIT_HIT / PLUGIN_UNIT_EXCEPTION ...
 ```
+
+## orbit CLI
+
+Three commands form the deterministic-replay loop. The CLI loads the compiled
+kernel via `createRequire` and uses only Node built-ins.
+
+```bash
+orbit record <script.js> [--out trace.jsonl] [--config orbit.config.json]
+orbit replay <trace.jsonl> [--via script.js] [--config orbit.config.json]
+orbit diff <a.jsonl> <b.jsonl>
+```
+
+| Command | What it does | Exit code |
+|---|---|---|
+| `record` | Run `<script>` against a live kernel; capture every channel call into a JSONL trace + a `.meta.json` (driving script, sanitized config, orbit/node versions). | 0 on success |
+| `replay` | Re-run the recorded script with **zero** real channel calls; reconcile the replayed chain against the original (bank-style digest check). | 0 verified · 1 drift |
+| `diff` | Compare two traces record-by-record; report the first breakpoint (`channelKind` / `funcName` / `inputDigest` / `outputSnapshot`). | 0 identical · 1 divergent |
+
+**Script contract** — default-export an async function receiving `ctx`:
+
+```js
+export default async function (ctx) {
+  const reply = await ctx.llm.chat("hello");              // sugar over LLM_ACCESS.chatRound
+  const prev  = await ctx.call(ctx.ChannelKind.MEM_KV_STORE, "readEntry", "k");
+  return { reply, prev };
+}
+```
+
+**Configuration** — `orbit.config.json` (all keys optional) selects real
+capabilities; env vars override for quick experiments:
+
+```json
+{
+  "llm":   { "kind": "mock" | "openai-compat", "baseUrl": "…", "model": "…" },
+  "file":  { "enabled": true, "rootDir": "./agent-workspace" },
+  "shell": { "enabled": true, "allowedCommands": ["git","node"], "envAllowlist": ["PATH"] }
+}
+```
+
+Env overrides: `ORBIT_LLM_BASE_URL` / `ORBIT_LLM_API_KEY` / `ORBIT_LLM_MODEL`,
+`ORBIT_FILE_ROOT`, `ORBIT_SHELL_ALLOW` (comma list) / `ORBIT_SHELL_ENV` (comma list).
+
+> A recorded trace replays on a machine that has **none** of the real channels
+> installed — the replay fast path serves from the journal and never needs
+> providers, credentials or tools. See [docs/guide.md](./docs/guide.md) to
+> write your own replayable channel.
 
 ## Repository layout
 
@@ -119,7 +202,7 @@ test/             # unit tests (node:test)
 | M3 | **Impact domain graph** — fault isolation as reverse reachability closure with an isolation theorem, static capability-closure verification | ✅ Done |
 | M4 | **Cost-aware routing** — channel cost/latency/quality profiles, per-cycle sandbox budgets | ✅ Done |
 | M5 | Product hardening: benchmarks, plugin examples, CI, npm publish | In progress |
-| M6 | **Open-source launch** — `orbit` CLI (`record`/`replay`/`diff`), docs site, first public release | Planned |
+| M6 | **Open-source launch** — `orbit` CLI (`record`/`replay`/`diff`), docs site, first public release | In progress (CLI shipped) |
 
 > M5/M6 track the `P0` milestones in [docs/PRODUCT_PLAN.md](./docs/PRODUCT_PLAN.md)
 > (P0.1 real capabilities → P0.2 CLI release → P0.3 open-source launch).

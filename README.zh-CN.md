@@ -59,15 +59,99 @@ npm run build
 node web/bridge-server.mjs        # http://127.0.0.1:8899
 ```
 
-## 快速开始
+## 快速开始 · 确定性重放闭环
+
+产品的核心卖点是**可复现**：记录一次真实运行，用**零**模型调用重放它，并证明两条调用链逐字节一致。驱动它的就是 `orbit` CLI（零额外依赖，随包发布于 `bin/`，Node ≥ 20 即可运行）。
 
 ```bash
-npm install        # 安装 typescript + @types/node（仅开发依赖）
-npm run build      # strict 编译 → dist/
-npm test           # 构建 + 运行单元测试（node:test）
+npm install        # 仅开发依赖（typescript + @types/node）
+npm run build      # strict 编译 → dist/（同时产出 CLI）
+
+# 1) 写一个脚本 —— 它拿到一个带通道访问能力的 ctx
+cat > agent.mjs <<'EOF'
+export default async function (ctx) {
+  const reply = await ctx.llm.chat("summarize: the sky is blue");
+  const seen  = await ctx.call(ctx.ChannelKind.MEM_KV_STORE, "readEntry", "last");
+  return { reply, seen };
+}
+EOF
+
+# 2) 记录真实运行 → 把每次通道调用捕获成轨迹
+node bin/orbit.mjs record agent.mjs --out trace.jsonl
+#   ✓ recorded 2 channel calls from agent.mjs
+#   trace : trace.jsonl            （JSONL，原子写）
+#   meta  : trace.jsonl.meta.json （驱动脚本 + 脱敏后的配置）
+
+# 3) 重放（零真实调用）→ digest 链对账
+node bin/orbit.mjs replay trace.jsonl
+#   original calls : 2   replayed calls : 2
+#   result         : ✓ VERIFIED — digest chain consistent
+
+# 4) 对比两条轨迹 —— 定位首个分歧点
+node bin/orbit.mjs diff trace.jsonl trace.jsonl
+#   result: ✓ identical call chains
+```
+
+四条命令就是完整产品：一个陌生人十分钟内即可复现。每条命令都支持 `--json` 机器可读输出。
+
+### 底层 API 与演示
+
+```bash
+npm test           # 构建 + 运行单元测试（node:test）—— 120+ 用例
 npm run demo       # 构建 + 运行演示入口（覆盖全部核心机制）
 npm run demo:replay  # 确定性重放：约 1s 真实运行 → 约 2ms 重放
 ```
+
+演示输出要点：
+
+```
+[cap] plugin -> LLM channel (channel:read): allowed
+[cap] plugin -> KV write (undeclared channel:write): rejected
+[sandbox] round 3 rejected (budget spent): agent sandbox box.demo-1 reached cycle limit 2
+[guard] plugin crash isolated and journaled (host keeps running)
+[trace] 5 entries: AGENT_SINGLE_CYCLE_EXEC / AGENT_CYCLE_LIMIT_HIT / PLUGIN_UNIT_EXCEPTION ...
+```
+
+## orbit CLI
+
+三条命令构成确定性重放闭环。CLI 通过 `createRequire` 加载已编译内核，仅用 Node 内置模块。
+
+```bash
+orbit record <script.js> [--out trace.jsonl] [--config orbit.config.json]
+orbit replay <trace.jsonl> [--via script.js] [--config orbit.config.json]
+orbit diff <a.jsonl> <b.jsonl>
+```
+
+| 命令 | 作用 | 退出码 |
+|---|---|---|
+| `record` | 在真实内核上运行 `<script>`，把每次通道调用捕获为 JSONL 轨迹 + `.meta.json`（驱动脚本、脱敏配置、orbit/node 版本） | 成功 0 |
+| `replay` | 用**零**真实通道调用重跑脚本，并把重放链与原始链对账（银行式 digest 校验） | 一致 0 · 漂移 1 |
+| `diff` | 逐记录对比两条轨迹，报告首个断点（`channelKind` / `funcName` / `inputDigest` / `outputSnapshot`） | 一致 0 · 分歧 1 |
+
+**脚本契约** —— 默认导出一个接收 `ctx` 的异步函数：
+
+```js
+export default async function (ctx) {
+  const reply = await ctx.llm.chat("hello");                    // LLM_ACCESS.chatRound 的语法糖
+  const prev  = await ctx.call(ctx.ChannelKind.MEM_KV_STORE, "readEntry", "k");
+  return { reply, prev };
+}
+```
+
+**配置** —— `orbit.config.json`（全部可选）选择真实能力；环境变量可覆盖以便快速试验：
+
+```json
+{
+  "llm":   { "kind": "mock" | "openai-compat", "baseUrl": "…", "model": "…" },
+  "file":  { "enabled": true, "rootDir": "./agent-workspace" },
+  "shell": { "enabled": true, "allowedCommands": ["git","node"], "envAllowlist": ["PATH"] }
+}
+```
+
+环境变量覆盖：`ORBIT_LLM_BASE_URL` / `ORBIT_LLM_API_KEY` / `ORBIT_LLM_MODEL`、
+`ORBIT_FILE_ROOT`、`ORBIT_SHELL_ALLOW`（逗号列表）/ `ORBIT_SHELL_ENV`（逗号列表）。
+
+> 一条录制好的轨迹，可以在**完全没有安装真实通道**的机器上重放——重放快速路径只从轨迹取数据，永远不需要 provider、凭据或工具。参见 [docs/guide.md](./docs/guide.md) 学习如何编写自己的可重放通道。
 
 演示输出要点：
 
@@ -116,7 +200,7 @@ test/             # 单元测试（node:test）
 | M3 | **影响域图论内核** —— 故障隔离建模为反向可达闭包，附隔离定理，注册期能力闭包静态验证 | ✅ 已完成 |
 | M4 | **成本感知路由** —— 通道成本/延迟/质量档案，沙箱按轮预算调度 | ✅ 已完成 |
 | M5 | 产品化攻坚：基准测试、插件示例、CI、npm 发布 | 进行中 |
-| M6 | **开源发布** —— `orbit` CLI（`record`/`replay`/`diff`）、文档站、首个公开版本 | 已规划 |
+| M6 | **开源发布** —— `orbit` CLI（`record`/`replay`/`diff`）、文档站、首个公开版本 | 进行中（CLI 已落地） |
 
 > M5/M6 对应 [docs/PRODUCT_PLAN.md](./docs/PRODUCT_PLAN.md) 的 P0 里程碑
 > （P0.1 真能力落地 → P0.2 CLI 发布 → P0.3 开源发布）。

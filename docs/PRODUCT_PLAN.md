@@ -33,7 +33,9 @@
 - [x] `orbit` CLI 三件套（record / replay / diff，零额外依赖）
 - [x] npm 发布演练通过（`npm publish --dry-run` 无告警）；`npx orbit` 待真实发布
 - [x] CI（Node 20/22 矩阵 + build/test/demo + replay-compat 门禁 + CLI smoke）
-- [ ] 快速上手文档（README/guide 已完成）+ demo 视频 + 技术博客《Agent bug 为什么不可复现》（待做）
+- [x] 快速上手文档（README CLI 优先 + docs/guide.md《写一个可重放通道》）
+- [x] 技术博客《Agent bug 为什么不可复现》（docs/blog/why-agent-bugs-unreproducible.md）
+- [ ] demo 视频（录制 Web 控制台 record→replay→diff 闭环，待做）
 - [ ] GitHub 仓库公开：landing 页、讨论区（issue/PR 模板已完成，待公开仓库 + landing）
 
 > 就绪清单与 §5.2 MVP 范围一一对应：清单勾完 = P0.3 开源发布条件满足。

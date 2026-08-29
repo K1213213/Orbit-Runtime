@@ -48,7 +48,7 @@
 | **W3** | ⑥ `orbit` CLI：`record <script>` / `replay <trace>` / `diff <a> <b>`（bin 字段 + shebang，零额外依赖） | `bin/orbit.mjs` + `package.json` bin | ✅ 本机三命令闭环；diff 能定位 digest 链断裂点（集成测试 4/4） |
 | **W4** | ⑦ CLI 打磨：错误信息、退出码、`--json` 输出 ⑧ 快速上手文档（README Getting Started 重写为 CLI 优先）+ "写一个可重放通道"开发者指南 | docs/guide.md | ✅ 双语 README CLI 优先 + guide.md |
 | **W5** | ⑨ CI（GitHub Actions：lint+build+test+demo，Node 20/22 双版本矩阵）⑩ npm 发包演练（dry-run）⑪ issue/PR 模板 | `.github/workflows/ci.yml` | ✅ CI 矩阵 + `npm publish --dry-run` 无告警 + 模板 |
-| **W6** | ⑫ **公开发布**：npm publish、GitHub 仓库公开、landing README 首屏、技术博客《Agent bug 为什么不可复现》 | v0.1.0 tag | ⏳ 待用户动作：真实 npm publish + 仓库公开 + landing/blog |
+| **W6** | ⑫ **公开发布**：npm publish、GitHub 仓库公开、landing README 首屏、技术博客《Agent bug 为什么不可复现》（已写：docs/blog/why-agent-bugs-unreproducible.md） | v0.1.0 tag | ⏳ 待用户动作：真实 npm publish + 仓库公开 + landing + demo 视频 |
 
 **波次 1 门禁**（每周检查）：59+ 测试零回归 · strict 编译零错误 · 每个新通道带 replay 用例 · 零运行时依赖不破（CLI 用 node 内置模块）。
 

@@ -48,6 +48,7 @@ runtime_host (top-level host)
 📐 Detailed diagrams & design rationale: [docs/architecture.md](./docs/architecture.md) · [architecture.svg](./docs/architecture.svg)
 
 📜 Architecture charter (three axioms · governance profiles · kernel admission gate): [docs/VISION.md](./docs/VISION.md)
+🗓 Dev plan (three release waves: open-source launch → gateway determinism boundary → ecosystem): [docs/DEV_PLAN.md](./docs/DEV_PLAN.md)
 🛠 Upgrade plan & blocker resolutions: [docs/UPGRADE_PLAN.md](./docs/UPGRADE_PLAN.md)
 📈 Product plan: [docs/PRODUCT_PLAN.md](./docs/PRODUCT_PLAN.md)
 

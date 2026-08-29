@@ -13,6 +13,8 @@ import { makeUniqueMark } from "../utils/versionIdGen";
 import { KERNEL_VERSION } from "../utils/versionIdGen";
 import { CapabilityGateway } from "../gateway/CapabilityGateway";
 import { TokenBudgetEngine, DEFAULT_TOKEN_BUDGET_CONFIG } from "../gateway/TokenBudgetEngine";
+import { RateLimiter, DEFAULT_RATE_LIMIT_CONFIG } from "../gateway/RateLimiter";
+import { BehaviorCollector } from "../gateway/BehaviorCollector";
 import type { GatewayInvokeParams } from "../gateway/CapabilityGateway";
 import type { GatewayCheckers } from "../gateway/types";
 import type { AgentSandbox } from "../sandbox/AgentSandbox";
@@ -37,6 +39,10 @@ export class OrbitRuntimeHost {
   public readonly costRouter: CostRouter;
   /** W8: pure-function token budget + context compressor (single source of truth). */
   public readonly tokenBudget: TokenBudgetEngine;
+  /** W11: pure-function rate limiter (call-count budget, replay-safe). */
+  public readonly rateLimiter: RateLimiter;
+  /** W11: behavior collector (record / live-proposal / replay-bypass). */
+  public readonly behaviorCollector: BehaviorCollector;
   /** W7: unified gateway entry — the determinism boundary (capabilityInvoke). */
   public readonly gateway: CapabilityGateway;
   /** W8: kinds served by a PAE adapter; routing flips to "pae" when non-empty. */
@@ -45,6 +51,8 @@ export class OrbitRuntimeHost {
   public constructor() {
     this.costRouter = new CostRouter();
     this.tokenBudget = new TokenBudgetEngine();
+    this.rateLimiter = new RateLimiter();
+    this.behaviorCollector = new BehaviorCollector();
     this.channelHub = new ChannelHub();
     this.traceJournal = new TraceJournal();
     this.impactGraph = new ImpactDomainGraph();
@@ -71,7 +79,7 @@ export class OrbitRuntimeHost {
       pactPass: (pluginId, kind, funcName) =>
         this.pluginPactVerifier.hasCapability(pluginId, requiredCapability(kind, funcName)),
       budgetDecision: (pluginId) => this.tokenBudget.budgetPolicy(pluginId),
-      rateLimited: () => false,
+      rateLimited: (pluginId) => this.rateLimiter.isLimited(pluginId),
       route: () => (this.paeAdapterKinds.size > 0 ? "pae" : "native"),
       compression: (output) => this.tokenBudget.decideCompression(output),
       fingerprint: () => ({
@@ -84,9 +92,15 @@ export class OrbitRuntimeHost {
         if (typeof output === "string") {
           this.tokenBudget.account(pluginId, this.tokenBudget.estimateTokens(output));
         }
+      },
+      estimateTokens: (output) => (typeof output === "string" ? this.tokenBudget.estimateTokens(output) : 0),
+      consumeRateLimit: (pluginId) => {
+        this.rateLimiter.acquire(pluginId);
       }
     };
     this.gateway = new CapabilityGateway(this.channelHub, checkers);
+    // W11: collectors/hooks live inside the gateway; attach the host-owned one.
+    this.gateway.attachCollector(this.behaviorCollector);
 
     this.channelHub.registerBuiltInChannel(ChannelKind.MEM_KV_STORE, new MemoryKvChannel());
     this.channelHub.registerBuiltInChannel(ChannelKind.LLM_ACCESS, new LlmMockChannel());

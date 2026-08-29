@@ -27,6 +27,9 @@ Orbit Agent Runtime 是一套零第三方依赖的插件化智能体运行时宿
 - **统一网关入口（W7）** —— `capabilityInvoke` 即确定性边界：每次调用的治理决策（熔断 / 契约 / 预算 / 限流 / 路由 / 压缩）被记录并在重放时还原，配置漂移与 digest 漂移被分别报告
 - **Token 预算与压缩（W8）** —— `TokenBudgetEngine` 是纯函数（禁随机/禁时钟）的 token 估算器与确定性头截压缩器；预算/路由决策改由引擎与通道注册表计算，其阈值配置哈希进运行指纹以支持漂移检测
 - **负载感知的存储压缩（W9）** —— 大体积记录输出经 `packSnapshot` 在落盘时透明 `deflate` 压缩（零外部依赖），而消费者始终拿到原始值、重放逐字节一致；`compression` 决策（`level` / `applied` / `bytesSaved`）被记录以供审计
+- **限流与行为采集（W11）** —— `RateLimiter` 是纯函数（禁随机/禁时钟）的调用计数预算；`rateLimited` 决策被记录并在重放时逐字还原（重放旁路限流器）。`BehaviorCollector` 以三模式采集结构化 `BehaviorNote`——`record`（随轨迹落盘）/ `live`（提案，不落盘）/ `replay`（旁路）
+- **三分漂移分类（W13）** —— 重放失败被区分为明确错误：配置漂移（`RunFingerprintDriftError`，版本/指纹）、决策漂移（`DecisionDriftError`，如契约被撤销）、调用漂移（`ReplayDriftError`，数据/签名）；对账另报 `decisionDriftFields`
+- **`replay_compat` 确定性门禁（W12）** —— 7 类 CI 门禁证明网关边界在压缩/限流/采集/指纹漂移/决策漂移下始终忠实：每个决策被记录、并重放逐字节一致
 - **零运行时依赖** —— 纯 TypeScript strict 模式，Node.js ≥ 20 直接运行
 
 ## 架构分层（严格单向依赖，禁止反向与循环）
@@ -100,7 +103,7 @@ node bin/orbit.mjs diff trace.jsonl trace.jsonl
 ### 底层 API 与演示
 
 ```bash
-npm test           # 构建 + 运行单元测试（node:test）—— 120+ 用例
+npm test           # 构建 + 运行单元测试（node:test）—— 150+ 用例
 npm run demo       # 构建 + 运行演示入口（覆盖全部核心机制）
 npm run demo:replay  # 确定性重放：约 1s 真实运行 → 约 2ms 重放
 ```

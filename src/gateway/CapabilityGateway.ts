@@ -6,8 +6,10 @@ import { TripProtector } from "../safeguard/TripProtector";
 import { TripProtectionBlockError } from "../core/orbitDomainError";
 import { makeUniqueMark } from "../utils/versionIdGen";
 import { ChannelKind, ChannelCallCtx, ReplayMode, GatewayDecision, RunVersionFingerprint } from "../types/orbitDomain";
-import { GatewayCheckers, RunFingerprintDriftError } from "./types";
+import { GatewayCheckers, RunFingerprintDriftError, DecisionDriftError } from "./types";
 import { packSnapshot, isCompressedPayload, decompressPayload } from "../gateway/TokenBudgetEngine";
+import { BehaviorCollector } from "./BehaviorCollector";
+import type { BehaviorNote } from "../types/orbitDomain";
 
 export interface GatewayInvokeParams {
   kind: ChannelKind;
@@ -41,6 +43,8 @@ export class CapabilityGateway {
   /** Replay cursor; mirrors the journal order so call #N maps to record #N. */
   private replaySeq = 0;
   private readonly tripMap = new Map<string, TripProtector>();
+  /** Optional behavior collector (W11); null when the host doesn't wire one. */
+  private collector: BehaviorCollector | null = null;
   /** The decision of the most recently served call (surfaced for audit). */
   public lastDecision: GatewayDecision | null = null;
 
@@ -59,6 +63,11 @@ export class CapabilityGateway {
   public attachReplayEngine(engine: ReplayEngine): void {
     this.replayEngine = engine;
     this.replaySeq = 0;
+  }
+
+  /** Attach a behavior collector (W11). Optional — replay bypasses it. */
+  public attachCollector(collector: BehaviorCollector): void {
+    this.collector = collector;
   }
 
   /** Convenience: open a recording window owned by this gateway. */
@@ -110,9 +119,11 @@ export class CapabilityGateway {
     // config must surface as RunFingerprintDriftError, not digest drift.
     this.verifyFingerprint(record.runFingerprint, ctx?.traceMarkId);
     // Governance not weakened on replay: a capability revoked since recording
-    // still blocks. trip state is runtime and is restored, not re-checked.
+    // still blocks. This is DECISION drift (the recorded pactPass no longer
+    // holds), reported distinctly from config drift and call drift.
     if (pluginId && !this.checkers.pactPass(pluginId, kind, funcName)) {
-      throw new ReplayDriftError(
+      throw new DecisionDriftError(
+        "pactPass",
         `replay blocked: plugin ${pluginId} lacks capability for ${kind}.${funcName}`,
         ctx?.traceMarkId
       );
@@ -168,6 +179,11 @@ export class CapabilityGateway {
       rateLimited: pluginId ? this.checkers.rateLimited(pluginId) : false
     };
 
+    // W11: advance the rate limiter AFTER the decision is captured, so the
+    // recorded `rateLimited` reflects the state BEFORE this call. Replay never
+    // reaches here — the frozen decision is restored verbatim.
+    if (pluginId) this.checkers.consumeRateLimit?.(pluginId);
+
     // W8: feed the output back to the budget engine (LLM strings) so cumulative
     // token usage drives the NEXT call's budget decision. Deterministic and
     // executed only on the live path — replay never reaches here.
@@ -181,8 +197,25 @@ export class CapabilityGateway {
     decision.compression.applied = packed.applied;
     decision.compression.bytesSaved = packed.bytesSaved;
 
+    // W11: build the structured behavior observation for this call.
+    const note: BehaviorNote = {
+      channelKind: kind,
+      funcName,
+      pluginId,
+      route: decision.route,
+      compression: {
+        level: decision.compression.level,
+        applied: decision.compression.applied,
+        bytesSaved: decision.compression.bytesSaved ?? 0
+      },
+      budget: { allow: decision.budget.allow, strategy: decision.budget.strategy },
+      rateLimited: decision.rateLimited,
+      tokensEstimated: this.checkers.estimateTokens ? this.checkers.estimateTokens(output) : undefined,
+      recordedAtMode: this.journal ? "record" : "live"
+    };
+
     const runFingerprint = this.checkers.fingerprint();
-    this.journal?.append({
+    const record = this.journal?.append({
       channelKind: kind,
       funcName,
       inputDigest,
@@ -191,6 +224,13 @@ export class CapabilityGateway {
       decision,
       runFingerprint
     });
+    // W11: attach the behavior note in "record" mode (persisted with the
+    // trace); in "live" mode it is a proposal only (not persisted). Replay
+    // never reaches here, so the collector is bypassed and the stored note is
+    // restored from the journal instead.
+    if (this.collector && record) {
+      this.collector.collect(this.journal ? "record" : "live", note, record);
+    }
     this.lastDecision = decision;
     return output;
   }

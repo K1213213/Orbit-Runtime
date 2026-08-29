@@ -4,6 +4,44 @@ All notable changes to Orbit Agent Runtime are documented here. This project
 follows a pre-alpha versioning scheme: `v0.x.minor` marks a release wave,
 `patch` marks fixes. Until `v1.0` the public API is not yet stability-promised.
 
+## [0.2.0] — 2026-08-29 · Gateway determinism boundary (v0.2.0)
+
+The unified gateway (`capabilityInvoke`) is now a complete, faithful determinism
+boundary: every governance decision is recorded and replayed byte-identically,
+and drift is reported in three distinct categories.
+
+### Added
+- **`RateLimiter`** (`src/gateway/RateLimiter.ts`) — pure-function (no
+  `Math.random`/`Date.now`) call-count budget. The `rateLimited` decision is
+  recorded at record time and replayed verbatim; the limiter is **bypassed** on
+  replay so a fresh limiter never perturbs the reconstructed trace (axioms A1/A2).
+- **`BehaviorCollector`** (`src/gateway/BehaviorCollector.ts`) — captures a
+  structured `BehaviorNote` per call in three modes:
+  - `record` — note is persisted on the `GatewayCallRecord` (with the trace).
+  - `live` — note is returned as a proposal, not persisted.
+  - `replay` — bypassed; the stored note is restored from the journal.
+- **Three-way drift classification** (W13):
+  - Config drift → `RunFingerprintDriftError` (kernel/pact/token/pae fingerprint).
+  - Decision drift → `DecisionDriftError` (e.g. a capability pact revoked since
+    recording — governance is never weakened on replay).
+  - Call drift → `ReplayDriftError` (input/output signature mismatch).
+  - `ReconcileReport` now carries `decisionDriftFields` listing the differing
+    decision axes, distinct from config/call drift.
+- **`replay_compat` gateway gate** (W12) — 7 CI cases proving byte-identical
+  replay under compression / rate-limit / collector / fingerprint-drift /
+  decision-drift. The determinism boundary is now a merge gate.
+- `BehaviorNote` domain contract; `GatewayCallRecord.behavior?` field.
+- Public API exports: `RateLimiter`, `DEFAULT_RATE_LIMIT_CONFIG`,
+  `BehaviorCollector`, `DecisionDriftError`.
+- `CONTRIBUTING.md` — documents the architecture gate (VISION §5) on every PR.
+
+### Behavior
+- The `compression` checker is now **payload-aware** (`decideCompression(output)`)
+  and the recorded `compression.applied`/`bytesSaved` reflect the actual at-rest
+  storage decision; small payloads are never bloated by an envelope.
+- Budget/route/rate-limit/`tokenConfigHash` decisions are computed from the real
+  `TokenBudgetEngine` and channel registry rather than literal stubs.
+
 ## [0.1.0] — 2026-08-29 · Open-source launch wave (v0.1.0)
 
 First release-track engineering. The kernel is production-candidate for the

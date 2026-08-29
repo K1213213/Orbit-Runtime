@@ -38,12 +38,18 @@ export type { ChannelRuntimeMeta } from "./replay/determinism";
 // GatewayDecision / RunVersionFingerprint are re-exported from types/orbitDomain.
 export { CapabilityGateway } from "./gateway/CapabilityGateway";
 export type { GatewayInvokeParams } from "./gateway/CapabilityGateway";
-export { RunFingerprintDriftError } from "./gateway/types";
+export { RunFingerprintDriftError, DecisionDriftError } from "./gateway/types";
 export type { GatewayCheckers } from "./gateway/types";
 export type { GatewayCallRecord } from "./replay/record_journal";
 
 // W8: pure-function token budget + context compressor.
 export { TokenBudgetEngine, DEFAULT_TOKEN_BUDGET_CONFIG, compressPayload, decompressPayload, isCompressedPayload, packSnapshot } from "./gateway/TokenBudgetEngine";
+// W11: pure-function rate limiter + three-mode behavior collector.
+export { RateLimiter, DEFAULT_RATE_LIMIT_CONFIG } from "./gateway/RateLimiter";
+export type { RateLimitConfig } from "./gateway/RateLimiter";
+export { BehaviorCollector } from "./gateway/BehaviorCollector";
+export type { CollectorPhase } from "./gateway/BehaviorCollector";
+// BehaviorNote is exported via `export * from "./types/orbitDomain"` below.
 export type {
   TokenBudgetConfig,
   CompressionLevel,

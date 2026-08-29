@@ -30,6 +30,9 @@ Orbit Agent Runtime is a lightweight, dependency-free runtime host for plugin-ba
 - **Unified gateway (W7)** — `capabilityInvoke` is the determinism boundary: every call's governance decision (trip / pact / budget / rate-limit / route / compression) is recorded and restored on replay, and config drift is reported distinctly from digest drift
 - **Token budget + compression (W8)** — `TokenBudgetEngine` is a pure-function (no `Math.random`/`Date.now`) token estimator and deterministic head-trim compressor; budget/route decisions are now computed from the engine and channel registry, and its threshold config is hashed into the run fingerprint for drift detection
 - **Payload-aware storage compression (W9)** — large recorded outputs are transparently `deflate`-compressed at rest via `packSnapshot` (zero external deps), while the consumer always receives the original value and replay reproduces it byte-for-byte; the `compression` decision (`level` / `applied` / `bytesSaved`) is recorded for audit
+- **Rate limiting + behavior collector (W11)** — `RateLimiter` is a pure-function (no `Math.random`/`Date.now`) call-count budget; the `rateLimited` decision is recorded and replayed verbatim (the limiter is bypassed on replay). `BehaviorCollector` captures a structured `BehaviorNote` in three modes — `record` (persisted on the trace), `live` (proposal, not persisted), `replay` (bypass)
+- **Three-way drift classification (W13)** — replay failures are reported as distinct errors: config drift (`RunFingerprintDriftError`, version/fingerprint), decision drift (`DecisionDriftError`, e.g. a revoked pact), and call drift (`ReplayDriftError`, data/signature). Reconciliation also reports `decisionDriftFields`
+- **`replay_compat` determinism gate (W12)** — a 7-case CI gate proves the gateway boundary stays faithful under compression / rate-limit / collector / fingerprint-drift / decision-drift: every decision is recorded and replayed byte-identically
 - **Zero runtime dependencies** — pure TypeScript, strict mode, runs on Node.js ≥ 20
 
 ## Architecture
@@ -108,7 +111,7 @@ under ten minutes. Every command accepts `--json` for machine-readable output.
 ### Lower-level API & demos
 
 ```bash
-npm test           # build + run unit tests (node:test) — 120+ cases
+npm test           # build + run unit tests (node:test) — 150+ cases
 npm run demo       # build + run demo-host.ts (full lifecycle demo)
 npm run demo:replay  # deterministic replay: ~1s real run replayed in ~2ms
 ```

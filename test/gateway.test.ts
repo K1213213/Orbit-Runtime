@@ -9,11 +9,13 @@ import {
   CapabilityGateway,
   ChannelHub,
   RecordJournal,
+  ReplayEngine,
   ChannelKind,
   FileChannel,
   LlmMockChannel,
   digestInputs,
   RunFingerprintDriftError,
+  DecisionDriftError,
   ReplayDriftError,
   isCompressedPayload
 } from "../src/index";
@@ -53,7 +55,7 @@ test("gateway: record computes and stores the full decision snapshot", async () 
   assert.equal(rec.decision!.compression.applied, false);
   assert.equal(rec.decision!.route, "native");
   assert.equal(rec.decision!.rateLimited, false);
-  assert.equal(rec.runFingerprint!.kernelVersion, "0.1.0");
+  assert.equal(rec.runFingerprint!.kernelVersion, "0.2.0");
   assert.equal(out, null); // key not set in the mock KV
   await host.shutdownHost();
 });
@@ -151,6 +153,8 @@ test("gateway: replay re-verifies the capability gate (revoked pact still blocks
   });
 
   // Revoke the capability, then replay — governance must not be weakened.
+  // This is DECISION drift (the recorded pactPass no longer holds), reported
+  // distinctly from config drift and call drift.
   host.pluginPactVerifier.unregisterPluginUnit("p1");
   host.attachReplayEngine(journal);
   await assert.rejects(
@@ -161,7 +165,7 @@ test("gateway: replay re-verifies the capability gate (revoked pact still blocks
       args: ["k"],
       mode: "replay"
     }),
-    (e) => e instanceof ReplayDriftError
+    (e) => e instanceof DecisionDriftError && e.decisionField === "pactPass"
   );
   await host.shutdownHost();
 });
@@ -406,4 +410,168 @@ test("gateway: large output is compressed at rest while replay stays byte-identi
   assert.equal(replayed, out);
   assert.equal(replayed, "z".repeat(20000));
   await host.shutdownHost();
+});
+
+// ===========================================================================
+// W12 · A.5 gateway determinism gate (7 cases)
+// Coverage: 压缩 / 限流 / 采集 / 指纹漂移 / 决策漂移. Every case proves the
+// gateway stays a faithful determinism boundary: decisions are recorded, and
+// replay restores them verbatim (rate limiter & collector are bypassed).
+// ===========================================================================
+
+// A.5 · 压缩: a small payload is NOT compressed at rest, yet replay is still
+// byte-identical — the storage-compression decision is honest about savings.
+test("A.5 gateway: small payload is left uncompressed at rest, replay byte-identical", async () => {
+  const host = makeHost();
+  await host.bootHost();
+  host.registerPlugin({ id: "p1", displayName: "P1", edition: "1.0.0", requireHostMinEdition: "1.0.0", allowCapabilities: ["channel:read"] });
+  const journal = host.beginRecording();
+  const out = await host.capabilityInvoke({ kind: ChannelKind.MEM_KV_STORE, pluginId: "p1", funcName: "readEntry", args: ["k"], mode: "live" });
+  const rec = journal.get(0)!;
+  assert.equal(rec.decision!.compression.applied, false);
+  assert.equal(isCompressedPayload(rec.outputSnapshot), false); // raw, never bloated
+  host.attachReplayEngine(journal);
+  const replayed = await host.capabilityInvoke({ kind: ChannelKind.MEM_KV_STORE, pluginId: "p1", funcName: "readEntry", args: ["k"], mode: "replay" });
+  assert.deepEqual(replayed, out);
+  await host.shutdownHost();
+});
+
+// A.5 · 限流 (recorded limited): the recorded decision is replayed verbatim
+// even when the live limiter would now report "not limited" — replay bypasses.
+test("A.5 gateway: rate-limited decision recorded as true is replayed verbatim (replay bypasses limiter)", async () => {
+  const hub = new ChannelHub();
+  const recordedLimited = true;
+  const base: GatewayCheckers = {
+    tripAllowed: () => true,
+    pactPass: () => true,
+    budgetDecision: () => ({ allow: true, strategy: "normal" }),
+    rateLimited: () => recordedLimited,
+    route: () => "native",
+    compression: () => ({ level: "normal", applied: false }),
+    fingerprint: () => ({ kernelVersion: "0.1.0", pactVersions: {}, tokenConfigHash: "default", paeEnabled: false })
+  };
+  const journal = new RecordJournal();
+  journal.append({
+    channelKind: ChannelKind.MEM_KV_STORE, funcName: "readEntry", inputDigest: digestInputs("k"), outputSnapshot: "v", durationMs: 0,
+    decision: { tripAllowed: true, pactPass: true, budget: { allow: true, strategy: "normal" }, compression: { level: "normal", applied: false }, route: "native", rateLimited: recordedLimited },
+    runFingerprint: { kernelVersion: "0.1.0", pactVersions: {}, tokenConfigHash: "default", paeEnabled: false }
+  });
+  const gw = new CapabilityGateway(hub, base);
+  gw.attachJournal(journal);
+  // Replay-time checker claims NOT limited; the recorded (limited) value must win.
+  const replayGw = new CapabilityGateway(hub, { ...base, rateLimited: () => false });
+  replayGw.attachJournal(journal);
+  await replayGw.capabilityInvoke({ kind: ChannelKind.MEM_KV_STORE, funcName: "readEntry", args: ["k"], mode: "replay" });
+  assert.equal(replayGw.lastDecision!.rateLimited, true);
+});
+
+// A.5 · 限流 (recorded not limited): symmetric — a recorded "false" is restored
+// even when the live limiter would now report "limited".
+test("A.5 gateway: rate-not-limited decision recorded as false is replayed verbatim (replay bypasses limiter)", async () => {
+  const hub = new ChannelHub();
+  const base: GatewayCheckers = {
+    tripAllowed: () => true, pactPass: () => true,
+    budgetDecision: () => ({ allow: true, strategy: "normal" }),
+    rateLimited: () => false,
+    route: () => "native",
+    compression: () => ({ level: "normal", applied: false }),
+    fingerprint: () => ({ kernelVersion: "0.1.0", pactVersions: {}, tokenConfigHash: "default", paeEnabled: false })
+  };
+  const journal = new RecordJournal();
+  journal.append({
+    channelKind: ChannelKind.MEM_KV_STORE, funcName: "readEntry", inputDigest: digestInputs("k"), outputSnapshot: "v", durationMs: 0,
+    decision: { tripAllowed: true, pactPass: true, budget: { allow: true, strategy: "normal" }, compression: { level: "normal", applied: false }, route: "native", rateLimited: false },
+    runFingerprint: { kernelVersion: "0.1.0", pactVersions: {}, tokenConfigHash: "default", paeEnabled: false }
+  });
+  const gw = new CapabilityGateway(hub, base);
+  gw.attachJournal(journal);
+  const replayGw = new CapabilityGateway(hub, { ...base, rateLimited: () => true });
+  replayGw.attachJournal(journal);
+  await replayGw.capabilityInvoke({ kind: ChannelKind.MEM_KV_STORE, funcName: "readEntry", args: ["k"], mode: "replay" });
+  assert.equal(replayGw.lastDecision!.rateLimited, false);
+});
+
+// A.5 · 采集 (record mode): the behavior note is captured and persisted on the record.
+test("A.5 gateway: behavior collector attaches a populated note on the record (record mode)", async () => {
+  const host = makeHost();
+  await host.bootHost();
+  host.registerPlugin({ id: "p1", displayName: "P1", edition: "1.0.0", requireHostMinEdition: "1.0.0", allowCapabilities: ["channel:read"] });
+  const journal = host.beginRecording();
+  await host.capabilityInvoke({ kind: ChannelKind.MEM_KV_STORE, pluginId: "p1", funcName: "readEntry", args: ["k"], mode: "live" });
+  const rec = journal.get(0)!;
+  assert.ok(rec.behavior, "behavior note should be attached in record mode");
+  assert.equal(rec.behavior!.route, "native");
+  assert.equal(rec.behavior!.budget.strategy, "normal");
+  assert.equal(rec.behavior!.rateLimited, false);
+  assert.equal(rec.behavior!.compression.applied, false);
+  assert.equal(rec.behavior!.recordedAtMode, "record");
+  assert.equal(typeof rec.behavior!.tokensEstimated, "number");
+  await host.shutdownHost();
+});
+
+// A.5 · 采集 (replay mode): replay bypasses the collector and restores the
+// stored behavior note — it is never re-collected or cleared.
+test("A.5 gateway: replay restores the stored behavior note (collector bypass)", async () => {
+  const host = makeHost();
+  await host.bootHost();
+  host.registerPlugin({ id: "p1", displayName: "P1", edition: "1.0.0", requireHostMinEdition: "1.0.0", allowCapabilities: ["channel:read"] });
+  const journal = host.beginRecording();
+  const out = await host.capabilityInvoke({ kind: ChannelKind.MEM_KV_STORE, pluginId: "p1", funcName: "readEntry", args: ["k"], mode: "live" });
+  assert.ok(journal.get(0)!.behavior, "behavior present after recording");
+
+  host.attachReplayEngine(journal);
+  const replayed = await host.capabilityInvoke({ kind: ChannelKind.MEM_KV_STORE, pluginId: "p1", funcName: "readEntry", args: ["k"], mode: "replay" });
+  assert.deepEqual(replayed, out);
+  // The stored note survives replay untouched (collector is bypassed).
+  assert.ok(journal.get(0)!.behavior, "behavior note preserved across replay");
+  assert.equal(journal.get(0)!.behavior!.recordedAtMode, "record");
+  await host.shutdownHost();
+});
+
+// A.5 · 决策漂移: decision drift is reported distinctly from config/call drift
+// via reconcile (here the rateLimited axis differs between the two chains).
+test("A.5 gateway: decision drift reported via reconcile (decisionDriftFields)", () => {
+  const original = new RecordJournal();
+  original.append({
+    channelKind: ChannelKind.MEM_KV_STORE, funcName: "readEntry", inputDigest: digestInputs("k"), outputSnapshot: "v", durationMs: 0,
+    decision: { tripAllowed: true, pactPass: true, budget: { allow: true, strategy: "normal" }, compression: { level: "normal", applied: false }, route: "native", rateLimited: false },
+    runFingerprint: { kernelVersion: "0.1.0", pactVersions: {}, tokenConfigHash: "default", paeEnabled: false }
+  });
+  const replayed = new RecordJournal();
+  replayed.append({
+    channelKind: ChannelKind.MEM_KV_STORE, funcName: "readEntry", inputDigest: digestInputs("k"), outputSnapshot: "v", durationMs: 0,
+    decision: { tripAllowed: true, pactPass: true, budget: { allow: true, strategy: "normal" }, compression: { level: "normal", applied: false }, route: "native", rateLimited: true },
+    runFingerprint: { kernelVersion: "0.1.0", pactVersions: {}, tokenConfigHash: "default", paeEnabled: false }
+  });
+  const report = new ReplayEngine(original).reconcile(original.snapshot(), replayed.snapshot());
+  assert.equal(report.digestChainConsistent, false);
+  assert.equal(report.decisionConsistent, false);
+  assert.deepEqual(report.decisionDriftFields, ["rateLimited"]);
+});
+
+// A.5 · 指纹漂移: a changed PAE-enabled flag surfaces as config drift with the
+// right field, never as a generic digest mismatch.
+test("A.5 gateway: paeEnabled fingerprint drift reports RunFingerprintDriftError(paeEnabled)", async () => {
+  const hub = new ChannelHub();
+  const checkers: GatewayCheckers = {
+    tripAllowed: () => true, pactPass: () => true,
+    budgetDecision: () => ({ allow: true, strategy: "normal" }),
+    rateLimited: () => false,
+    route: () => "native",
+    compression: () => ({ level: "normal", applied: false }),
+    fingerprint: () => ({ kernelVersion: "0.1.0", pactVersions: {}, tokenConfigHash: "default", paeEnabled: false })
+  };
+  const journal = new RecordJournal();
+  journal.append({
+    channelKind: ChannelKind.MEM_KV_STORE, funcName: "readEntry", inputDigest: digestInputs("k"), outputSnapshot: "v", durationMs: 0,
+    decision: { tripAllowed: true, pactPass: true, budget: { allow: true, strategy: "normal" }, compression: { level: "normal", applied: false }, route: "native", rateLimited: false },
+    // Recorded WITH PAE enabled.
+    runFingerprint: { kernelVersion: "0.1.0", pactVersions: {}, tokenConfigHash: "default", paeEnabled: true }
+  });
+  const gw = new CapabilityGateway(hub, checkers);
+  gw.attachJournal(journal);
+  await assert.rejects(
+    gw.capabilityInvoke({ kind: ChannelKind.MEM_KV_STORE, funcName: "readEntry", args: ["k"], mode: "replay" }),
+    (e) => e instanceof RunFingerprintDriftError && e.driftField === "paeEnabled"
+  );
 });

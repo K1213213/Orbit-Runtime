@@ -1,5 +1,5 @@
 import { makeUniqueMark } from "../utils/versionIdGen";
-import type { ChannelKind, GatewayDecision, RunVersionFingerprint } from "../types/orbitDomain";
+import type { ChannelKind, GatewayDecision, RunVersionFingerprint, BehaviorNote } from "../types/orbitDomain";
 
 /** One recorded channel call; the atomic unit of replay. */
 export interface ReplayCallRecord {
@@ -21,6 +21,8 @@ export interface ReplayCallRecord {
 export interface GatewayCallRecord extends ReplayCallRecord {
   decision?: GatewayDecision;
   runFingerprint?: RunVersionFingerprint;
+  /** Optional structured behavior observation captured by the collector (W11). */
+  behavior?: BehaviorNote;
 }
 
 /** Append-only, indexable store of recorded channel calls. */

@@ -16,6 +16,10 @@ export interface ReconcileReport {
   digestChainConsistent: boolean;
   /** False when a recorded gateway decision differs between the two chains. */
   decisionConsistent?: boolean;
+  /** Which decision fields differ, when `decisionConsistent` is false. This is
+   * the DECISION-drift category, distinct from config drift (fingerprint) and
+   * call drift (digest/signature). Empty when consistent. */
+  decisionDriftFields?: string[];
   driftAtOrderIndex?: number;
 }
 
@@ -62,6 +66,7 @@ export class ReplayEngine {
       if (!same) {
         report.digestChainConsistent = false;
         report.decisionConsistent = a.decision !== undefined || b.decision !== undefined ? false : true;
+        report.decisionDriftFields = a.decision || b.decision ? decisionDriftFields(a.decision, b.decision) : [];
         report.driftAtOrderIndex = i;
         break;
       }
@@ -74,4 +79,18 @@ export class ReplayEngine {
 function decisionDigest(d: GatewayDecision | undefined): string {
   if (!d) return "";
   return digestInputs(d);
+}
+
+/** Which decision fields differ between two records (the decision-drift axes). */
+function decisionDriftFields(a: GatewayDecision | undefined, b: GatewayDecision | undefined): string[] {
+  if (!a && !b) return [];
+  if (!a || !b) return ["(presence)"];
+  const fields: string[] = [];
+  if (a.tripAllowed !== b.tripAllowed) fields.push("tripAllowed");
+  if (a.pactPass !== b.pactPass) fields.push("pactPass");
+  if (a.budget.allow !== b.budget.allow || a.budget.strategy !== b.budget.strategy) fields.push("budget");
+  if (a.compression.applied !== b.compression.applied || a.compression.level !== b.compression.level) fields.push("compression");
+  if (a.route !== b.route) fields.push("route");
+  if (a.rateLimited !== b.rateLimited) fields.push("rateLimited");
+  return fields;
 }

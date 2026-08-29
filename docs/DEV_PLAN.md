@@ -58,9 +58,9 @@
 |---|---|---|
 | **W7 ✅ / W8 ✅** | **W7 完成（2026-08-29）**：`src/gateway/capabilityInvoke` 统一入口已落地——在 `ChannelHub.fireChannelCall` 之上加校验层 + `GatewayCallRecord`（decision + runFingerprint 可选字段，旧轨迹向后兼容）；record 写入决策、replay 还原决策并校验运行指纹（配置漂移报 `RunFingerprintDriftError`，与 digest 漂移分离）、重放重验能力门禁、零真实执行注入；7 用例网关测试全绿。**W8 完成**：`TokenBudgetEngine` 纯函数压缩器（禁 Math.random/Date.now）落地——确定性 token 估算 + 头截压缩 + 累计用量预算决策 + 配置哈希；宿主 `budgetDecision`/`compression`/`route`/`tokenConfigHash` 从字面 stub 改为由引擎/通道注册表计算，`registerPaeAdapter` 驱动 route 翻转、LLM 输出累计喂预算；网关测试新增 tokenConfigHash 漂移（RunFingerprintDriftError）/route 翻转/累计用量触发 budget shrink，引擎单测 7 例；全量 134 测试绿、strict 编译零错误 | UPGRADE A.2/A.4 |
 | **W9–W10 ✅** | **W9–W10 完成（2026-08-29）**：压缩真正作用于落盘 payload——`TokenBudgetEngine` 新增 `packSnapshot`/`compressPayload`/`decompressPayload`/`isCompressedPayload`/`decideCompression`（node:zlib 确定性 deflate，零外部依赖）；网关 `execute` 按 payload 字节阈值压缩存储快照、`replay` 透明解压还原原始值，消费者始终拿到原值、重放逐字节一致（A1/A2 不被破坏）；`GatewayDecision.compression` 增加 `bytesSaved` 审计字段；宿主 compression checker 改为 payload 感知。引擎单测 3 例 + 网关端到端 1 例（大输出 applied=true+bytesSaved>0 且重放返回同一字符串），全量 138 测试绿、strict 编译零错误 | UPGRADE A.3① |
-| **W11** | 限流（replay 旁路 + decision.rateLimited 记录原值）、行为采集器三模式（record 采集/live 提案/replay 旁路） | UPGRADE A.3②④ |
-| **W12** | replay_compat 套件扩充：压缩/限流/采集/指纹漂移 7 类用例（A.5 全表）全部进 CI 门禁 | UPGRADE A.5 |
-| **W13–W14** | 错误分类上线（配置漂移/决策漂移/调用漂移三分报错）+ 文档更新 + v0.2.0 发布 | UPGRADE A.2 |
+| **W11 ✅** | **W11 完成（2026-08-29）**：`RateLimiter` 纯函数调用计数限流（禁随机/禁时钟）落地；`rateLimited` 决策记录原值、重放旁路还原；`BehaviorCollector` 三模式（record 采集落盘 / live 提案不落盘 / replay 旁路）；宿主接线 RateLimiter + BehaviorCollector，checkers 增 estimateTokens/consumeRateLimit。单测 6 例（限流 3 + 采集 3） | UPGRADE A.3②④ |
+| **W12 ✅** | **W12 完成（2026-08-29）**：`replay_compat` 网关确定性门禁扩充至 7 类用例（压缩/限流×2/采集×2/指纹漂移/决策漂移），全部进 CI 合并前置；与既有 W7-W9 网关测试共同构成 v0.2 边界门禁 | UPGRADE A.5 |
+| **W13–W14 ✅** | **W13–W14 完成（2026-08-29）**：三分漂移分类上线——配置漂移 `RunFingerprintDriftError`、决策漂移 `DecisionDriftError`（pact 撤销重分类）、调用漂移 `ReplayDriftError`；`ReconcileReport` 增 `decisionDriftFields`；CHANGELOG/README/VISION/DEV_PLAN 同步；v0.2.0 发布（KERNEL_VERSION 与 package.json 升 0.2.0，tag v0.2.0）。全量 151 测试绿、strict 编译零错误 | UPGRADE A.2 |
 
 **波次 2 门禁**：Architecture Gate 8 条逐项过（VISION）· replay_compat 全绿为合并前置 · 现有 v0.1 轨迹在 v0.2 内核上可重放（向后兼容验证）。
 
@@ -119,3 +119,4 @@
 | 2026-08-29 | W3–W5 落地：orbit CLI 三命令（bin/orbit.mjs，零额外依赖）+ 集成测试 4 例 + CLI 优先 README/guide + CI 矩阵 + issue/PR 模板 + npm dry-run 通过。波次 1 工程完成，仅余 W6 真实发布（用户动作） |
 | 2026-08-29 | W7–W8 落地：capabilityInvoke 统一网关确定性边界 + TokenBudgetEngine 纯函数压缩器/估算器；预算/路由/压缩决策与 tokenConfigHash 由引擎/注册表计算；run 指纹配置漂移（RunFingerprintDriftError）与 digest 漂移分离。引擎单测 7 例 + 网关测试 3 例，全量 134 测试绿，strict 编译零错误 |
 | 2026-08-29 | W9–W10 落地：压缩真正作用于落盘 payload——packSnapshot/compressPayload/decompressPayload（node:zlib 确定性 deflate）接入网关 execute/replay，存储压缩对消费者透明、重放逐字节一致；GatewayDecision.compression 增 bytesSaved 审计字段；宿主 compression checker 改 payload 感知。引擎单测 3 例 + 网关端到端 1 例，全量 138 测试绿，strict 编译零错误 |
+| 2026-08-29 | W11–W14 落地（v0.2.0）：RateLimiter 纯函数限流 + BehaviorCollector 三模式采集器；网关 rateLimited 决策记录原值/重放旁路、collector record 落盘/live 提案/replay 旁路；三分漂移分类（RunFingerprintDriftError/DecisionDriftError/ReplayDriftError）+ reconcile.decisionDriftFields；replay_compat 网关门禁扩至 7 类用例；CHANGELOG/README/VISION 同步更新；KERNEL_VERSION 与 package.json 升 0.2.0。单测 13 例（限流 3 + 采集 3 + A.5 网关 7），全量 151 测试绿，strict 编译零错误 |

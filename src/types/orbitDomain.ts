@@ -59,6 +59,28 @@ export interface RunVersionFingerprint {
   paeEnabled: boolean;
 }
 
+/**
+ * Structured observation of a single governed call, gathered by the
+ * BehaviorCollector (W11). Captures the governance decisions that actually
+ * applied so they can be audited, replayed, or used to seed online governance
+ * tuning. Pure data — no behavior of its own.
+ */
+export interface BehaviorNote {
+  channelKind: string;
+  funcName: string;
+  pluginId?: string;
+  /** Routing that served the call. */
+  route: "native" | "pae";
+  compression: { level: "conservative" | "normal" | "aggressive"; applied: boolean; bytesSaved: number };
+  budget: { allow: boolean; strategy: "normal" | "shrink" | "stop" };
+  /** Whether the call was rate-limited at record time. */
+  rateLimited: boolean;
+  /** Estimated tokens of a string output (omitted for non-string outputs). */
+  tokensEstimated?: number;
+  /** Which collector phase produced this note. */
+  recordedAtMode: "record" | "live";
+}
+
 /** Execution mode of a channel call. */
 export type ReplayMode = "live" | "record" | "replay";
 

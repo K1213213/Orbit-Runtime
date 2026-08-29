@@ -56,7 +56,7 @@
 
 | 周 | 工作流 | 依据 |
 |---|---|---|
-| **W7 ✅ / W8** | **W7 完成（2026-08-29）**：`src/gateway/capabilityInvoke` 统一入口已落地——在 `ChannelHub.fireChannelCall` 之上加校验层 + `GatewayCallRecord`（decision + runFingerprint 可选字段，旧轨迹向后兼容）；record 写入决策、replay 还原决策并校验运行指纹（配置漂移报 `RunFingerprintDriftError`，与 digest 漂移分离）、重放重验能力门禁、零真实执行注入；7 用例网关测试全绿。W8 待做：TokenBudgetEngine 纯函数压缩器 + `tripAllowed`/`route` 决策落库 | UPGRADE A.2/A.4 |
+| **W7 ✅ / W8 ✅** | **W7 完成（2026-08-29）**：`src/gateway/capabilityInvoke` 统一入口已落地——在 `ChannelHub.fireChannelCall` 之上加校验层 + `GatewayCallRecord`（decision + runFingerprint 可选字段，旧轨迹向后兼容）；record 写入决策、replay 还原决策并校验运行指纹（配置漂移报 `RunFingerprintDriftError`，与 digest 漂移分离）、重放重验能力门禁、零真实执行注入；7 用例网关测试全绿。**W8 完成**：`TokenBudgetEngine` 纯函数压缩器（禁 Math.random/Date.now）落地——确定性 token 估算 + 头截压缩 + 累计用量预算决策 + 配置哈希；宿主 `budgetDecision`/`compression`/`route`/`tokenConfigHash` 从字面 stub 改为由引擎/通道注册表计算，`registerPaeAdapter` 驱动 route 翻转、LLM 输出累计喂预算；网关测试新增 tokenConfigHash 漂移（RunFingerprintDriftError）/route 翻转/累计用量触发 budget shrink，引擎单测 7 例；全量 134 测试绿、strict 编译零错误 | UPGRADE A.2/A.4 |
 | **W9–W10** | TokenBudgetEngine：纯函数压缩器（禁随机/禁 Date.now），阈值配置哈希进指纹；`tripAllowed`/`route` 决策入记录 | UPGRADE A.3① |
 | **W11** | 限流（replay 旁路 + decision.rateLimited 记录原值）、行为采集器三模式（record 采集/live 提案/replay 旁路） | UPGRADE A.3②④ |
 | **W12** | replay_compat 套件扩充：压缩/限流/采集/指纹漂移 7 类用例（A.5 全表）全部进 CI 门禁 | UPGRADE A.5 |
@@ -117,3 +117,4 @@
 | 2026-08-29 | v1.0 首版：确立"产品先行、架构随行"三波次排期 |
 | 2026-08-29 | W1–W2 落地（commit 4a6585d）：provider 生产化 + File/Shell 通道 + JSONL 持久化 + replay_compat 门禁，59→119 测试 |
 | 2026-08-29 | W3–W5 落地：orbit CLI 三命令（bin/orbit.mjs，零额外依赖）+ 集成测试 4 例 + CLI 优先 README/guide + CI 矩阵 + issue/PR 模板 + npm dry-run 通过。波次 1 工程完成，仅余 W6 真实发布（用户动作） |
+| 2026-08-29 | W7–W8 落地：capabilityInvoke 统一网关确定性边界 + TokenBudgetEngine 纯函数压缩器/估算器；预算/路由/压缩决策与 tokenConfigHash 由引擎/注册表计算；run 指纹配置漂移（RunFingerprintDriftError）与 digest 漂移分离。引擎单测 7 例 + 网关测试 3 例，全量 134 测试绿，strict 编译零错误 |

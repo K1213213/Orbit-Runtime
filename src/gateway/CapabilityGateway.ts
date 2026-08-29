@@ -160,6 +160,11 @@ export class CapabilityGateway {
     const run = () => this.hub.fireChannelCall<T>(kind, baseCtx, funcName, ...args);
     const output = trip ? await trip.execWithProtect(run) : await run();
 
+    // W8: feed the output back to the budget engine (LLM strings) so cumulative
+    // token usage drives the NEXT call's budget decision. Deterministic and
+    // executed only on the live path — replay never reaches here.
+    if (pluginId) this.checkers.accountTokens?.(pluginId, output);
+
     const runFingerprint = this.checkers.fingerprint();
     this.journal?.append({
       channelKind: kind,

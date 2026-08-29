@@ -42,6 +42,16 @@ export { RunFingerprintDriftError } from "./gateway/types";
 export type { GatewayCheckers } from "./gateway/types";
 export type { GatewayCallRecord } from "./replay/record_journal";
 
+// W8: pure-function token budget + context compressor.
+export { TokenBudgetEngine, DEFAULT_TOKEN_BUDGET_CONFIG } from "./gateway/TokenBudgetEngine";
+export type {
+  TokenBudgetConfig,
+  CompressionLevel,
+  BudgetStrategy,
+  CompressResult,
+  BudgetDecision
+} from "./gateway/TokenBudgetEngine";
+
 export { ImpactDomainGraph } from "./graph/impact_domain";
 export { CostRouter } from "./routing/cost_routing";
 export type { ChannelCostMeta } from "./routing/cost_routing";

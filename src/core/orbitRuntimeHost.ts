@@ -12,6 +12,7 @@ import { ReplayEngine } from "../replay/replay_engine";
 import { makeUniqueMark } from "../utils/versionIdGen";
 import { KERNEL_VERSION } from "../utils/versionIdGen";
 import { CapabilityGateway } from "../gateway/CapabilityGateway";
+import { TokenBudgetEngine, DEFAULT_TOKEN_BUDGET_CONFIG } from "../gateway/TokenBudgetEngine";
 import type { GatewayInvokeParams } from "../gateway/CapabilityGateway";
 import type { GatewayCheckers } from "../gateway/types";
 import type { AgentSandbox } from "../sandbox/AgentSandbox";
@@ -34,11 +35,16 @@ export class OrbitRuntimeHost {
   public readonly impactGraph: ImpactDomainGraph;
   /** M4: cost profiles and budget routing. */
   public readonly costRouter: CostRouter;
+  /** W8: pure-function token budget + context compressor (single source of truth). */
+  public readonly tokenBudget: TokenBudgetEngine;
   /** W7: unified gateway entry — the determinism boundary (capabilityInvoke). */
   public readonly gateway: CapabilityGateway;
+  /** W8: kinds served by a PAE adapter; routing flips to "pae" when non-empty. */
+  private readonly paeAdapterKinds = new Set<ChannelKind>();
 
   public constructor() {
     this.costRouter = new CostRouter();
+    this.tokenBudget = new TokenBudgetEngine();
     this.channelHub = new ChannelHub();
     this.traceJournal = new TraceJournal();
     this.impactGraph = new ImpactDomainGraph();
@@ -57,21 +63,28 @@ export class OrbitRuntimeHost {
 
     // W7: wire the gateway. Checkers are injected (not concrete components) so
     // the gateway stays above the pact/safeguard layers. tripAllowed routes
-    // through the gateway's own per-plugin trip map.
+    // through the gateway's own per-plugin trip map. W8: budget / compression /
+    // route / tokenConfigHash are now derived from the real TokenBudgetEngine
+    // and channel registry instead of literal stubs.
     const checkers: GatewayCheckers = {
       tripAllowed: (pluginId) => this.tripPreCheckFor(pluginId),
       pactPass: (pluginId, kind, funcName) =>
         this.pluginPactVerifier.hasCapability(pluginId, requiredCapability(kind, funcName)),
-      budgetDecision: () => ({ allow: true, strategy: "normal" }),
+      budgetDecision: (pluginId) => this.tokenBudget.budgetPolicy(pluginId),
       rateLimited: () => false,
-      route: () => "native",
-      compression: () => ({ level: "normal", applied: false }),
+      route: () => (this.paeAdapterKinds.size > 0 ? "pae" : "native"),
+      compression: () => this.tokenBudget.compressionPolicy(),
       fingerprint: () => ({
         kernelVersion: KERNEL_VERSION,
         pactVersions: {},
-        tokenConfigHash: "default",
-        paeEnabled: false
-      })
+        tokenConfigHash: this.tokenBudget.configHash(),
+        paeEnabled: this.paeAdapterKinds.size > 0
+      }),
+      accountTokens: (pluginId, output) => {
+        if (typeof output === "string") {
+          this.tokenBudget.account(pluginId, this.tokenBudget.estimateTokens(output));
+        }
+      }
     };
     this.gateway = new CapabilityGateway(this.channelHub, checkers);
 
@@ -119,6 +132,16 @@ export class OrbitRuntimeHost {
       this.impactGraph.addEdge(cfg.agentBoxId, dep);
     }
     return box;
+  }
+
+  /**
+   * W8: declare a PAE adapter for a channel kind. Once any adapter is
+   * registered the gateway's `route` decision becomes "pae" for governed
+   * calls, and the run fingerprint's `paeEnabled` flips — so a trace recorded
+   * before PAE existed is detected as config drift, never as a digest mismatch.
+   */
+  public registerPaeAdapter(kind: ChannelKind): void {
+    this.paeAdapterKinds.add(kind);
   }
 
   /** M2: open a recording window; sandboxes running in "record" mode fill it. */

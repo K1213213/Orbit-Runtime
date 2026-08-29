@@ -19,6 +19,12 @@ export interface GatewayCheckers {
   compression: () => { level: "conservative" | "normal" | "aggressive"; applied: boolean };
   /** Build the run-version fingerprint for the current configuration. */
   fingerprint: () => RunVersionFingerprint;
+  /**
+   * Optional post-call hook: feed a call's output back to the budget engine so
+   * cumulative token usage can drive later `budgetDecision` calls. Optional so
+   * manual/test gateways that don't track usage can omit it.
+   */
+  accountTokens?: (pluginId: string, output: unknown) => void;
 }
 
 /** Thrown when a replayed trace was recorded under a different configuration.

@@ -11,6 +11,7 @@ import {
   RecordJournal,
   ChannelKind,
   FileChannel,
+  LlmMockChannel,
   digestInputs,
   RunFingerprintDriftError,
   ReplayDriftError
@@ -264,4 +265,96 @@ test("gateway: replay signature mismatch throws ReplayDriftError", async () => {
     gw.capabilityInvoke({ kind: ChannelKind.MEM_KV_STORE, funcName: "readEntry", args: ["OTHER"], mode: "replay" }),
     (e) => e instanceof ReplayDriftError
   );
+});
+
+// W8: a token-config hash mismatch is reported as a distinct config-drift
+// error (not a digest mismatch), proving the fingerprint catches threshold changes.
+test("gateway: token-config-hash drift reports RunFingerprintDriftError(tokenConfigHash)", async () => {
+  const hub = new ChannelHub();
+  const checkers: GatewayCheckers = {
+    tripAllowed: () => true,
+    pactPass: () => true,
+    budgetDecision: () => ({ allow: true, strategy: "normal" }),
+    rateLimited: () => false,
+    route: () => "native",
+    compression: () => ({ level: "normal", applied: false }),
+    fingerprint: () => ({ kernelVersion: "0.1.0", pactVersions: {}, tokenConfigHash: "RECORDED-HASH", paeEnabled: false })
+  };
+  const gw = new CapabilityGateway(hub, checkers);
+  const journal = new RecordJournal();
+  journal.append({
+    channelKind: ChannelKind.MEM_KV_STORE,
+    funcName: "readEntry",
+    inputDigest: digestInputs("k"),
+    outputSnapshot: "v",
+    durationMs: 0,
+    decision: {
+      tripAllowed: true,
+      pactPass: true,
+      budget: { allow: true, strategy: "normal" },
+      compression: { level: "normal", applied: false },
+      route: "native",
+      rateLimited: false
+    },
+    // Recorded under a DIFFERENT token-budget config.
+    runFingerprint: { kernelVersion: "0.1.0", pactVersions: {}, tokenConfigHash: "RECORDED-HASH", paeEnabled: false }
+  });
+  gw.attachJournal(journal);
+  // Replay-time checker reports a changed hash.
+  const drifted: GatewayCheckers = { ...checkers, fingerprint: () => ({ kernelVersion: "0.1.0", pactVersions: {}, tokenConfigHash: "CURRENT-HASH", paeEnabled: false }) };
+  const gw2 = new CapabilityGateway(hub, drifted);
+  gw2.attachJournal(journal);
+
+  await assert.rejects(
+    gw2.capabilityInvoke({ kind: ChannelKind.MEM_KV_STORE, funcName: "readEntry", args: ["k"], mode: "replay" }),
+    (e) => e instanceof RunFingerprintDriftError && e.driftField === "tokenConfigHash"
+  );
+});
+
+// W8: route decision is computed from the PAE registry, not a literal stub.
+test("gateway: route decision flips to 'pae' once a PAE adapter is registered", async () => {
+  const host = makeHost();
+  await host.bootHost();
+  host.registerPlugin({
+    id: "p1",
+    displayName: "P1",
+    edition: "1.0.0",
+    requireHostMinEdition: "1.0.0",
+    allowCapabilities: ["channel:read"]
+  });
+  const journal = host.beginRecording();
+  await host.capabilityInvoke({ kind: ChannelKind.MEM_KV_STORE, pluginId: "p1", funcName: "readEntry", args: ["k"], mode: "live" });
+  assert.equal(journal.get(0)!.decision!.route, "native");
+
+  host.registerPaeAdapter(ChannelKind.LLM_ACCESS);
+  await host.capabilityInvoke({ kind: ChannelKind.MEM_KV_STORE, pluginId: "p1", funcName: "readEntry", args: ["k2"], mode: "live" });
+  assert.equal(journal.get(1)!.decision!.route, "pae");
+  await host.shutdownHost();
+});
+
+// W8: cumulative LLM token usage drives the budget decision across calls.
+test("gateway: cumulative LLM usage moves budget strategy normal -> shrink", async () => {
+  const host = makeHost();
+  await host.bootHost();
+  class LongLlmChannel extends LlmMockChannel {
+    public override async chatRound(): Promise<string> {
+      return Array(5000).fill("word").join(" "); // ~5000 estimated tokens
+    }
+  }
+  host.channelHub.registerPluginExtChannel(ChannelKind.LLM_ACCESS, new LongLlmChannel());
+  host.registerPlugin({
+    id: "llm1",
+    displayName: "LLM1",
+    edition: "1.0.0",
+    requireHostMinEdition: "1.0.0",
+    allowCapabilities: ["channel:read"]
+  });
+  const journal = host.beginRecording();
+  await host.capabilityInvoke({ kind: ChannelKind.LLM_ACCESS, pluginId: "llm1", funcName: "chatRound", args: ["prompt"], mode: "live" });
+  // First call: usage 0 -> normal (its own cost is accounted afterwards).
+  assert.equal(journal.get(0)!.decision!.budget.strategy, "normal");
+  await host.capabilityInvoke({ kind: ChannelKind.LLM_ACCESS, pluginId: "llm1", funcName: "chatRound", args: ["prompt"], mode: "live" });
+  // Second call: ~5000 tokens already accounted (> compressAboveTokens) -> shrink.
+  assert.equal(journal.get(1)!.decision!.budget.strategy, "shrink");
+  await host.shutdownHost();
 });

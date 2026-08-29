@@ -48,6 +48,19 @@ export class TripProtector {
     return { state: this.state, consecutiveFailures: this.consecutiveFailures };
   }
 
+  /**
+   * Read-only pre-check used by the gateway to record the trip decision
+   * WITHOUT mutating state (the actual state transition happens inside
+   * execWithProtect when the call runs). Returns whether a call is currently
+   * allowed — a tripped protector flips to probe once its cooldown elapses.
+   */
+  public preCallCheck(): boolean {
+    if (this.state === TripState.TRIPPED) {
+      return Date.now() - this.trippedAt > this.cooldownMs;
+    }
+    return true;
+  }
+
   private onSuccess(): void {
     if (this.state === TripState.PROBE) {
       this.probeSuccesses += 1;

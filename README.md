@@ -27,6 +27,7 @@ Orbit Agent Runtime is a lightweight, dependency-free runtime host for plugin-ba
 - **`orbit` CLI (M6)** — `record` / `replay` / `diff` over the kernel; reproducibility in three commands, zero extra dependencies
 - **Provable isolation (M3)** — plugin/channel/sandbox dependencies as a graph; failure impact = reverse reachability closure, with an isolation theorem
 - **Cost-aware routing (M4)** — channels declare cost/latency/quality; agents run under per-cycle budgets
+- **Unified gateway (W7)** — `capabilityInvoke` is the determinism boundary: every call's governance decision (trip / pact / budget / rate-limit / route / compression) is recorded and restored on replay, and config drift is reported distinctly from digest drift
 - **Zero runtime dependencies** — pure TypeScript, strict mode, runs on Node.js ≥ 20
 
 ## Architecture

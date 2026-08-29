@@ -24,6 +24,36 @@ export enum DeterminismLevel {
   IO_BOUND = "io-bound"
 }
 
+/**
+ * The gateway's recorded decision snapshot for a single capability call.
+ * Captured at record time and RESTORED (never recomputed) on replay, so the
+ * governance decision becomes part of the reproducible trace.
+ */
+export interface GatewayDecision {
+  /** Whether the trip protector allowed the call up front. */
+  tripAllowed: boolean;
+  /** Whether the plugin's declared pact covered the invoked capability. */
+  pactPass: boolean;
+  /** Token-budget decision for the call (allow / shrink / stop). */
+  budget: { allow: boolean; strategy: "normal" | "shrink" | "stop" };
+  /** Context-compression policy applied before an LLM-bound call. */
+  compression: { level: "conservative" | "normal" | "aggressive"; applied: boolean };
+  /** Routing decision: native channel vs PAE adapter. */
+  route: "native" | "pae";
+  /** Whether the call was rate-limited at record time. */
+  rateLimited: boolean;
+}
+
+/** Configuration fingerprint recorded with each call to detect config drift. */
+export interface RunVersionFingerprint {
+  kernelVersion: string;
+  /** pluginId -> pact version, so old traces stay distinguishable. */
+  pactVersions: Record<string, string>;
+  /** Hash of token-budget / compression thresholds. */
+  tokenConfigHash: string;
+  paeEnabled: boolean;
+}
+
 /** Execution mode of a channel call. */
 export type ReplayMode = "live" | "record" | "replay";
 

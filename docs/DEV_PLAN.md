@@ -56,7 +56,7 @@
 
 | 周 | 工作流 | 依据 |
 |---|---|---|
-| **W7–W8** | `src/gateway/capabilityInvoke` 统一入口：在 `ChannelHub.fireChannelCall` 之上加校验层 + `GatewayCallRecord`（decision + runFingerprint 可选字段，旧轨迹向后兼容） | UPGRADE A.2/A.4 |
+| **W7 ✅ / W8** | **W7 完成（2026-08-29）**：`src/gateway/capabilityInvoke` 统一入口已落地——在 `ChannelHub.fireChannelCall` 之上加校验层 + `GatewayCallRecord`（decision + runFingerprint 可选字段，旧轨迹向后兼容）；record 写入决策、replay 还原决策并校验运行指纹（配置漂移报 `RunFingerprintDriftError`，与 digest 漂移分离）、重放重验能力门禁、零真实执行注入；7 用例网关测试全绿。W8 待做：TokenBudgetEngine 纯函数压缩器 + `tripAllowed`/`route` 决策落库 | UPGRADE A.2/A.4 |
 | **W9–W10** | TokenBudgetEngine：纯函数压缩器（禁随机/禁 Date.now），阈值配置哈希进指纹；`tripAllowed`/`route` 决策入记录 | UPGRADE A.3① |
 | **W11** | 限流（replay 旁路 + decision.rateLimited 记录原值）、行为采集器三模式（record 采集/live 提案/replay 旁路） | UPGRADE A.3②④ |
 | **W12** | replay_compat 套件扩充：压缩/限流/采集/指纹漂移 7 类用例（A.5 全表）全部进 CI 门禁 | UPGRADE A.5 |

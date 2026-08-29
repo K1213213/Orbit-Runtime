@@ -1,7 +1,7 @@
 import { OrbitDomainError } from "../core/orbitDomainError";
 import { digestInputs } from "../utils/digest";
-import type { ChannelKind } from "../types/orbitDomain";
-import type { RecordJournal, ReplayCallRecord } from "./record_journal";
+import type { ChannelKind, GatewayDecision } from "../types/orbitDomain";
+import type { RecordJournal, ReplayCallRecord, GatewayCallRecord } from "./record_journal";
 
 /** Replay drift: the recorded call sequence no longer matches the replayed execution. */
 export class ReplayDriftError extends OrbitDomainError {
@@ -14,6 +14,8 @@ export interface ReconcileReport {
   originalCount: number;
   replayedCount: number;
   digestChainConsistent: boolean;
+  /** False when a recorded gateway decision differs between the two chains. */
+  decisionConsistent?: boolean;
   driftAtOrderIndex?: number;
 }
 
@@ -38,7 +40,7 @@ export class ReplayEngine {
   }
 
   /** Compare the replayed chain with the original; locates the first drift if any. */
-  public reconcile(original: ReplayCallRecord[], replayed: ReplayCallRecord[]): ReconcileReport {
+  public reconcile(original: GatewayCallRecord[], replayed: GatewayCallRecord[]): ReconcileReport {
     const report: ReconcileReport = {
       originalCount: original.length,
       replayedCount: replayed.length,
@@ -55,13 +57,21 @@ export class ReplayEngine {
         a.channelKind === b.channelKind &&
         a.funcName === b.funcName &&
         a.inputDigest === b.inputDigest &&
-        digestInputs(a.outputSnapshot) === digestInputs(b.outputSnapshot);
+        digestInputs(a.outputSnapshot) === digestInputs(b.outputSnapshot) &&
+        decisionDigest(a.decision) === decisionDigest(b.decision);
       if (!same) {
         report.digestChainConsistent = false;
+        report.decisionConsistent = a.decision !== undefined || b.decision !== undefined ? false : true;
         report.driftAtOrderIndex = i;
         break;
       }
     }
     return report;
   }
+}
+
+/** Stable digest of a gateway decision, or "" when both sides lack one. */
+function decisionDigest(d: GatewayDecision | undefined): string {
+  if (!d) return "";
+  return digestInputs(d);
 }

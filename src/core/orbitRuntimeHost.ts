@@ -10,8 +10,12 @@ import { CostRouter } from "../routing/cost_routing";
 import { RecordJournal } from "../replay/record_journal";
 import { ReplayEngine } from "../replay/replay_engine";
 import { makeUniqueMark } from "../utils/versionIdGen";
+import { KERNEL_VERSION } from "../utils/versionIdGen";
+import { CapabilityGateway } from "../gateway/CapabilityGateway";
+import type { GatewayInvokeParams } from "../gateway/CapabilityGateway";
+import type { GatewayCheckers } from "../gateway/types";
 import type { AgentSandbox } from "../sandbox/AgentSandbox";
-import { ChannelKind, ChannelCallCtx, PluginUnitPact, AgentBoxConfig, CapabilityKey } from "../types/orbitDomain";
+import { ChannelKind, ChannelCallCtx, PluginUnitPact, AgentBoxConfig, CapabilityKey, ReplayMode } from "../types/orbitDomain";
 
 const HOST_DEFAULT_TIMEOUT_MS = 10_000;
 
@@ -30,6 +34,8 @@ export class OrbitRuntimeHost {
   public readonly impactGraph: ImpactDomainGraph;
   /** M4: cost profiles and budget routing. */
   public readonly costRouter: CostRouter;
+  /** W7: unified gateway entry — the determinism boundary (capabilityInvoke). */
+  public readonly gateway: CapabilityGateway;
 
   public constructor() {
     this.costRouter = new CostRouter();
@@ -49,10 +55,35 @@ export class OrbitRuntimeHost {
       this.pluginPactVerifier.hasCapability(pluginUnitId, requiredCapability(kind, funcName))
     );
 
+    // W7: wire the gateway. Checkers are injected (not concrete components) so
+    // the gateway stays above the pact/safeguard layers. tripAllowed routes
+    // through the gateway's own per-plugin trip map.
+    const checkers: GatewayCheckers = {
+      tripAllowed: (pluginId) => this.tripPreCheckFor(pluginId),
+      pactPass: (pluginId, kind, funcName) =>
+        this.pluginPactVerifier.hasCapability(pluginId, requiredCapability(kind, funcName)),
+      budgetDecision: () => ({ allow: true, strategy: "normal" }),
+      rateLimited: () => false,
+      route: () => "native",
+      compression: () => ({ level: "normal", applied: false }),
+      fingerprint: () => ({
+        kernelVersion: KERNEL_VERSION,
+        pactVersions: {},
+        tokenConfigHash: "default",
+        paeEnabled: false
+      })
+    };
+    this.gateway = new CapabilityGateway(this.channelHub, checkers);
+
     this.channelHub.registerBuiltInChannel(ChannelKind.MEM_KV_STORE, new MemoryKvChannel());
     this.channelHub.registerBuiltInChannel(ChannelKind.LLM_ACCESS, new LlmMockChannel());
     this.costRouter.register(ChannelKind.MEM_KV_STORE, { costPerCall: 0, latencyMs: 1, quality: 1 });
     this.costRouter.register(ChannelKind.LLM_ACCESS, { costPerCall: 1, latencyMs: 320, quality: 1 });
+  }
+
+  /** Host-private trip pre-check delegating to the gateway's per-plugin map. */
+  private tripPreCheckFor(pluginId: string): boolean {
+    return this.gateway.tripPreCheck(pluginId);
   }
 
   public async bootHost(): Promise<void> {
@@ -94,6 +125,7 @@ export class OrbitRuntimeHost {
   public beginRecording(): RecordJournal {
     const journal = new RecordJournal();
     this.channelHub.attachRecordJournal(journal);
+    this.gateway.attachJournal(journal);
     return journal;
   }
 
@@ -101,7 +133,20 @@ export class OrbitRuntimeHost {
   public attachReplayEngine(journal: RecordJournal): ReplayEngine {
     const engine = new ReplayEngine(journal);
     this.channelHub.attachReplayEngine(engine);
+    this.gateway.attachReplayEngine(engine);
     return engine;
+  }
+
+  /** W7: the unified gateway entry — deterministic boundary for governed calls. */
+  public capabilityInvoke<T>(params: {
+    kind: ChannelKind;
+    pluginId?: string;
+    funcName: string;
+    args: unknown[];
+    mode: ReplayMode;
+    ctx?: Partial<ChannelCallCtx>;
+  }): Promise<T> {
+    return this.gateway.capabilityInvoke<T>(params as GatewayInvokeParams);
   }
 
   /** M3: nodes that would be affected if the given node fails (reachability closure). */

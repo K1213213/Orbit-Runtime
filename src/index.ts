@@ -34,6 +34,14 @@ export type { ReconcileReport } from "./replay/replay_engine";
 export { saveRecordJournal, loadRecordJournal, TraceFileInvalidError } from "./replay/persistence";
 export type { ChannelRuntimeMeta } from "./replay/determinism";
 
+// W7: unified gateway entry (determinism boundary) + its decision types.
+// GatewayDecision / RunVersionFingerprint are re-exported from types/orbitDomain.
+export { CapabilityGateway } from "./gateway/CapabilityGateway";
+export type { GatewayInvokeParams } from "./gateway/CapabilityGateway";
+export { RunFingerprintDriftError } from "./gateway/types";
+export type { GatewayCheckers } from "./gateway/types";
+export type { GatewayCallRecord } from "./replay/record_journal";
+
 export { ImpactDomainGraph } from "./graph/impact_domain";
 export { CostRouter } from "./routing/cost_routing";
 export type { ChannelCostMeta } from "./routing/cost_routing";

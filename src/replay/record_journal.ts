@@ -1,5 +1,5 @@
 import { makeUniqueMark } from "../utils/versionIdGen";
-import type { ChannelKind } from "../types/orbitDomain";
+import type { ChannelKind, GatewayDecision, RunVersionFingerprint } from "../types/orbitDomain";
 
 /** One recorded channel call; the atomic unit of replay. */
 export interface ReplayCallRecord {
@@ -13,12 +13,22 @@ export interface ReplayCallRecord {
   durationMs: number;
 }
 
+/**
+ * A recorded call that also carries the gateway's decision snapshot and the
+ * run-version fingerprint. `decision` / `runFingerprint` are optional so legacy
+ * traces (recorded before the gateway existed) remain replayable.
+ */
+export interface GatewayCallRecord extends ReplayCallRecord {
+  decision?: GatewayDecision;
+  runFingerprint?: RunVersionFingerprint;
+}
+
 /** Append-only, indexable store of recorded channel calls. */
 export class RecordJournal {
   private readonly records: ReplayCallRecord[] = [];
 
-  public append(record: Omit<ReplayCallRecord, "entryUid" | "orderIndex">): ReplayCallRecord {
-    const entry: ReplayCallRecord = {
+  public append(record: Omit<GatewayCallRecord, "entryUid" | "orderIndex">): GatewayCallRecord {
+    const entry: GatewayCallRecord = {
       ...record,
       entryUid: makeUniqueMark(),
       orderIndex: this.records.length
@@ -27,8 +37,8 @@ export class RecordJournal {
     return entry;
   }
 
-  public get(orderIndex: number): ReplayCallRecord | undefined {
-    return this.records[orderIndex];
+  public get(orderIndex: number): GatewayCallRecord | undefined {
+    return this.records[orderIndex] as GatewayCallRecord | undefined;
   }
 
   public size(): number {
@@ -36,8 +46,8 @@ export class RecordJournal {
   }
 
   /** Immutable copy of the chain, for reconciliation. */
-  public snapshot(): ReplayCallRecord[] {
-    return [...this.records];
+  public snapshot(): GatewayCallRecord[] {
+    return [...this.records] as GatewayCallRecord[];
   }
 
   public clear(): void {

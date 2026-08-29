@@ -68,7 +68,7 @@
 
 | 阶段 | 内容 | 依据 |
 |---|---|---|
-| W15–W18 | PAE 适配器按难度递增：JS → MCP → OpenAPI → Cordis 隔离实例；每类带"经网关代理 + 四重校验 + replay 用例" | UPGRADE §C.3 |
+| **W15 ✅** · W16–W18 | **W15 完成（2026-08-29）**：PAE 契约层 + 注册表 + PaeChannel + JsPaeAdapter；外来 JS 运行时经网关代理、四重校验、replay 零重入；适配面配置哈希进指纹。W16–W18：MCP → OpenAPI → Cordis 隔离实例 | UPGRADE §C.3 |
 | W19–W20 | 隔离域 L2（子进程）+ 图驱动域分配 | VISION 升级三 |
 | W21–W23 | 三段式抽包：Project References 划界 → 自底向上抽（infra-common → core-hub → sandbox-runtime → pae-engine），每包全量回归 | UPGRADE B.1–B.2 |
 | W24–W26 | pnpm workspace + 各包独立 version/test + admin-console 包 + v0.3.0 发布 | UPGRADE B.3 |
@@ -102,7 +102,7 @@
 
 ## 5. 度量（每周站会看的数字）
 
-- **质量**：测试数（基线 59，只增不减）· strict 编译错误（0）· replay_compat 用例数
+- **质量**：测试数（基线 176，只增不减）· strict 编译错误（0）· replay_compat 用例数
 - **进度**：就绪清单勾选数（W6 目标 14/14）· 波次退出标准达成状态
 - **产品（W6 起）**：npm 周下载 · GitHub star · 首次 record→replay 成功率（目标 >70%）
 
@@ -120,3 +120,4 @@
 | 2026-08-29 | W7–W8 落地：capabilityInvoke 统一网关确定性边界 + TokenBudgetEngine 纯函数压缩器/估算器；预算/路由/压缩决策与 tokenConfigHash 由引擎/注册表计算；run 指纹配置漂移（RunFingerprintDriftError）与 digest 漂移分离。引擎单测 7 例 + 网关测试 3 例，全量 134 测试绿，strict 编译零错误 |
 | 2026-08-29 | W9–W10 落地：压缩真正作用于落盘 payload——packSnapshot/compressPayload/decompressPayload（node:zlib 确定性 deflate）接入网关 execute/replay，存储压缩对消费者透明、重放逐字节一致；GatewayDecision.compression 增 bytesSaved 审计字段；宿主 compression checker 改 payload 感知。引擎单测 3 例 + 网关端到端 1 例，全量 138 测试绿，strict 编译零错误 |
 | 2026-08-29 | W11–W14 落地（v0.2.0）：RateLimiter 纯函数限流 + BehaviorCollector 三模式采集器；网关 rateLimited 决策记录原值/重放旁路、collector record 落盘/live 提案/replay 旁路；三分漂移分类（RunFingerprintDriftError/DecisionDriftError/ReplayDriftError）+ reconcile.decisionDriftFields；replay_compat 网关门禁扩至 7 类用例；CHANGELOG/README/VISION 同步更新；KERNEL_VERSION 与 package.json 升 0.2.0。单测 13 例（限流 3 + 采集 3 + A.5 网关 7），全量 151 测试绿，strict 编译零错误 |
+| 2026-08-29 | W15 落地（v0.3.0 首波）：PAE 插件适配引擎契约层（src/pae/types.ts）+ PaeAdapterRegistry（静态校验/动态 Pact/保真度协商/配置哈希）+ PaeChannel（整体发布为能力通道，外来调用必经网关落入 RecordJournal）+ JsPaeAdapter（L0/full，注入式 RngSource/ClockSource）。两条架构铁律：适配器不直连内核、不引入非确定性。单测 22 例（pae_adapter）+ replay_compat 合并门禁 3 例，全量 176 测试绿，strict 编译零错误 |

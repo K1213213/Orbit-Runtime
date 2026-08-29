@@ -33,6 +33,7 @@ Orbit Agent Runtime is a lightweight, dependency-free runtime host for plugin-ba
 - **Rate limiting + behavior collector (W11)** — `RateLimiter` is a pure-function (no `Math.random`/`Date.now`) call-count budget; the `rateLimited` decision is recorded and replayed verbatim (the limiter is bypassed on replay). `BehaviorCollector` captures a structured `BehaviorNote` in three modes — `record` (persisted on the trace), `live` (proposal, not persisted), `replay` (bypass)
 - **Three-way drift classification (W13)** — replay failures are reported as distinct errors: config drift (`RunFingerprintDriftError`, version/fingerprint), decision drift (`DecisionDriftError`, e.g. a revoked pact), and call drift (`ReplayDriftError`, data/signature). Reconciliation also reports `decisionDriftFields`
 - **`replay_compat` determinism gate (W12)** — a 7-case CI gate proves the gateway boundary stays faithful under compression / rate-limit / collector / fingerprint-drift / decision-drift: every decision is recorded and replayed byte-identically
+- **Plugin Adaptation Engine (W15)** — foreign runtimes (in-process JS, and later MCP / OpenAPI / Cordis) are mapped onto the kernel capability contract through adapters that surface as a single capability channel; every foreign call is a gateway transaction, recorded and replayed byte-identically. Fidelity is negotiated honestly (`full | reduced | lossy`), and the adapter surface is hashed into the run fingerprint for drift detection
 - **Zero runtime dependencies** — pure TypeScript, strict mode, runs on Node.js ≥ 20
 
 ## Architecture
@@ -58,6 +59,52 @@ runtime_host (top-level host)
 🗓 Dev plan (three release waves: open-source launch → gateway determinism boundary → ecosystem): [docs/DEV_PLAN.md](./docs/DEV_PLAN.md)
 🛠 Upgrade plan & blocker resolutions: [docs/UPGRADE_PLAN.md](./docs/UPGRADE_PLAN.md)
 📈 Product plan: [docs/PRODUCT_PLAN.md](./docs/PRODUCT_PLAN.md)
+
+## Plugin Adaptation Engine (W15)
+
+Foreign runtimes — in-process JS today, MCP / OpenAPI / Cordis next — plug into
+the kernel through the **Plugin Adaptation Engine (PAE)**. The adaptation layer
+is deliberately thin: an adapter owns only the connection to the foreign runtime
+and translates its tools into the kernel capability contract. Two rules make the
+rest of the kernel unaware that anything foreign is happening:
+
+1. **Adapters never call the kernel directly.** A registered adapter is surfaced
+   as one capability channel (`ChannelKind.PAE_TOOL`), so every foreign call goes
+   `capabilityInvoke → ChannelHub → registry → adapter` and lands in the
+   `RecordJournal`. Foreign tools get the *same* four-way governance check as
+   native channels — gating, budgeting, trip protection, replay.
+2. **Adapters add no nondeterminism.** Randomness and clocks are injected through
+   `PaeInvokeCtx` (`rng` / `clock`); a handler that reaches for `Math.random` /
+   `Date.now` breaks replay and is rejected.
+
+Capability negotiation is explicit, not silent: an adapter that cannot map a
+foreign tool losslessly must say so via `fidelity` (`full | reduced | lossy`),
+and a caller may demand a minimum fidelity. Anything below `full` must carry a
+`fidelityNote`. The registry also derives a `configHash` of the whole adapter
+surface into the run fingerprint, so a changed tool set reports as
+configuration drift rather than as a digest mismatch.
+
+```ts
+import { OrbitRuntimeHost, JsPaeAdapter, ChannelKind } from "orbit-agent-runtime";
+
+const host = new OrbitRuntimeHost();
+await host.bootHost();
+
+// Adapt a foreign in-process tool set as a kernel capability channel.
+const adapter = new JsPaeAdapter({
+  adapterId: "echo-tools",
+  sourceEdition: "1.0.0",
+  tools: [{
+    name: "echo",
+    capability: "channel:write",
+    handler: async (args) => ({ echoed: (args[0] as { text: string }).text })
+  }]
+});
+host.registerPaeToolAdapter(adapter); // foreign surface → derived Pact, gated + recorded
+
+// Inside an agent script, a foreign tool is just another channel call:
+//   const out = await ctx.call(ChannelKind.PAE_TOOL, "echo", [{ text: "hi" }]);
+```
 
 ## Web console
 
@@ -111,7 +158,7 @@ under ten minutes. Every command accepts `--json` for machine-readable output.
 ### Lower-level API & demos
 
 ```bash
-npm test           # build + run unit tests (node:test) — 150+ cases
+npm test           # build + run unit tests (node:test) — 176 cases
 npm run demo       # build + run demo-host.ts (full lifecycle demo)
 npm run demo:replay  # deterministic replay: ~1s real run replayed in ~2ms
 ```

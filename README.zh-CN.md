@@ -30,6 +30,7 @@ Orbit Agent Runtime 是一套零第三方依赖的插件化智能体运行时宿
 - **限流与行为采集（W11）** —— `RateLimiter` 是纯函数（禁随机/禁时钟）的调用计数预算；`rateLimited` 决策被记录并在重放时逐字还原（重放旁路限流器）。`BehaviorCollector` 以三模式采集结构化 `BehaviorNote`——`record`（随轨迹落盘）/ `live`（提案，不落盘）/ `replay`（旁路）
 - **三分漂移分类（W13）** —— 重放失败被区分为明确错误：配置漂移（`RunFingerprintDriftError`，版本/指纹）、决策漂移（`DecisionDriftError`，如契约被撤销）、调用漂移（`ReplayDriftError`，数据/签名）；对账另报 `decisionDriftFields`
 - **`replay_compat` 确定性门禁（W12）** —— 7 类 CI 门禁证明网关边界在压缩/限流/采集/指纹漂移/决策漂移下始终忠实：每个决策被记录、并重放逐字节一致
+- **插件适配引擎 PAE（W15）** —— 外来运行时（进程内 JS，后续 MCP / OpenAPI / Cordis）经适配器映射为内核能力契约，整体发布为单一能力通道；每次外来调用都是一笔网关事务，被记录并可逐字节重放。保真度诚实协商（`full | reduced | lossy`），适配面哈希进运行指纹以支持漂移检测
 - **零运行时依赖** —— 纯 TypeScript strict 模式，Node.js ≥ 20 直接运行
 
 ## 架构分层（严格单向依赖，禁止反向与循环）
@@ -55,6 +56,37 @@ runtime_host（顶层宿主入口）
 🗓 研发计划（三个发布波次：开源发布 → 网关确定性边界 → 生态接入）：[docs/DEV_PLAN.md](./docs/DEV_PLAN.md)
 🛠 升级方案与阻断项解决：[docs/UPGRADE_PLAN.md](./docs/UPGRADE_PLAN.md)
 📈 产品规划：[docs/PRODUCT_PLAN.md](./docs/PRODUCT_PLAN.md)
+
+## 插件适配引擎 PAE（W15）
+
+外来运行时——今天为进程内 JS，后续 MCP / OpenAPI / Cordis——通过**插件适配引擎（PAE）**接入内核。适配层刻意保持极薄：适配器只持有对外来运行时的连接，并将其工具翻译为内核能力契约。两条规则让内核其余部分对"外来"毫不知情：
+
+1. **适配器从不直连内核**：注册后的适配器整体发布为单一能力通道（`ChannelKind.PAE_TOOL`），因此每次外来调用都走 `capabilityInvoke → ChannelHub → 注册表 → 适配器`，并落入 `RecordJournal`。外来工具与原生通道接受**同一套**四重治理校验——能力门禁、预算、跳闸保护、重放。
+2. **适配器不引入非确定性**：随机与时钟经 `PaeInvokeCtx`（`rng` / `clock`）注入；处理器若伸手去用 `Math.random` / `Date.now` 会破坏重放并被拒绝。
+
+能力协商是显式的，而非静默：适配器若无法无损映射某外来工具，必须借 `fidelity`（`full | reduced | lossy`）声明，调用方亦可要求最低保真度；低于 `full` 必须附带 `fidelityNote`。注册表还会把整个适配面的 `configHash` 写进运行指纹，使工具集的变更被报告为配置漂移，而非 digest 不匹配。
+
+```ts
+import { OrbitRuntimeHost, JsPaeAdapter, ChannelKind } from "orbit-agent-runtime";
+
+const host = new OrbitRuntimeHost();
+await host.bootHost();
+
+// 把一组进程内 JS 工具适配为内核能力通道。
+const adapter = new JsPaeAdapter({
+  adapterId: "echo-tools",
+  sourceEdition: "1.0.0",
+  tools: [{
+    name: "echo",
+    capability: "channel:write",
+    handler: async (args) => ({ echoed: (args[0] as { text: string }).text })
+  }]
+});
+host.registerPaeToolAdapter(adapter); // 外来工具面 → 派生 Pact，受门禁 + 记录
+
+// 在智能体脚本内，外来工具就是一次普通通道调用：
+//   const out = await ctx.call(ChannelKind.PAE_TOOL, "echo", [{ text: "hi" }]);
+```
 
 ## Web 控制台
 
@@ -103,7 +135,7 @@ node bin/orbit.mjs diff trace.jsonl trace.jsonl
 ### 底层 API 与演示
 
 ```bash
-npm test           # 构建 + 运行单元测试（node:test）—— 150+ 用例
+npm test           # 构建 + 运行单元测试（node:test）—— 176 用例
 npm run demo       # 构建 + 运行演示入口（覆盖全部核心机制）
 npm run demo:replay  # 确定性重放：约 1s 真实运行 → 约 2ms 重放
 ```

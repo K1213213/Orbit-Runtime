@@ -13,8 +13,12 @@ export interface GatewayCheckers {
   budgetDecision: (pluginId: string) => { allow: boolean; strategy: "normal" | "shrink" | "stop" };
   /** Whether the call is currently rate-limited. */
   rateLimited: (pluginId: string) => boolean;
-  /** Routing decision: native channel vs PAE adapter. */
-  route: (pluginId: string) => "native" | "pae";
+  /**
+   * Routing decision: native channel vs PAE adapter. `kind` is optional so
+   * existing checker implementations keep compiling; hosts that adapt foreign
+   * runtimes use it to answer per channel instead of globally (W15).
+   */
+  route: (pluginId: string, kind?: ChannelKind) => "native" | "pae";
   /** Payload-aware context-compression decision (storage compression at rest). */
   compression: (output: unknown) => { level: "conservative" | "normal" | "aggressive"; applied: boolean };
   /** Build the run-version fingerprint for the current configuration. */

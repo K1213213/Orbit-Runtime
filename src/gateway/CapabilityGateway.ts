@@ -175,7 +175,7 @@ export class CapabilityGateway {
       pactPass: pluginId ? this.checkers.pactPass(pluginId, kind, funcName) : true,
       budget: this.checkers.budgetDecision(pluginId ?? ""),
       compression: { level: comp.level, applied: comp.applied },
-      route: this.checkers.route(pluginId ?? ""),
+      route: this.checkers.route(pluginId ?? "", kind),
       rateLimited: pluginId ? this.checkers.rateLimited(pluginId) : false
     };
 
@@ -276,6 +276,18 @@ export class CapabilityGateway {
       throw new RunFingerprintDriftError(
         "tokenConfigHash",
         `token config drift: recorded ${fp.tokenConfigHash} vs current ${cur.tokenConfigHash}`,
+        traceMarkId
+      );
+    }
+    // W15: the adaptation surface is part of the configuration. Absent on both
+    // sides means "recorded before the field existed" — treated as compatible;
+    // a value on one side only is a genuine surface change.
+    const recordedPae = fp.paeAdaptersHash ?? "";
+    const currentPae = cur.paeAdaptersHash ?? "";
+    if (recordedPae !== currentPae) {
+      throw new RunFingerprintDriftError(
+        "paeAdaptersHash",
+        `pae adapter surface drift: recorded ${recordedPae || "<none>"} vs current ${currentPae || "<none>"}`,
         traceMarkId
       );
     }

@@ -11,7 +11,13 @@ export enum ChannelKind {
   /** W1: real filesystem access jailed to a root directory. */
   FILE_SYSTEM = "file-system",
   /** W2: real command execution behind a command whitelist. */
-  SHELL_EXEC = "shell-exec"
+  SHELL_EXEC = "shell-exec",
+  /**
+   * W15: the PAE adaptation surface. Foreign runtimes (JS / MCP / OpenAPI /
+   * Cordis) are published as tools on this single channel so every
+   * heterogeneous call travels the gateway → hub path and lands in the journal.
+   */
+  PAE_TOOL = "pae-tool"
 }
 
 /** Determinism level declared by a channel (the replay contract). */
@@ -57,6 +63,14 @@ export interface RunVersionFingerprint {
   /** Hash of token-budget / compression thresholds. */
   tokenConfigHash: string;
   paeEnabled: boolean;
+  /**
+   * W15: hash of the registered PAE adaptation surface (adapter identities,
+   * editions, isolation levels and tool contracts). Optional so traces recorded
+   * before the adaptation engine existed stay replayable; when present, a
+   * changed surface is reported as configuration drift rather than surfacing
+   * later as an unexplained digest mismatch.
+   */
+  paeAdaptersHash?: string;
 }
 
 /**

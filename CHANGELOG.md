@@ -4,6 +4,62 @@ All notable changes to Orbit Agent Runtime are documented here. This project
 follows a pre-alpha versioning scheme: `v0.x.minor` marks a release wave,
 `patch` marks fixes. Until `v1.0` the public API is not yet stability-promised.
 
+## [0.3.0] — 2026-08-29 · Plugin Adaptation Engine (W15)
+
+First wave of the v0.3.0 ecosystem track: foreign runtimes are mapped onto the
+kernel's capability contract through the Plugin Adaptation Engine (PAE), so the
+kernel's governance, recording and replay machinery covers them without any
+special-casing.
+
+### Added
+- **PAE contract layer** (`src/pae/types.ts`) — `PaeFidelity` (`full | reduced |
+  lossy`), `PaeAdapterKind` (`js | mcp | openapi | cordis`), `PaeIsolationLevel`
+  (`L0 | L1 | L2`), `PaeToolDescriptor`, `PaeAdapterMeta`, `PaeInvokeCtx`,
+  `IPaeAdapter`, and the error types `PaeAdapterRejectError` /
+  `PaeToolMissingError` / `PaeFidelityRejectError` (all `OrbitDomainError`).
+  `FIDELITY_RANK` orders `full ≻ reduced ≻ lossy`.
+- **`PaeAdapterRegistry`** (`src/pae/PaeAdapterRegistry.ts`) — registration-time
+  static validation (complete meta, unique id, semver `sourceEdition`, ≥1 tool,
+  name-pattern + reserved-name checks, globally unique tool names, and
+  *documented* downgrades), dynamic `PluginUnitPact` derivation (capability union
+  + forced `channel:read` + `declareChannelDeps: [PAE_TOOL]`), fidelity
+  negotiation (`negotiate` rejects a tool below the caller's `minFidelity`),
+  and `configHash()` — a SHA-256 (first 16 chars, order-independent) of the
+  adapter surface that feeds the run fingerprint.
+- **`PaeChannel`** (`src/pae/PaeChannel.ts`) — a registered adapter is surfaced
+  as a single capability channel. Every foreign call therefore travels
+  `capabilityInvoke → ChannelHub → registry → adapter` and lands in the
+  `RecordJournal` with its governance decision attached; there is no side door.
+- **`JsPaeAdapter`** (`src/pae/adapters/JsPaeAdapter.ts`) — the first concrete
+  adapter family (in-process JS, `L0`, `full` by default). Handlers receive
+  `(args, ctx)` where `rng` / `clock` are injected; reaching for `Math.random` /
+  `Date.now` is a charter violation. Unknown tools throw `PaeToolMissingError`.
+- **Two architectural invariants** enforced by construction: (1) adapters never
+  talk to the kernel directly — they are a capability channel, so record/replay
+  covers them; (2) adapters introduce no nondeterminism of their own — sources
+  arrive through `PaeInvokeCtx`.
+- **Config hash into fingerprint** — `RunVersionFingerprint.paeAdaptersHash`
+  (optional) carries `PaeAdapterRegistry.configHash()`; a changed adapter surface
+  is reported as `RunFingerprintDriftError("paeAdaptersHash", …)` rather than as a
+  digest mismatch. When no adapter is registered the field is omitted, so v0.2.x
+  traces keep their original fingerprint shape (backward compatible).
+- Public API exports: `PaeAdapterRegistry`, `PaeChannel`, `JsPaeAdapter` (+ their
+  config/spec types), the three PAE error classes, `FIDELITY_RANK`, and the
+  `IPaeAdapter` / `PaeAdapterKind` / `PaeAdapterMeta` / `PaeFidelity` /
+  `PaeInvokeCtx` / `PaeIsolationLevel` / `PaeToolDescriptor` types.
+
+### Tests
+- `test/pae_adapter.test.ts` (22 cases): registration validation, dynamic-pact
+  derivation, fidelity-negotiation rejection, order-independent `configHash`,
+  JS-adapter determinism, host routing decisions, write-tool lockdown for
+  read-only callers, replay zero re-entry, and `paeAdaptersHash` drift.
+- `test/replay_compat.test.ts` (+3 PAE merge-gate cases): record→replay is
+  byte-identical and the adapter runs exactly once; after unregistering an
+  adapter its replay needs no implementation; a `Math.random` poison in the
+  adapter body is caught.
+- Full suite: **176 cases** green, strict compile zero errors (baseline 151 →
+  176, only grows).
+
 ## [0.2.0] — 2026-08-29 · Gateway determinism boundary (v0.2.0)
 
 The unified gateway (`capabilityInvoke`) is now a complete, faithful determinism

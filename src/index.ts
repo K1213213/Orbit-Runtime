@@ -59,6 +59,28 @@ export type {
   CompressedPayload
 } from "./gateway/TokenBudgetEngine";
 
+// W15: PAE — the plugin adaptation engine (foreign runtimes as channels).
+export { PaeAdapterRegistry } from "./pae/PaeAdapterRegistry";
+export type { PaeToolBinding } from "./pae/PaeAdapterRegistry";
+export { PaeChannel } from "./pae/PaeChannel";
+export { JsPaeAdapter } from "./pae/adapters/JsPaeAdapter";
+export type { JsPaeAdapterConfig, JsToolSpec } from "./pae/adapters/JsPaeAdapter";
+export {
+  PaeAdapterRejectError,
+  PaeToolMissingError,
+  PaeFidelityRejectError,
+  FIDELITY_RANK
+} from "./pae/types";
+export type {
+  IPaeAdapter,
+  PaeAdapterKind,
+  PaeAdapterMeta,
+  PaeFidelity,
+  PaeInvokeCtx,
+  PaeIsolationLevel,
+  PaeToolDescriptor
+} from "./pae/types";
+
 export { ImpactDomainGraph } from "./graph/impact_domain";
 export { CostRouter } from "./routing/cost_routing";
 export type { ChannelCostMeta } from "./routing/cost_routing";

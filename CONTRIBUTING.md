@@ -30,6 +30,10 @@ Every PR must satisfy the gate in [VISION §5](./docs/VISION.md). In short:
       decision (`DecisionDriftError`), call (`ReplayDriftError`).
 - [ ] Layering is respected — strict one-way dependencies, no cycles, no bypass
       of the `capabilityInvoke` gateway entry.
+- [ ] PAE adapters (foreign runtimes) surface as a capability channel — they
+      never call the kernel directly, inject `RngSource` / `ClockSource` (no
+      `Math.random` / `Date.now`), declare their full tool surface, and negotiate
+      `fidelity` honestly (`reduced` / `lossy` require a `fidelityNote`).
 - [ ] `CHANGELOG.md` and the relevant charter/plan docs are updated.
 
 ## Workflow

@@ -15,6 +15,9 @@ import { CapabilityGateway } from "../gateway/CapabilityGateway";
 import { TokenBudgetEngine, DEFAULT_TOKEN_BUDGET_CONFIG } from "../gateway/TokenBudgetEngine";
 import { RateLimiter, DEFAULT_RATE_LIMIT_CONFIG } from "../gateway/RateLimiter";
 import { BehaviorCollector } from "../gateway/BehaviorCollector";
+import { PaeAdapterRegistry } from "../pae/PaeAdapterRegistry";
+import { PaeChannel } from "../pae/PaeChannel";
+import type { IPaeAdapter, PaeFidelity, PaeToolDescriptor } from "../pae/types";
 import type { GatewayInvokeParams } from "../gateway/CapabilityGateway";
 import type { GatewayCheckers } from "../gateway/types";
 import type { AgentSandbox } from "../sandbox/AgentSandbox";
@@ -45,6 +48,10 @@ export class OrbitRuntimeHost {
   public readonly behaviorCollector: BehaviorCollector;
   /** W7: unified gateway entry — the determinism boundary (capabilityInvoke). */
   public readonly gateway: CapabilityGateway;
+  /** W15: registry of foreign-runtime adapters (the adaptation surface). */
+  public readonly paeRegistry: PaeAdapterRegistry;
+  /** W15: the channel that publishes the adaptation surface to the hub. */
+  public readonly paeChannel: PaeChannel;
   /** W8: kinds served by a PAE adapter; routing flips to "pae" when non-empty. */
   private readonly paeAdapterKinds = new Set<ChannelKind>();
 
@@ -53,6 +60,8 @@ export class OrbitRuntimeHost {
     this.tokenBudget = new TokenBudgetEngine();
     this.rateLimiter = new RateLimiter();
     this.behaviorCollector = new BehaviorCollector();
+    this.paeRegistry = new PaeAdapterRegistry();
+    this.paeChannel = new PaeChannel(this.paeRegistry);
     this.channelHub = new ChannelHub();
     this.traceJournal = new TraceJournal();
     this.impactGraph = new ImpactDomainGraph();
@@ -66,7 +75,7 @@ export class OrbitRuntimeHost {
     // declared-capability check. Injected as a function so the channel layer
     // never depends on the pact layer above it.
     this.channelHub.attachCapabilityGate((pluginUnitId, kind, funcName) =>
-      this.pluginPactVerifier.hasCapability(pluginUnitId, requiredCapability(kind, funcName))
+      this.pluginPactVerifier.hasCapability(pluginUnitId, this.requiredCapabilityFor(kind, funcName))
     );
 
     // W7: wire the gateway. Checkers are injected (not concrete components) so
@@ -77,16 +86,23 @@ export class OrbitRuntimeHost {
     const checkers: GatewayCheckers = {
       tripAllowed: (pluginId) => this.tripPreCheckFor(pluginId),
       pactPass: (pluginId, kind, funcName) =>
-        this.pluginPactVerifier.hasCapability(pluginId, requiredCapability(kind, funcName)),
+        this.pluginPactVerifier.hasCapability(pluginId, this.requiredCapabilityFor(kind, funcName)),
       budgetDecision: (pluginId) => this.tokenBudget.budgetPolicy(pluginId),
       rateLimited: (pluginId) => this.rateLimiter.isLimited(pluginId),
-      route: () => (this.paeAdapterKinds.size > 0 ? "pae" : "native"),
+      // W15: a call on the adaptation channel is by definition PAE-routed; the
+      // legacy "any adapter kind declared" rule is kept for callers that only
+      // announce a routing intent without registering a real adapter.
+      route: (_pluginId, kind) =>
+        kind === ChannelKind.PAE_TOOL || this.paeAdapterKinds.size > 0 ? "pae" : "native",
       compression: (output) => this.tokenBudget.decideCompression(output),
       fingerprint: () => ({
         kernelVersion: KERNEL_VERSION,
         pactVersions: {},
         tokenConfigHash: this.tokenBudget.configHash(),
-        paeEnabled: this.paeAdapterKinds.size > 0
+        paeEnabled: this.paeAdapterKinds.size > 0,
+        // Omitted while no adapter is registered, so traces produced by hosts
+        // that never touch PAE keep exactly the fingerprint they had before.
+        ...(this.paeRegistry.isEmpty() ? {} : { paeAdaptersHash: this.paeRegistry.configHash() })
       }),
       accountTokens: (pluginId, output) => {
         if (typeof output === "string") {
@@ -104,8 +120,28 @@ export class OrbitRuntimeHost {
 
     this.channelHub.registerBuiltInChannel(ChannelKind.MEM_KV_STORE, new MemoryKvChannel());
     this.channelHub.registerBuiltInChannel(ChannelKind.LLM_ACCESS, new LlmMockChannel());
+    // W15: the adaptation surface is a built-in channel with no tools until an
+    // adapter is registered — foreign runtimes get no private path in.
+    this.channelHub.registerBuiltInChannel(ChannelKind.PAE_TOOL, this.paeChannel);
     this.costRouter.register(ChannelKind.MEM_KV_STORE, { costPerCall: 0, latencyMs: 1, quality: 1 });
     this.costRouter.register(ChannelKind.LLM_ACCESS, { costPerCall: 1, latencyMs: 320, quality: 1 });
+    // Adaptation costs more than a native call (an extra hop, possibly a
+    // process boundary) and is priced accordingly for budget routing.
+    this.costRouter.register(ChannelKind.PAE_TOOL, { costPerCall: 2, latencyMs: 40, quality: 1 });
+  }
+
+  /**
+   * Capability required by a channel method. Native channels map statically;
+   * PAE tools are resolved through the registry so a foreign tool is governed
+   * at the same granularity as a native method (read vs write), never wholesale.
+   * An unknown tool is treated as a write — the conservative default — so a
+   * mis-registered surface fails closed.
+   */
+  private requiredCapabilityFor(kind: ChannelKind, funcName: string): CapabilityKey {
+    if (kind === ChannelKind.PAE_TOOL) {
+      return this.paeRegistry.capabilityOf(funcName) ?? "channel:write";
+    }
+    return requiredCapability(kind, funcName);
   }
 
   /** Host-private trip pre-check delegating to the gateway's per-plugin map. */
@@ -123,6 +159,9 @@ export class OrbitRuntimeHost {
     this.pluginPactVerifier.clear();
     this.pluginSandboxGuard.releaseAllGuard();
     await this.channelHub.teardown();
+    // Channel teardown already released every adapter (PaeChannel.teardown);
+    // dropping the registry afterwards leaves no dangling foreign surface.
+    this.paeRegistry.clear();
     this.traceJournal.clear();
     this.impactGraph.clear();
   }
@@ -156,6 +195,72 @@ export class OrbitRuntimeHost {
    */
   public registerPaeAdapter(kind: ChannelKind): void {
     this.paeAdapterKinds.add(kind);
+  }
+
+  /**
+   * W15: attach a real foreign-runtime adapter.
+   *
+   * The adapter is validated, indexed and published as tools on the PAE
+   * channel, and a **dynamic pact** is derived from its declared surface and
+   * registered like any hand-written plugin manifest. That is what keeps the
+   * promise of "MCP-grade ecosystem reach without a governance downgrade": the
+   * foreign tool now passes the same capability check, trip protection, budget
+   * accounting and recording as a native channel method, because it *is* one.
+   *
+   * @returns the derived pact (already registered unless `registerPact: false`).
+   */
+  public registerPaeToolAdapter(
+    adapter: IPaeAdapter,
+    opts: { registerPact?: boolean; requireHostMinEdition?: string } = {}
+  ): PluginUnitPact {
+    this.paeRegistry.register(adapter, makeUniqueMark());
+    this.paeChannel.syncTools();
+    this.paeAdapterKinds.add(ChannelKind.PAE_TOOL);
+    const pact = this.paeRegistry.derivePact(adapter.meta.adapterId, {
+      requireHostMinEdition: opts.requireHostMinEdition
+    });
+    if (opts.registerPact !== false) {
+      this.registerPlugin(pact);
+    }
+    return pact;
+  }
+
+  /**
+   * Detach an adapter: its tools stop being dispatchable, its derived pact is
+   * revoked, and the routing flag clears once the surface is empty. A trace
+   * recorded while it was present then replays as configuration drift, not as
+   * a mysterious digest mismatch.
+   */
+  public unregisterPaeToolAdapter(adapterId: string): void {
+    this.paeRegistry.unregister(adapterId);
+    this.paeChannel.syncTools();
+    this.pluginPactVerifier.unregisterPluginUnit(adapterId);
+    this.impactGraph.removeNode(adapterId);
+    if (this.paeRegistry.isEmpty()) {
+      this.paeAdapterKinds.delete(ChannelKind.PAE_TOOL);
+    }
+  }
+
+  /**
+   * Connect adapters registered after `bootHost`. Idempotent — adapters that
+   * are already connected are skipped, so it is safe to call after every batch
+   * of registrations.
+   */
+  public async bootPaeAdapters(): Promise<void> {
+    await this.paeRegistry.setupAll({
+      traceMarkId: makeUniqueMark(),
+      maxWaitMs: HOST_DEFAULT_TIMEOUT_MS
+    });
+    this.paeChannel.syncTools();
+  }
+
+  /**
+   * Capability negotiation for a foreign tool: returns the descriptor when the
+   * mapping is at least as faithful as required, otherwise throws. Callers make
+   * an informed choice instead of silently receiving a degraded result.
+   */
+  public negotiatePaeTool(toolName: string, minFidelity: PaeFidelity = "full"): PaeToolDescriptor {
+    return this.paeRegistry.negotiate(toolName, minFidelity, makeUniqueMark());
   }
 
   /** M2: open a recording window; sandboxes running in "record" mode fill it. */

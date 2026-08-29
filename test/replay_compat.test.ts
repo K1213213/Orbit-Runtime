@@ -10,6 +10,10 @@ import { OpenAICompatChannel, LlmChannelFaultError } from "../src/channel/provid
 import { RecordJournal } from "../src/replay/record_journal";
 import { ReplayEngine } from "../src/replay/replay_engine";
 import { saveRecordJournal, loadRecordJournal } from "../src/replay/persistence";
+import { SeededRng } from "../src/replay/injectors";
+import { PaeAdapterRegistry } from "../src/pae/PaeAdapterRegistry";
+import { PaeChannel } from "../src/pae/PaeChannel";
+import { JsPaeAdapter } from "../src/pae/adapters/JsPaeAdapter";
 import { digestInputs } from "../src/utils/digest";
 import { ChannelKind, ChannelCallCtx, ReplayMode } from "../src/types/orbitDomain";
 
@@ -328,6 +332,113 @@ test("replay_compat persistence: save → load → replay across engine instance
   assert.equal(report.digestChainConsistent, true);
   await hub2.teardown();
   await fs.rm(root, { recursive: true, force: true });
+});
+
+// ---------------------------------------------------------------------------
+// PAE adaptation surface (W15) — merge gate for foreign runtimes
+// ---------------------------------------------------------------------------
+
+test("replay_compat PAE: replay serves foreign tool output without entering the adapter", async () => {
+  let foreignCalls = 0;
+  const registry = new PaeAdapterRegistry();
+  registry.register(
+    new JsPaeAdapter({
+      adapterId: "compat-tools",
+      sourceEdition: "1.0.0",
+      tools: [
+        {
+          name: "renderCard",
+          capability: "channel:read",
+          handler: (args) => {
+            foreignCalls += 1;
+            return { title: String(args[0]), items: [1, 2, 3] };
+          }
+        }
+      ]
+    })
+  );
+
+  const hub = new ChannelHub();
+  hub.registerBuiltInChannel(ChannelKind.PAE_TOOL, new PaeChannel(registry));
+  await hub.setupAllBuiltInChannels(makeCtx("record"));
+
+  const { live, replayed, reconcileDigestChain } = await recordThenReplay(hub, async (mode) =>
+    hub.fireChannelCall<{ title: string; items: number[] }>(
+      ChannelKind.PAE_TOOL,
+      makeCtx(mode),
+      "renderCard",
+      "orbit"
+    )
+  );
+
+  assert.deepEqual(replayed, live);
+  assert.equal(JSON.stringify(replayed), JSON.stringify(live), "byte-identical");
+  assert.equal(foreignCalls, 1, "the foreign runtime runs exactly once, during recording");
+  assert.ok(reconcileDigestChain);
+  await hub.teardown();
+});
+
+test("replay_compat PAE: an unregistered adapter is not needed to replay its trace", async () => {
+  const registry = new PaeAdapterRegistry();
+  registry.register(
+    new JsPaeAdapter({
+      adapterId: "ephemeral",
+      tools: [{ name: "onceOnly", handler: () => "recorded-value" }]
+    })
+  );
+  const channel = new PaeChannel(registry);
+  const hub = new ChannelHub();
+  hub.registerBuiltInChannel(ChannelKind.PAE_TOOL, channel);
+  await hub.setupAllBuiltInChannels(makeCtx("record"));
+
+  const recordJournal = new RecordJournal();
+  hub.attachRecordJournal(recordJournal);
+  const live = await hub.fireChannelCall<string>(ChannelKind.PAE_TOOL, makeCtx("record"), "onceOnly");
+  assert.equal(live, "recorded-value");
+
+  // The adapter goes away entirely — as it would on a machine that lacks the
+  // foreign runtime, its credentials, or the network to reach it.
+  registry.unregister("ephemeral");
+  channel.syncTools();
+  assert.deepEqual(channel.installedTools(), []);
+
+  hub.attachReplayEngine(new ReplayEngine(recordJournal));
+  const replayed = await hub.fireChannelCall<string>(ChannelKind.PAE_TOOL, makeCtx("replay"), "onceOnly");
+  assert.equal(replayed, live, "replay depends on the journal, never on the foreign runtime");
+  await hub.teardown();
+});
+
+test("replay_compat PAE: adapters run with Math.random poisoned", async () => {
+  const registry = new PaeAdapterRegistry();
+  registry.register(
+    new JsPaeAdapter({
+      adapterId: "seeded-tools",
+      tools: [
+        {
+          name: "seededPick",
+          // Determinism arrives through the injected context; an adapter that
+          // minted its own randomness would break replay, so the charter test
+          // poisons the global source while the call runs.
+          handler: (_args, ctx) => Math.floor((ctx.rng?.next() ?? 0) * 100)
+        }
+      ]
+    })
+  );
+  const hub = new ChannelHub();
+  hub.registerBuiltInChannel(ChannelKind.PAE_TOOL, new PaeChannel(registry));
+  await hub.setupAllBuiltInChannels(makeCtx("record", { rng: new SeededRng(7) }));
+
+  const originalRandom = Math.random;
+  Math.random = () => {
+    throw new Error("bare Math.random inside a pae adapter (charter violation)");
+  };
+  try {
+    const first = await hub.fireChannelCall<number>(ChannelKind.PAE_TOOL, makeCtx("record"), "seededPick");
+    assert.equal(typeof first, "number");
+  } finally {
+    Math.random = originalRandom;
+  }
+  await hub.teardown();
 });
 
 // ---------------------------------------------------------------------------

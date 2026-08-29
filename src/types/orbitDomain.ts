@@ -7,7 +7,11 @@ export type AgentBoxId = string;
 /** Built-in capability channel kinds. */
 export enum ChannelKind {
   MEM_KV_STORE = "mem-kv-store",
-  LLM_ACCESS = "llm-access"
+  LLM_ACCESS = "llm-access",
+  /** W1: real filesystem access jailed to a root directory. */
+  FILE_SYSTEM = "file-system",
+  /** W2: real command execution behind a command whitelist. */
+  SHELL_EXEC = "shell-exec"
 }
 
 /** Determinism level declared by a channel (the replay contract). */

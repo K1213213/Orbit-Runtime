@@ -177,3 +177,48 @@ host.channelHub.registerPluginExtChannel(ChannelKind.LLM_ACCESS, new OpenAICompa
 Non-OpenAI protocols (Anthropic Claude, Google Gemini) each need a small
 `IChannelProvider` adapter (~20 lines); record/replay/isolation/routing are
 protocol-agnostic.
+
+Production hardening is built in: faults are classified
+(`LlmChannelFaultError` — timeout / network / rate_limited / server_error /
+auth / bad_request / not_found / no_content / invalid_response), retryable
+faults are retried with a **deterministic** exponential backoff (no
+`Math.random`, `Retry-After` honored), and internal retries never leak into
+the record journal.
+
+### Real tool channels (File / Shell)
+
+```ts
+import { FileChannel, ShellChannel } from "orbit-agent-runtime";
+
+// Filesystem access jailed to a root directory (path escapes are rejected).
+host.channelHub.registerPluginExtChannel(ChannelKind.FILE_SYSTEM, new FileChannel({
+  rootDir: "./agent-workspace"
+}));
+
+// Command execution behind an exact-match whitelist; argv arrays only
+// (no shell string → no injection surface), empty child env by default,
+// hard timeout and output caps.
+host.channelHub.registerPluginExtChannel(ChannelKind.SHELL_EXEC, new ShellChannel({
+  allowedCommands: ["git", "node", process.execPath],
+  workDir: "./agent-workspace",
+  envAllowlist: ["PATH"]
+}));
+```
+
+Both are `IO_BOUND` channels: record a run, then replay it with zero disk
+access and zero process spawns. The capability gate maps
+read/list/stat → `channel:read` and write/append/remove/mkdir/exec →
+`channel:write`.
+
+### Trace persistence (JSONL)
+
+```ts
+import { saveRecordJournal, loadRecordJournal } from "orbit-agent-runtime";
+
+await saveRecordJournal(journal, "trace.jsonl");   // atomic write (tmp + rename)
+const restored = await loadRecordJournal("trace.jsonl"); // validated load
+```
+
+Replay works on a fresh host **without the real channels installed** — the
+replay fast path serves from the journal and never requires providers,
+credentials or tools on the replaying machine.

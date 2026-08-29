@@ -159,7 +159,7 @@ DEEPSEEK_API_KEY=sk-xxx npm run demo:deepseek
 ```ts
 import { OpenAICompatChannel } from "orbit-agent-runtime";
 
-// DeepSeek / OpenAI / 通义 / Kimi / GLM / Ollama / vLLM ...
+// DeepSeek / OpenAI / OpenAI / 通义 / Kimi / Ollama / vLLM ...
 host.channelHub.registerPluginExtChannel(ChannelKind.LLM_ACCESS, new OpenAICompatChannel({
   apiKey: process.env.LLM_API_KEY,
   baseUrl: "https://dashscope.aliyuncs.com/compatible-mode", // 示例：通义千问
@@ -168,3 +168,37 @@ host.channelHub.registerPluginExtChannel(ChannelKind.LLM_ACCESS, new OpenAICompa
 ```
 
 非 OpenAI 协议（Anthropic Claude、Google Gemini）各需一个约 20 行的 `IChannelProvider` 适配器；重放/隔离/路由机制与协议无关。
+
+生产化能力已内置：故障分类（`LlmChannelFaultError`——超时/网络/限流/服务端错误/鉴权/参数错误/未找到/空响应/无效响应），可重试故障用**确定性**指数退避重试（无 `Math.random`、尊重 `Retry-After`），内部重试不会泄漏进录制日志。
+
+### 真实工具通道（文件 / Shell）
+
+```ts
+import { FileChannel, ShellChannel } from "orbit-agent-runtime";
+
+// 文件访问，监禁在根目录内（路径越界即拒绝）。
+host.channelHub.registerPluginExtChannel(ChannelKind.FILE_SYSTEM, new FileChannel({
+  rootDir: "./agent-workspace"
+}));
+
+// 命令执行，精确匹配白名单；仅接受 argv 数组（无 shell 字符串 → 无注入面），
+// 子进程默认空环境、硬超时与输出上限。
+host.channelHub.registerPluginExtChannel(ChannelKind.SHELL_EXEC, new ShellChannel({
+  allowedCommands: ["git", "node", process.execPath],
+  workDir: "./agent-workspace",
+  envAllowlist: ["PATH"]
+}));
+```
+
+两者均为 `IO_BOUND` 通道：录制一次运行后重放，零磁盘访问、零进程启动。能力门禁映射：read/list/stat → `channel:read`，write/append/remove/mkdir/exec → `channel:write`。
+
+### 轨迹持久化（JSONL）
+
+```ts
+import { saveRecordJournal, loadRecordJournal } from "orbit-agent-runtime";
+
+await saveRecordJournal(journal, "trace.jsonl");   // 原子写（tmp + rename）
+const restored = await loadRecordJournal("trace.jsonl"); // 校验加载
+```
+
+在**未安装真实通道**的新宿主上也能重放——重放快速路径直接从日志供给，不要求重放机器上存在通道实现、凭据或工具。

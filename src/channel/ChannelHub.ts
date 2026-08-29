@@ -33,9 +33,14 @@ export class ChannelHub {
     this.capabilityGate = gate;
   }
 
-  /** Attach the replay engine that serves "replay" mode calls. */
+  /**
+   * Attach the replay engine that serves "replay" mode calls. Attaching an
+   * engine starts a new replay session: the replay order counter is reset so
+   * a second pass over the same journal starts from call #0 again.
+   */
   public attachReplayEngine(engine: ReplayEngine): void {
     this.replayEngine = engine;
+    this.callCounter = 0;
   }
 
   /** Attach the journal that "record" mode calls are appended to. */
@@ -91,10 +96,8 @@ export class ChannelHub {
     funcName: string,
     ...inputArgs: unknown[]
   ): Promise<T> {
-    const provider = this.getEffectiveChannel(kind);
-    if (!provider) {
-      throw new ChannelCallFaultError(`channel ${kind} is not available`, ctx.traceMarkId, ctx.pluginUnitId);
-    }
+    // Governance first: the capability gate applies to replayed calls too —
+    // replay never bypasses declared capabilities.
     if (ctx.pluginUnitId && this.capabilityGate && !this.capabilityGate(ctx.pluginUnitId, kind, funcName)) {
       throw new ChannelCallFaultError(
         `plugin ${ctx.pluginUnitId} lacks capability for channel ${kind}`,
@@ -104,11 +107,19 @@ export class ChannelHub {
     }
 
     // Replay fast path: serve the recorded output, never execute the channel.
+    // Deliberately checked BEFORE provider availability — replaying a trace
+    // must not require the real channel (or its credentials/tools) to be
+    // installed on the replaying machine.
     if (ctx.replayMode === "replay" && this.replayEngine) {
       const orderIndex = this.callCounter++;
       const output = this.replayEngine.replayCall(kind, funcName, digestInputs(...inputArgs), orderIndex);
       this.recordCall(kind, funcName, digestInputs(...inputArgs), output, 0);
       return output as T;
+    }
+
+    const provider = this.getEffectiveChannel(kind);
+    if (!provider) {
+      throw new ChannelCallFaultError(`channel ${kind} is not available`, ctx.traceMarkId, ctx.pluginUnitId);
     }
 
     const method = (provider as unknown as Record<string, (...args: unknown[]) => Promise<unknown>>)[funcName];

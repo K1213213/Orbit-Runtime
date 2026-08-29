@@ -6,9 +6,18 @@ export type { CapabilityGate } from "./channel/ChannelHub";
 export type { IChannelProvider } from "./channel/IChannelProvider";
 export { MemoryKvChannel } from "./channel/providers/MemoryKvChannel";
 export { LlmMockChannel } from "./channel/providers/LlmMockChannel";
-export { OpenAICompatChannel } from "./channel/providers/openai_compat_channel";
-export { DeepSeekChannel } from "./channel/providers/openai_compat_channel";
-export type { OpenAICompatChannelConfig, DeepSeekChannelConfig } from "./channel/providers/openai_compat_channel";
+export { OpenAICompatChannel, DeepSeekChannel, LlmChannelFaultError, isRetryableLlmFault } from "./channel/providers/openai_compat_channel";
+export type {
+  OpenAICompatChannelConfig,
+  DeepSeekChannelConfig,
+  ChatMessage,
+  ChatRoundOptions,
+  LlmFaultKind
+} from "./channel/providers/openai_compat_channel";
+export { FileChannel } from "./channel/providers/FileChannel";
+export type { FileChannelConfig, FileStatInfo } from "./channel/providers/FileChannel";
+export { ShellChannel } from "./channel/providers/ShellChannel";
+export type { ShellChannelConfig, ShellExecResult } from "./channel/providers/ShellChannel";
 export { PluginPactVerifier } from "./pact/PluginPactVerifier";
 export { TripProtector } from "./safeguard/TripProtector";
 export type { TripSnapshot } from "./safeguard/TripProtector";
@@ -22,6 +31,7 @@ export { RecordJournal } from "./replay/record_journal";
 export type { ReplayCallRecord } from "./replay/record_journal";
 export { ReplayEngine, ReplayDriftError } from "./replay/replay_engine";
 export type { ReconcileReport } from "./replay/replay_engine";
+export { saveRecordJournal, loadRecordJournal, TraceFileInvalidError } from "./replay/persistence";
 export type { ChannelRuntimeMeta } from "./replay/determinism";
 
 export { ImpactDomainGraph } from "./graph/impact_domain";

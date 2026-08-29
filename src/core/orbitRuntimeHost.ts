@@ -129,5 +129,13 @@ function requiredCapability(kind: ChannelKind, funcName: string): CapabilityKey 
   if (kind === ChannelKind.MEM_KV_STORE) {
     return funcName === "writeEntry" || funcName === "removeEntry" ? "channel:write" : "channel:read";
   }
+  if (kind === ChannelKind.FILE_SYSTEM) {
+    const writes = new Set(["writeTextFile", "appendTextFile", "removePath", "makeDir"]);
+    return writes.has(funcName) ? "channel:write" : "channel:read";
+  }
+  if (kind === ChannelKind.SHELL_EXEC) {
+    // Executing commands is treated as a mutating capability by default.
+    return "channel:write";
+  }
   return "channel:read";
 }

@@ -1,7 +1,42 @@
-# Orbit Agent Runtime · 产品规划书（v1.0）
+# Orbit Agent Runtime · 产品规划书（v1.1）
 
-> 状态：草案 · 作者：产品负责人 · 日期：2026-08-27
-> 一句话定位：**让 Agent 行为可复现、故障可证明、成本可治理的确定性 Agent 运行时。**
+> 状态：**开源产品轨道**（v1.0 草案 → v1.1 确立产品定位） · 日期：2026-08-29
+> 一句话定位：**让 Agent 行为可复现、故障可证明、成本可治理的确定性 Agent 运行时——以开源产品形态发布。**
+
+---
+
+## 0. 定位转变：实验项目 → 开源产品（v1.1 核心变更）
+
+**定位声明**：Orbit 不是实验室原型，而是**按开源产品轨道推进的工程**。判定标准不是"论文可发表"，而是"陌生开发者 10 分钟内跑通并愿意 star"。
+
+**这个转变意味着什么（对日常决策的约束）**：
+
+| 决策场景 | 实验室思维（弃用） | 产品思维（采用） |
+|---|---|---|
+| 命名与文案 | "实验室/实验"暗示不稳定 | 产品化命名（回放台而非"回放实验室"）；README 首屏即状态徽章与上手路径 |
+| 能力取舍 | 机制新颖性优先 | 用户可感知价值优先（record → replay → diff 是第一体验） |
+| 质量门槛 | demo 跑通即可 | 三公理 CI 门禁 + strict 编译 + 测试全绿为发布前置 |
+| 交付节奏 | 探索式、不可预期 | 时间盒里程碑（P0.1–P0.3）+ 明确退出标准 |
+| 对外承诺 | 无 | Apache-2.0、CONTRIBUTING、SECURITY、语义化版本、CHANGELOG |
+
+**开源就绪清单（Open-Source Launch Checklist，P0.3 发布前全部勾掉）**：
+
+- [x] Apache-2.0 许可证 + NOTICE
+- [x] 双语 README（状态徽章 + 产品定位声明 + 快速上手）
+- [x] CONTRIBUTING / CODE_OF_CONDUCT / SECURITY
+- [x] 架构文档体系（architecture / VISION / UPGRADE_PLAN / PRODUCT_PLAN）
+- [x] 内核六大机制 + 三支柱（M1–M4，测试全绿）
+- [x] 零运行时依赖 + strict TypeScript
+- [ ] OpenAI 兼容 provider 生产化（种子注入契约）
+- [ ] FileChannel / ShellChannel 真实工具通道
+- [ ] JSONL 轨迹持久化（跨进程重放）
+- [ ] `orbit` CLI 三件套（record / replay / diff）
+- [ ] `npx orbit` 零配置体验 + npm 发布
+- [ ] CI（lint + build + test + replay-compat 门禁）
+- [ ] 快速上手文档 + demo 视频 + 技术博客《Agent bug 为什么不可复现》
+- [ ] GitHub 仓库公开：landing 页、issue 模板、讨论区
+
+> 就绪清单与 §5.2 MVP 范围一一对应：清单勾完 = P0.3 开源发布条件满足。
 
 ---
 

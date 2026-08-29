@@ -1,5 +1,5 @@
 /**
- * 回放实验室视图：录制 → 零模型调用回放 → 字节一致 + 银行式对账。
+ * 回放台视图：录制 → 零模型调用回放 → 字节一致 + 银行式对账。
  */
 import { api } from "../api.js";
 import { el, esc, badge, toast, empty, loading } from "../app.js";
@@ -13,24 +13,24 @@ export async function renderReplay(root) {
     （注入冻结输出，<b>零模型调用</b>）重放同一脚本，最后做字节一致性检查与 digest chain 对账。</span>`);
 
   const card = el("div", "card");
-  card.append(el("div", "card-head", "<h3>回放实验</h3><span class='sub'>bank-style reconciliation</span>"));
+  card.append(el("div", "card-head", "<h3>回放验证</h3><span class='sub'>bank-style reconciliation</span>"));
   const body = el("div", "card-body");
   const runBtn = el("button", "btn primary", "▶ 一键录制并回放");
-  const tip = el("div", "hint mt8", "实验在独立临时主机上执行，不影响控制台的插件/沙箱状态。");
+  const tip = el("div", "hint mt8", "验证在独立临时主机上执行，不影响控制台的插件/沙箱状态。");
   body.append(runBtn, tip);
 
   const resultWrap = el("div", "mt16");
 
   async function run() {
     runBtn.disabled = true;
-    runBtn.textContent = "实验进行中…";
+    runBtn.textContent = "回放进行中…";
     resultWrap.replaceChildren(loading());
     try {
       const r = await api.replayDemo();
       renderResult(r);
-      toast("回放实验完成，digest chain 校验一致", "ok");
+      toast("回放验证完成，digest chain 校验一致", "ok");
     } catch (err) {
-      resultWrap.replaceChildren(el("div", "alert err", `<span>✕</span><span class="msg">实验失败：${esc(err.message)}</span>`));
+      resultWrap.replaceChildren(el("div", "alert err", `<span>✕</span><span class="msg">回放失败：${esc(err.message)}</span>`));
     } finally {
       runBtn.disabled = false;
       runBtn.textContent = "▶ 一键录制并回放";

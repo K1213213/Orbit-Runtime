@@ -5,6 +5,15 @@
 
 **English** · [简体中文](./README.zh-CN.md)
 
+**Project status:** `pre-alpha` · **License:** Apache-2.0 · **Track:** open-source product (see [roadmap](#roadmap))
+
+> Orbit is developed as an **open-source product**, not a lab experiment. The kernel is
+> production-track engineering: strict TypeScript, zero runtime dependencies, every
+> mechanism backed by tests and an architecture charter
+> ([docs/VISION.md](./docs/VISION.md)). Current phase: kernel mechanisms complete
+> (M1–M4) → product hardening (real model adapters, persistence, CLI, npm publish).
+> Contributions follow [CONTRIBUTING.md](./CONTRIBUTING.md).
+
 Orbit Agent Runtime is a lightweight, dependency-free runtime host for plugin-based AI agents. All external capabilities (model access, storage, IO) are abstracted into **capability channels**; agents never call capabilities directly — everything goes through the channel hub. The kernel is layered with strict one-way dependencies, and every component is private with read-only copies exposed.
 
 ## Highlights
@@ -46,7 +55,7 @@ runtime_host (top-level host)
 
 [Orbit Console](./web/README.md) — a zero-dependency management console that
 drives a real kernel instance over HTTP: lifecycle, channels, plugins,
-sandboxes, trace, deterministic-replay lab, impact graph and cost routing.
+sandboxes, trace, replay studio, impact graph and cost routing.
 
 ```bash
 npm run build
@@ -108,7 +117,11 @@ test/             # unit tests (node:test)
 | M2 | **Deterministic replay** — record non-determinism, replay with zero model calls, digest-chain reconciliation | ✅ Done |
 | M3 | **Impact domain graph** — fault isolation as reverse reachability closure with an isolation theorem, static capability-closure verification | ✅ Done |
 | M4 | **Cost-aware routing** — channel cost/latency/quality profiles, per-cycle sandbox budgets | ✅ Done |
-| M5 | Benchmarks, plugin examples, CI, publishing | In progress |
+| M5 | Product hardening: benchmarks, plugin examples, CI, npm publish | In progress |
+| M6 | **Open-source launch** — `orbit` CLI (`record`/`replay`/`diff`), docs site, first public release | Planned |
+
+> M5/M6 track the `P0` milestones in [docs/PRODUCT_PLAN.md](./docs/PRODUCT_PLAN.md)
+> (P0.1 real capabilities → P0.2 CLI release → P0.3 open-source launch).
 
 ## Design stance vs. existing frameworks
 

@@ -10,7 +10,7 @@
  * Design notes:
  *  - Uses only node:http / node:fs / node:path — no third-party deps,
  *    consistent with the kernel's "zero runtime dependencies" stance.
- *  - The main host is a long-lived singleton; replay-lab demos run on
+ *  - The main host is a long-lived singleton; replay-studio demos run on
  *    throwaway hosts so they never pollute console state.
  *  - A few kernel registries are private; where no read-only accessor is
  *    exported (graph maps, channel hub maps) we mirror the data in this
@@ -335,7 +335,7 @@ const api = {
     return entries.slice(0, Number(query.limit ?? 500));
   },
 
-  /* ---- replay lab (runs on a throwaway host) ---- */
+  /* ---- replay studio (runs on a throwaway host) ---- */
 
   async replayDemo() {
     const lab = new OrbitRuntimeHost();

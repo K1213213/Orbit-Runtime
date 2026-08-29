@@ -805,7 +805,7 @@ textarea { min-height: 76px; resize: vertical; font-family: var(--mono); font-si
 .filter-bar .field { margin: 0; flex: 1; min-width: 160px; }
 .filter-bar .field:nth-child(1) { flex: 1.4; }
 
-/* ---------- 回放：实验舱 ---------- */
+/* ---------- 回放台 ---------- */
 
 .replay-stage { display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; margin-top: 17px; }
 

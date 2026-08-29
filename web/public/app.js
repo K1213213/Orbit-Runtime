@@ -22,7 +22,7 @@ const routes = [
   { path: "plugins", title: "插件注册", render: renderPlugins },
   { path: "boxes", title: "沙箱对话", render: renderBoxes },
   { path: "trace", title: "追踪日志", render: renderTrace },
-  { path: "replay", title: "回放实验室", render: renderReplay },
+  { path: "replay", title: "回放台", render: renderReplay },
   { path: "graph", title: "影响域图", render: renderGraph },
   { path: "routing", title: "成本路由", render: renderRouting }
 ];

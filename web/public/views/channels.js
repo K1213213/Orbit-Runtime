@@ -87,7 +87,7 @@ export async function renderChannels(root) {
     });
 
     dsBody.append(
-      el("p", "sub", "注册后沙箱对话（boxes 页）将走真实模型；支持任意 OpenAI 兼容端点（DeepSeek / OpenAI / 通义 / Kimi / Ollama…）；回放实验室（replay 页）仍可零 API 调用精确重放。"),
+      el("p", "sub", "注册后沙箱对话（boxes 页）将走真实模型；支持任意 OpenAI 兼容端点（DeepSeek / OpenAI / 通义 / Kimi / Ollama…）；回放台（replay 页）仍可零 API 调用精确回放。"),
       form,
       el("div", "btn-row", btn("接入 DeepSeek", "primary", null, form))
     );

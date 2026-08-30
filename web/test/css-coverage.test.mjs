@@ -42,6 +42,13 @@ test("视图引用的类名在 styles.css 均有定义（声明了就必须渲�
       if (m[1].includes("$") || m[1].includes("{")) continue; // 动态模板类名，豁免
       for (const c of m[1].split(/ +/)) if (c) used.add(c);
     }
+    // classList.add/toggle/remove 与 setAttribute("class") 是同样会裸奔的路径
+    for (const m of js.matchAll(/classList\.(?:add|toggle|remove|replace)\(["']([^"']+)["']/g))
+      for (const c of m[1].split(/ +/)) if (c) used.add(c);
+    for (const m of js.matchAll(/setAttribute\(["']class["'],\s*["']([^"']+)["']\)/g))
+      for (const c of m[1].split(/ +/)) if (c) used.add(c);
+    for (const m of js.matchAll(/className\s*=\s*["']([^"']+)["']/g))
+      for (const c of m[1].split(/ +/)) if (c) used.add(c);
     const miss = [...used].filter((c) => /^[a-z][a-zA-Z0-9_-]*$/.test(c) && !definedClasses.has(c));
     if (miss.length) missing[f] = miss.sort();
   }

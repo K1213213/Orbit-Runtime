@@ -1830,16 +1830,42 @@ textarea.input { resize: vertical; min-height: 90px; line-height: 1.55; }
 .stage-card .stage-sub { font-size: 12px; color: var(--text-dim); margin-top: 5px; }
 
 /* ---- 影响域图（graph 视图） ---- */
-.graph-shell { position: relative; }
+.graph-shell { position: relative; overflow-x: auto; -webkit-overflow-scrolling: touch; }
 .graph-shell svg { display: block; width: 100%; height: auto; }
+/* 窄屏：固定 940×520 viewBox 等比缩到不可读，改为横向滚动保持标签可读 */
+@media (max-width: 980px) {
+  .graph-shell svg { min-width: 720px; }
+}
 .graph-legend { display: flex; flex-wrap: wrap; gap: 16px; padding: 12px 18px; font-size: 12px; color: var(--text-dim); }
 .graph-legend .lg { display: inline-flex; align-items: center; gap: 7px; letter-spacing: 0.3px; }
 .graph-legend .sw { width: 11px; height: 11px; border-radius: 50%; display: inline-block; box-shadow: 0 0 8px currentColor; }
 .check-pair { display: flex; gap: 11px; align-items: flex-end; flex-wrap: wrap; }
 .check-pair .field { flex: 1; min-width: 180px; margin: 0; }
 /* 病变扩散高亮：命中边转病变红，未命中边淡出（graph.js 切换） */
+.edge-line { transition: opacity 0.2s var(--ease), stroke 0.2s var(--ease); }
 .edge-line.hit { stroke: var(--lesion) !important; }
 .edge-line.fade { opacity: 0.15; }
+
+/* 节点基础样式（classList 路径，css-coverage 盲区曾漏检）：
+   没有 .node-label 的 fill，SVG text 默认黑色 → 暗色主题下标签不可见 */
+.graph-node { cursor: pointer; }
+.graph-node .node-ring { transition: stroke 0.2s var(--ease), stroke-width 0.2s var(--ease), r 0.2s var(--ease); }
+.graph-node .cell-halo,
+.graph-node .node-label { pointer-events: none; }
+.graph-node .node-label {
+  fill: var(--text);
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  letter-spacing: 0.2px;
+  user-select: none;
+}
+/* 病变节点：标签转猩红 + 节点呼吸脉冲（与 inline 病变着色叠加） */
+.graph-node.lesioned .node-label { fill: var(--lesion); }
+.graph-node.lesioned { animation: lesion-pulse 1.1s ease-in-out infinite; }
+@keyframes lesion-pulse { 50% { opacity: 0.62; } }
+
+/* 血脉能量点：不参与点击命中 */
+.blood-cell { pointer-events: none; }
 
 /* ---- 路由页（routing 视图） ---- */
 .slider-row { display: flex; align-items: center; gap: 13px; }

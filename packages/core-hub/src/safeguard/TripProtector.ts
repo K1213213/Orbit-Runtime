@@ -1,5 +1,6 @@
 import { TripProtectionBlockError } from "@orbit/infra-common";
 import { TripState } from "@orbit/infra-common";
+import type { ClockSource } from "@orbit/infra-common";
 
 const DEFAULT_FAILURE_THRESHOLD = 5;
 const DEFAULT_COOLDOWN_MS = 10_000;
@@ -20,14 +21,24 @@ export class TripProtector {
   private probeSuccesses = 0;
   private trippedAt = 0;
 
+  /**
+   * @param clock Wall-clock source for the cooldown. Injected because the
+   *   cooldown decides {@link preCallCheck}, which the gateway records as the
+   *   `tripAllowed` decision and replay compares field-by-field — reading the
+   *   real clock here would make the recorded decision depend on *when* the run
+   *   happened, so two recordings of the same input could disagree. Defaults to
+   *   the real clock, which preserves the previous behaviour for callers that
+   *   inject nothing.
+   */
   public constructor(
     private readonly failureThreshold: number = DEFAULT_FAILURE_THRESHOLD,
-    private readonly cooldownMs: number = DEFAULT_COOLDOWN_MS
+    private readonly cooldownMs: number = DEFAULT_COOLDOWN_MS,
+    private readonly clock: ClockSource = { now: () => Date.now() }
   ) {}
 
   public async execWithProtect<T>(target: () => Promise<T>): Promise<T> {
     if (this.state === TripState.TRIPPED) {
-      if (Date.now() - this.trippedAt > this.cooldownMs) {
+      if (this.clock.now() - this.trippedAt > this.cooldownMs) {
         this.state = TripState.PROBE;
       } else {
         throw new TripProtectionBlockError("trip protector active, execution blocked");
@@ -56,7 +67,7 @@ export class TripProtector {
    */
   public preCallCheck(): boolean {
     if (this.state === TripState.TRIPPED) {
-      return Date.now() - this.trippedAt > this.cooldownMs;
+      return this.clock.now() - this.trippedAt > this.cooldownMs;
     }
     return true;
   }
@@ -79,7 +90,7 @@ export class TripProtector {
     this.probeSuccesses = 0;
     if (this.state === TripState.PROBE || this.consecutiveFailures >= this.failureThreshold) {
       this.state = TripState.TRIPPED;
-      this.trippedAt = Date.now();
+      this.trippedAt = this.clock.now();
     }
   }
 }

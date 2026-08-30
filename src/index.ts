@@ -27,7 +27,13 @@ export { TraceJournal } from "@orbit/core-hub";
 export { AgentSandbox } from "@orbit/sandbox-runtime";
 export { SandboxPool } from "@orbit/sandbox-runtime";
 
-export { SeededRng, FixedClock, SYSTEM_RNG, SYSTEM_CLOCK } from "@orbit/core-hub";
+// Deliberately NOT exported: SYSTEM_RNG / SYSTEM_CLOCK read Math.random() and
+// Date.now() directly (see core-hub/src/replay/injectors.ts). Re-exporting them
+// from this facade hands callers a way to feed un-injected entropy into a
+// recorded call, which silently breaks determinism — the journal would differ
+// between two recordings of the same input. SeededRng / FixedClock are the
+// supported, reproducible sources.
+export { SeededRng, FixedClock } from "@orbit/core-hub";
 export { RecordJournal } from "@orbit/core-hub";
 export type { ReplayCallRecord } from "@orbit/core-hub";
 export { ReplayEngine, ReplayDriftError } from "@orbit/core-hub";

@@ -19,6 +19,12 @@ import { decodeDomainFrame, encodeDomainFrame, type DomainResponse } from "./pro
 /** How much of a failing host's stderr to keep for diagnostics. */
 const STDERR_TAIL_LIMIT = 2048;
 
+/**
+ * How long a closing domain host gets to exit on its own before it is killed.
+ * Bounded so `close()` can never hang the caller's shutdown.
+ */
+const CLOSE_GRACE_MS = 2000;
+
 export interface IDomainTransport {
   /** Send a request and wait for the correlated response. */
   request(method: string, params: unknown, timeoutMs: number): Promise<DomainResponse>;
@@ -235,9 +241,26 @@ export class ChildProcessDomainTransport implements IDomainTransport {
     this.failAll(new DomainRemoteError("domain transport closed"));
     const child = this.child;
     this.child = null;
-    if (child && child.exitCode === null && !child.killed) {
-      child.kill();
+    if (!child) return;
+    // Closing stdin is what actually makes a well-behaved host exit: a `kill()`
+    // alone races the process, and returning before the exit is observable
+    // leaves an orphan that outlives the kernel that spawned it.
+    try {
+      child.stdin?.end();
+    } catch {
+      /* Peer may already be gone; closing is best-effort. */
     }
+    if (child.exitCode !== null || child.signalCode !== null) return;
+    await new Promise<void>((resolve) => {
+      const timer = setTimeout(() => {
+        child.kill("SIGKILL");
+        resolve();
+      }, CLOSE_GRACE_MS);
+      child.once("exit", () => {
+        clearTimeout(timer);
+        resolve();
+      });
+    });
   }
 }
 

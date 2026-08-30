@@ -1,6 +1,6 @@
 import { TripProtector } from "./TripProtector";
 import { TraceJournal } from "../trace/TraceJournal";
-import type { TraceMarkId, PluginUnitId } from "@orbit/infra-common";
+import type { TraceMarkId, PluginUnitId, ClockSource } from "@orbit/infra-common";
 
 /**
  * Runs plugin business logic under a per-plugin trip protector and records
@@ -12,9 +12,16 @@ import type { TraceMarkId, PluginUnitId } from "@orbit/infra-common";
 export class PluginSandboxGuard {
   private readonly pluginTripMap = new Map<PluginUnitId, TripProtector>();
 
+  /**
+   * @param clock Passed down to every {@link TripProtector} this guard creates,
+   *   so the trip cooldown is driven by the host's injected clock rather than
+   *   the wall clock (see TripProtector's constructor). Optional: omitting it
+   *   keeps the previous real-clock behaviour.
+   */
   public constructor(
     private readonly traceJournal: TraceJournal,
-    private readonly thresholdResolver?: (pluginUnitId: string) => number
+    private readonly thresholdResolver?: (pluginUnitId: string) => number,
+    private readonly clock?: ClockSource
   ) {}
 
   public async runPluginSafe<T>(
@@ -25,7 +32,9 @@ export class PluginSandboxGuard {
     let protector = this.pluginTripMap.get(pluginUnitId);
     if (!protector) {
       const threshold = this.thresholdResolver?.(pluginUnitId);
-      protector = threshold !== undefined ? new TripProtector(threshold) : new TripProtector();
+      // `undefined` leaves TripProtector's own threshold/cooldown defaults in
+      // place; only the clock is threaded through.
+      protector = new TripProtector(threshold, undefined, this.clock);
       this.pluginTripMap.set(pluginUnitId, protector);
     }
 

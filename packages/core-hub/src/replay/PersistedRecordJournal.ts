@@ -22,6 +22,16 @@ import {
 export class PersistedRecordJournal extends RecordJournal {
   private readonly filePath?: string;
   private writeChain: Promise<void> = Promise.resolve();
+  /**
+   * The first write the fire-and-forget chain lost, if any.
+   *
+   * An append must not reject — a failed disk write cannot abort a call that is
+   * already in flight — so the failure is parked here and re-raised by
+   * {@link flush}. Without it, `flush()` awaits a chain that has already been
+   * swallowed into a resolved promise and reports success while the record was
+   * silently dropped (ENOSPC, EACCES, a read-only mount...).
+   */
+  private lastError: unknown = null;
 
   /**
    * @param filePath WAL path; omit to behave exactly like the in-memory base.
@@ -33,9 +43,8 @@ export class PersistedRecordJournal extends RecordJournal {
     super();
     this.filePath = filePath;
     if (filePath && opts?.truncate === true) {
-      this.writeChain = walReset(filePath).catch(() => {
-        /* surfaced via flush(); a failed reset must not abort construction */
-      });
+      // A failed reset is surfaced via flush(); it must not abort construction.
+      this.enqueue(() => walReset(filePath));
     }
   }
 
@@ -43,17 +52,30 @@ export class PersistedRecordJournal extends RecordJournal {
     const entry = super.append(record);
     if (this.filePath) {
       const target = this.filePath;
-      this.writeChain = this.writeChain
-        .then(() => walAppend(target, entry))
-        .catch(() => {
-          /* surfaced via flush(); a missed append must not abort the live call */
-        });
+      // A missed append must not abort the live call, so the write stays
+      // fire-and-forget: the error is parked for flush() instead of thrown here.
+      this.enqueue(() => walAppend(target, entry));
     }
     return entry;
   }
 
   public override flush(): Promise<void> {
-    return this.writeChain;
+    return this.writeChain.then(() => {
+      if (this.lastError !== null) throw this.lastError;
+    });
+  }
+
+  /**
+   * Queue a durable write behind every previous one, keeping the chain
+   * unbroken: the chain itself never rejects, so a later append is never
+   * skipped because an earlier write failed. The failure is retained for
+   * {@link flush} instead — the FIRST one, since that is the root cause and the
+   * rest are usually the same fault repeated.
+   */
+  private enqueue(task: () => Promise<void>): void {
+    this.writeChain = this.writeChain.then(task).catch((err: unknown) => {
+      if (this.lastError === null) this.lastError = err;
+    });
   }
 
   /**
@@ -70,9 +92,14 @@ export class PersistedRecordJournal extends RecordJournal {
     if (!this.filePath) return Promise.resolve(0);
     const target = this.filePath;
     const run = this.writeChain.then(() => walCompact(target, this.snapshot()));
+    // The chain stays unbroken for later writes (hence the swallowed
+    // rejection), but a failed compaction is durable data loss all the same —
+    // park it so flush() reports it rather than losing it here.
     this.writeChain = run.then(
       () => undefined,
-      () => undefined
+      (err: unknown) => {
+        if (this.lastError === null) this.lastError = err;
+      }
     );
     return run;
   }

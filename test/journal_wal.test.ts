@@ -567,3 +567,133 @@ test("persisted trace journal: compact heals a truncated tail and no-ops without
   assert.equal(await new PersistedTraceJournal().compact(), 0);
   await fs.rm(dir, { recursive: true, force: true });
 });
+
+// --------------------------------------------------- failed writes must surface
+
+/**
+ * A WAL path that cannot be written: its parent is a regular file, so the
+ * `mkdir` inside every WAL write fails (EEXIST here, ENOTDIR on POSIX). Either
+ * way the write is refused — the exact errno is the platform's business.
+ */
+async function unwritableWalPath(prefix: string): Promise<{ dir: string; file: string }> {
+  const dir = await tempDir(prefix);
+  const blocker = path.join(dir, "blocker");
+  await fs.writeFile(blocker, "not a directory", "utf8");
+  return { dir, file: path.join(blocker, "log.jsonl") };
+}
+
+test("persisted record journal: a lost append makes flush() reject", async () => {
+  const { dir, file } = await unwritableWalPath("orbit-walfail-");
+  const journal = new PersistedRecordJournal(file);
+  // The append itself must not throw: a failed disk write cannot abort a call
+  // that is already in flight.
+  seedRecordJournal(journal);
+  assert.equal(journal.size(), 2, "the in-memory journal is still the source of truth");
+
+  await assert.rejects(journal.flush(), (err: unknown) => {
+    assert.ok(err instanceof Error);
+    return true;
+  });
+  await fs.rm(dir, { recursive: true, force: true });
+});
+
+test("persisted trace journal: a lost append makes flush() reject", async () => {
+  const { dir, file } = await unwritableWalPath("orbit-walfail-");
+  const journal = new PersistedTraceJournal(file);
+  journal.append({ entryClass: "boot", traceMarkId: "t1", factPayload: {} });
+
+  await assert.rejects(journal.flush(), (err: unknown) => {
+    assert.ok(err instanceof Error);
+    return true;
+  });
+  await fs.rm(dir, { recursive: true, force: true });
+});
+
+test("persisted journals: flush() stays rejected so a retry cannot report a false success", async () => {
+  const { dir, file } = await unwritableWalPath("orbit-walfail-");
+  const journal = new PersistedRecordJournal(file);
+  seedRecordJournal(journal);
+
+  await assert.rejects(journal.flush());
+  // Sticky on purpose: once a write has been lost, no later flush may claim the
+  // record is durable. Otherwise `shutdownHost` could report a clean shutdown
+  // for a window it silently dropped.
+  await assert.rejects(journal.flush());
+  await fs.rm(dir, { recursive: true, force: true });
+});
+
+test("persisted record journal: a failed truncate surfaces through flush(), not the constructor", async () => {
+  const { dir, file } = await unwritableWalPath("orbit-walfail-");
+  // Constructing must not throw — a bad path is a durability problem to report
+  // at flush time, not a reason the host cannot boot.
+  const journal = new PersistedRecordJournal(file, { truncate: true });
+  await assert.rejects(journal.flush());
+  await fs.rm(dir, { recursive: true, force: true });
+});
+
+test("persisted record journal: a failed compaction is not swallowed before flush()", async () => {
+  const { dir, file } = await unwritableWalPath("orbit-walfail-");
+  const journal = new PersistedRecordJournal(file);
+  seedRecordJournal(journal);
+
+  // compact() rejects for its own caller...
+  await assert.rejects(journal.compact());
+  // ...and the failure is still parked for flush(), which is what a shutdown
+  // path actually awaits.
+  await assert.rejects(journal.flush());
+  await fs.rm(dir, { recursive: true, force: true });
+});
+
+test("persisted trace journal: a failed compaction is not swallowed before flush()", async () => {
+  const { dir, file } = await unwritableWalPath("orbit-walfail-");
+  const journal = new PersistedTraceJournal(file);
+  journal.append({ entryClass: "boot", traceMarkId: "t1", factPayload: {} });
+
+  await assert.rejects(journal.compact());
+  await assert.rejects(journal.flush());
+  await fs.rm(dir, { recursive: true, force: true });
+});
+
+test("persisted record journal: healIfNeeded propagates a failed compaction", async () => {
+  const { dir, file } = await unwritableWalPath("orbit-walfail-");
+  const journal = new PersistedRecordJournal(file);
+  seedRecordJournal(journal);
+
+  // The line count (0) disagrees with size() (2), so healing is attempted and
+  // the failed rewrite must not be quietly ignored.
+  await assert.rejects(journal.healIfNeeded());
+  await fs.rm(dir, { recursive: true, force: true });
+});
+
+test("persisted journals: a writable path still flushes cleanly (no false positives)", async () => {
+  const dir = await tempDir("orbit-walok-");
+  const file = path.join(dir, "record.wal.jsonl");
+  const journal = new PersistedRecordJournal(file);
+  seedRecordJournal(journal);
+  await assert.doesNotReject(journal.flush());
+  assert.equal((await PersistedRecordJournal.recover(file)).size(), 2);
+  await fs.rm(dir, { recursive: true, force: true });
+});
+
+test("persisted journals: appends after a failure still queue (the chain never breaks)", async () => {
+  const dir = await tempDir("orbit-walfail-");
+  const blocker = path.join(dir, "blocker");
+  await fs.writeFile(blocker, "not a directory", "utf8");
+  const file = path.join(blocker, "log.jsonl");
+
+  const journal = new PersistedRecordJournal(file);
+  seedRecordJournal(journal);
+  await assert.rejects(journal.flush());
+  // A journal that stopped accepting work after one bad write would break the
+  // live run as well as the durable one.
+  journal.append({
+    channelKind: ChannelKind.MEM_KV_STORE,
+    funcName: "writeEntry",
+    inputDigest: digestInputs("k3"),
+    outputSnapshot: true,
+    durationMs: 1
+  });
+  assert.equal(journal.size(), 3);
+  await assert.rejects(journal.flush());
+  await fs.rm(dir, { recursive: true, force: true });
+});

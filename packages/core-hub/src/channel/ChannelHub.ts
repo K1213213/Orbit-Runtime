@@ -170,13 +170,31 @@ export class ChannelHub {
     }
   }
 
-  /** Tear down every channel and drop all pooled call contexts. */
+  /**
+   * Tear down every channel and drop all pooled call contexts.
+   *
+   * Releases are isolated: a provider whose teardown throws must not strand the
+   * ones behind it (each of those may own a child process), and must not skip
+   * the final `clear()` — otherwise one failing MCP teardown leaks every
+   * remaining channel. A thrown teardown is therefore contained, not propagated.
+   */
   public async teardown(): Promise<void> {
+    // Sequential and isolated rather than parallel: release order stays the
+    // observable, deterministic one built-ins-then-extensions, and a throw
+    // cannot strand the channels behind it.
     for (const provider of this.builtInChannelMap.values()) {
-      await provider.teardown();
+      try {
+        await provider.teardown();
+      } catch {
+        /* Releasing one channel must not mask the release of the others. */
+      }
     }
     for (const provider of this.pluginExtChannelMap.values()) {
-      await provider.teardown();
+      try {
+        await provider.teardown();
+      } catch {
+        /* Releasing one channel must not mask the release of the others. */
+      }
     }
     this.builtInChannelMap.clear();
     this.pluginExtChannelMap.clear();

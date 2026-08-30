@@ -6,6 +6,7 @@ import { TripProtector } from "../safeguard/TripProtector";
 import { TripProtectionBlockError } from "@orbit/infra-common";
 import { makeUniqueMark } from "@orbit/infra-common";
 import { ChannelKind, ChannelCallCtx, ReplayMode, GatewayDecision, RunVersionFingerprint } from "@orbit/infra-common";
+import type { ClockSource } from "@orbit/infra-common";
 import { GatewayCheckers, RunFingerprintDriftError, DecisionDriftError } from "./types";
 import { packSnapshot, isCompressedPayload, decompressPayload } from "../gateway/TokenBudgetEngine";
 import { BehaviorCollector } from "./BehaviorCollector";
@@ -48,9 +49,16 @@ export class CapabilityGateway {
   /** The decision of the most recently served call (surfaced for audit). */
   public lastDecision: GatewayDecision | null = null;
 
+  /**
+   * @param clock Passed to the per-plugin {@link TripProtector}s created here.
+   *   The trip decision is part of every recorded `GatewayDecision`, so the
+   *   cooldown must not read the real wall clock. Optional: omitting it keeps
+   *   the previous behaviour.
+   */
   public constructor(
     private readonly hub: ChannelHub,
-    private readonly checkers: GatewayCheckers
+    private readonly checkers: GatewayCheckers,
+    private readonly clock?: ClockSource
   ) {}
 
   /** Attach the journal that record-mode calls are appended to. */
@@ -249,7 +257,7 @@ export class CapabilityGateway {
     if (!pluginId) return null;
     let t = this.tripMap.get(pluginId);
     if (!t) {
-      t = new TripProtector();
+      t = new TripProtector(undefined, undefined, this.clock);
       this.tripMap.set(pluginId, t);
     }
     return t;

@@ -308,10 +308,22 @@ export class PaeAdapterRegistry {
     }
   }
 
-  /** Release every adapter, then forget the setup state. */
+  /**
+   * Release every adapter, then forget the setup state.
+   *
+   * Releases are isolated: an adapter that throws during teardown must not
+   * strand the ones behind it — each of those may own a child process — and
+   * must not skip the final `clear()`. Without this, a single failing MCP
+   * teardown leaks every remaining adapter.
+   */
   public async teardownAll(): Promise<void> {
     for (const adapter of this.adapters.values()) {
-      if (adapter.teardown) await adapter.teardown();
+      if (!adapter.teardown) continue;
+      try {
+        await adapter.teardown();
+      } catch {
+        /* Releasing one adapter must not mask the release of the others. */
+      }
     }
     this.setupDone.clear();
   }

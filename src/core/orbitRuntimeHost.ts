@@ -49,6 +49,13 @@ export interface OrbitRuntimeHostOptions {
   /** Durable recording-window journal WAL path (recovered on boot). */
   recordJournalPath?: string;
   /**
+   * Wall-clock source for every time-dependent decision that reaches a recorded
+   * value (trip cooldown, channel TTLs). Injecting a frozen clock makes a
+   * recording window reproducible; omitting it keeps the real clock, which is
+   * the previous behaviour.
+   */
+  clock?: ClockSource;
+  /**
    * Retention bound for the durable audit journal: keep at most this many
    * newest entries. An append-only audit log that grows without limit
    * eventually fills the disk, and a full disk is an outage — so the bound is
@@ -99,6 +106,8 @@ export class OrbitRuntimeHost {
   private domainsStaleFlag = false;
   /** W27: durable recording-window journal WAL path, if configured. */
   private readonly recordJournalPath?: string;
+  /** Injected clock, threaded to every time-dependent decision that is recorded. */
+  private readonly clock?: ClockSource;
   /** W27: the recording window currently attached to the gateway (for flush). */
   private activeRecordJournal: RecordJournal | null = null;
   /**
@@ -112,6 +121,7 @@ export class OrbitRuntimeHost {
 
   public constructor(opts?: OrbitRuntimeHostOptions) {
     this.recordJournalPath = opts?.recordJournalPath;
+    this.clock = opts?.clock;
     if (opts?.auditRetention !== undefined) {
       if (!Number.isInteger(opts.auditRetention) || opts.auditRetention < 0) {
         throw new RangeError(
@@ -131,8 +141,10 @@ export class OrbitRuntimeHost {
     this.traceJournal = this.durableTraceJournal;
     this.impactGraph = new ImpactDomainGraph();
     this.pluginPactVerifier = new PluginPactVerifier();
-    this.pluginSandboxGuard = new PluginSandboxGuard(this.traceJournal, (pluginId) =>
-      Math.max(2, 5 - this.impactGraph.outDegree(pluginId))
+    this.pluginSandboxGuard = new PluginSandboxGuard(
+      this.traceJournal,
+      (pluginId) => Math.max(2, 5 - this.impactGraph.outDegree(pluginId)),
+      opts?.clock
     );
     this.sandboxPool = new SandboxPool(this.channelHub, this.traceJournal, this.costRouter);
 
@@ -171,11 +183,11 @@ export class OrbitRuntimeHost {
         this.rateLimiter.acquire(pluginId);
       }
     };
-    this.gateway = new CapabilityGateway(this.channelHub, checkers);
+    this.gateway = new CapabilityGateway(this.channelHub, checkers, opts?.clock);
     // W11: collectors/hooks live inside the gateway; attach the host-owned one.
     this.gateway.attachCollector(this.behaviorCollector);
 
-    this.channelHub.registerBuiltInChannel(ChannelKind.MEM_KV_STORE, new MemoryKvChannel());
+    this.channelHub.registerBuiltInChannel(ChannelKind.MEM_KV_STORE, new MemoryKvChannel(this.clock));
     this.channelHub.registerBuiltInChannel(ChannelKind.LLM_ACCESS, new LlmMockChannel());
     // W15: the adaptation surface is a built-in channel with no tools until an
     // adapter is registered — foreign runtimes get no private path in.
@@ -269,8 +281,23 @@ export class OrbitRuntimeHost {
   public async shutdownHost(): Promise<void> {
     // W27: drain any pending WAL writes before tearing components down, so the
     // last recorded calls/audit entries are not lost on a clean shutdown.
-    await this.activeRecordJournal?.flush();
-    await this.traceJournal.flush();
+    //
+    // A drain that loses a write now reports it (see PersistedRecordJournal),
+    // but the teardown below must still run to completion: aborting here would
+    // leak every child process and foreign adapter the host owns. So the flush
+    // failure is carried and re-raised only after the release is done — the
+    // caller gets the signal *and* a clean process.
+    let drainError: unknown = null;
+    try {
+      await this.activeRecordJournal?.flush();
+    } catch (err) {
+      drainError = err;
+    }
+    try {
+      await this.traceJournal.flush();
+    } catch (err) {
+      drainError ??= err;
+    }
     // Bound the log *at rest*: flush first so nothing pending is lost, then
     // apply retention. Order matters — pruning before the flush would let the
     // drained writes push the file back over the bound.
@@ -287,6 +314,7 @@ export class OrbitRuntimeHost {
     this.paeRegistry.clear();
     this.traceJournal.clear();
     this.impactGraph.clear();
+    if (drainError !== null) throw drainError;
   }
 
   // Facade -----------------------------------------------------------

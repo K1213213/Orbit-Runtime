@@ -28,6 +28,15 @@ export class FixedClock implements ClockSource {
   }
 }
 
-/** Live defaults used when no injection is configured. */
+/**
+ * Live defaults used when no injection is configured.
+ *
+ * INTERNAL — these read `Math.random()` / `Date.now()` directly, so they are the
+ * one place in the kernel allowed to (charter A1). They exist as the fallback
+ * for components that take an optional injected source, and are intentionally
+ * not re-exported from the public facade: a caller who reaches for them gets
+ * entropy that no journal can reproduce. Use {@link SeededRng} /
+ * {@link FixedClock} for anything whose output is recorded.
+ */
 export const SYSTEM_RNG: RngSource = { next: () => Math.random() };
 export const SYSTEM_CLOCK: ClockSource = { now: () => Date.now() };

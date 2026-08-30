@@ -188,6 +188,11 @@ export class FileChannel implements IChannelProvider {
     if (relPath.includes("\0")) {
       throw new ChannelCallFaultError("file channel path contains a null byte");
     }
+    // 拒绝 Windows 风格分隔符：Unix 上 `\` 不是分隔符，path.resolve 不会展开它，
+    // 但同一代码在 Windows 部署时 `..\..` 可穿越 root；统一按非法路径输入拒绝。
+    if (relPath.includes("\\")) {
+      throw new ChannelCallFaultError(`path escapes the file channel root: ${relPath}`);
+    }
     const abs = path.resolve(this.rootAbs, relPath);
     if (abs !== this.rootAbs && !abs.startsWith(this.rootAbs + path.sep)) {
       throw new ChannelCallFaultError(`path escapes the file channel root: ${relPath}`);

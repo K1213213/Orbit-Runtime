@@ -148,6 +148,20 @@ export class ChildProcessCordisTransport implements ICordisTransport {
        */
       this.stderrTail = (this.stderrTail + chunk).slice(-STDERR_TAIL_LIMIT);
     });
+    /*
+     * A dying host can EPIPE an in-flight write; the stdin stream then emits an
+     * 'error' event that becomes an uncaught exception without a listener. The
+     * 'exit' handler already fails every in-flight request, so this listener
+     * only keeps the failure inside the channel. stdout/stderr read-stream
+     * errors are likewise swallowed — diagnostics go through the stderr tail.
+     */
+    child.stdin?.on("error", (err) => {
+      if (!this.fatal) {
+        this.failAll(new PaeRemoteError(`cordis host stdin error: ${err.message}`));
+      }
+    });
+    child.stdout?.on("error", () => {});
+    child.stderr?.on("error", () => {});
     child.on("error", (err) =>
       this.failAll(new PaeRemoteError(`cordis spawn failed: ${err.message}${this.stderrContext()}`))
     );

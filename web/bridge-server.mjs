@@ -1160,7 +1160,12 @@ const api = {
       /* New contract: the console sends positional args directly. */
       args = body.args;
     } else {
-      const argText = String(body?.argText ?? "");
+      /*
+       * The console sends the typed argument as a string under `args`; older
+       * callers used `argText`. Accept both — dropping it silently made the
+       * Adapter Studio invoke console swallow user input.
+       */
+      const argText = String(body?.argText ?? body?.args ?? "");
       if (meta?.template === "add") {
         args = argText.split(",").map((s) => Number(s.trim())).filter((n) => !Number.isNaN(n));
       } else if (meta?.template === "mcp") {

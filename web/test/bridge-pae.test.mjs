@@ -54,6 +54,14 @@ test("经 capabilityInvoke 调用 echo 返回入参，route=pae", async () => {
   assert.ok(typeof inv.ms === "number");
 });
 
+test("调用台字符串入参不被吞：args(字符串) 与 argText 等价（回归：曾静默丢弃）", async () => {
+  const inv = await withAdapter("it.echo", { template: "echo", name: "itEchoStr", ...FULL }, async () => {
+    // 视图经 api.invokePae(toolName, 字符串) 发送，body 里是 args 而非 argText。
+    return api.invokePae({ toolName: "itEchoStr", args: "hello via args" });
+  });
+  assert.equal(inv.output, "hello via args", "字符串 args 必须送达工具");
+});
+
 test("hash 模板确定性：相同入参两次结果一致且为 64 位 hex", async () => {
   const [a, b] = await withAdapter("it.hash", { template: "hash", name: "itHash", ...FULL }, async () => {
     const x = await api.invokePae({ toolName: "itHash", argText: "orbit" });

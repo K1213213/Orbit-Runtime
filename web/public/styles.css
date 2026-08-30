@@ -851,6 +851,80 @@ textarea.input { resize: vertical; min-height: 90px; line-height: 1.55; }
   to { stroke-dashoffset: -240; opacity: 0; }
 }
 
+/* ---- 登录左侧动态科技特效：分层轨道球 + 扫描线 + 透视网格地面 + 漂浮粒子 ----
+   全部 CSS keyframes 驱动（无 JS 随机，刷新后相位确定）；html[data-motion="off"]
+   与 prefers-reduced-motion 由全局规则统一关闭。 */
+
+/* 轨道球：虚线环 / 倾斜椭圆 / 扫描扇绕球心旋转，脉冲核缩放 */
+.hero-orb .hero-orb-ring { pointer-events: none; }
+.hero-orb .orb-dash,
+.hero-orb .hero-orb-sweep,
+.hero-orb .hero-orb-tilt {
+  transform-box: view-box;
+  transform-origin: 50% 50%;
+}
+.hero-orb .orb-dash { animation: hero-orb-spin 12s linear infinite; }
+.hero-orb .hero-orb-tilt { animation: hero-orb-spin-rev 24s linear infinite; }
+.hero-orb .hero-orb-sweep { animation: hero-orb-spin 8s linear infinite; }
+.hero-orb .hero-orb-core {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: hero-core-pulse 2.6s ease-in-out infinite;
+}
+@keyframes hero-orb-spin { to { transform: rotate(360deg); } }
+@keyframes hero-orb-spin-rev { to { transform: rotate(-360deg); } }
+@keyframes hero-core-pulse {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.85); opacity: 0.5; }
+}
+
+/* 扫描线：自上而下扫过左侧氛围区 */
+.hero-scan {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -140px;
+  height: 120px;
+  background: linear-gradient(180deg, transparent, rgba(99, 102, 241, 0.13) 45%, rgba(56, 189, 248, 0.10) 60%, transparent);
+  pointer-events: none;
+  animation: hero-scan-run 7.5s linear infinite;
+}
+@keyframes hero-scan-run { from { top: -140px; } to { top: 100%; } }
+
+/* 透视网格地面：底部地板缓慢前移（无缝循环：位移 = 一个格距） */
+.hero-grid {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 200px;
+  pointer-events: none;
+  background-image:
+    linear-gradient(rgba(99, 102, 241, 0.12) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(99, 102, 241, 0.12) 1px, transparent 1px);
+  background-size: 32px 32px;
+  transform: perspective(380px) rotateX(56deg);
+  transform-origin: bottom;
+  -webkit-mask-image: linear-gradient(180deg, transparent, #000 55%);
+  mask-image: linear-gradient(180deg, transparent, #000 55%);
+  animation: hero-grid-run 8s linear infinite;
+}
+@keyframes hero-grid-run { to { background-position: 0 32px, 0 32px; } }
+
+/* 漂浮粒子点：透明 → 浮现 → 隐去（延迟由硬编码数组推导，确定性） */
+.auth-particle-dot {
+  fill: var(--brand-2);
+  opacity: 0;
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: hero-float 6.5s ease-in-out infinite;
+}
+@keyframes hero-float {
+  0%, 100% { transform: translateY(0); opacity: 0; }
+  30% { opacity: 0.85; }
+  70% { opacity: 0.35; }
+}
+
 /* 右侧登录卡 */
 .auth-panel {
   display: flex;

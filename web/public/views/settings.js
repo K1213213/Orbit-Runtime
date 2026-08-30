@@ -30,6 +30,15 @@ const ACTION_LABEL = {
   settings: "系统设置"
 };
 
+/** 行式字段：标签 + 控件（各视图自带的本地助手，勿依赖跨文件作用域）。 */
+function field(text, control) {
+  const f = el("div", "field");
+  f.style.marginBottom = "0";
+  f.append(el("label", "", esc(text)));
+  f.append(control);
+  return f;
+}
+
 export async function renderSettings(root) {
   const me = currentUserInfo() ?? {};
   const role = me.role ?? "viewer";

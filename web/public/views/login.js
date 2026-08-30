@@ -38,6 +38,9 @@ export function renderLogin(root, onAuthed) {
   }
   hero.append(tags);
   hero.append(particlesSvg());
+  /* 动态科技特效层：扫描线自上而下、透视网格地面向前流动（CSS 驱动，确定性）。 */
+  hero.append(el("div", "hero-scan"));
+  hero.append(el("div", "hero-grid"));
 
   /* ---- 右：表单 ---- */
   const panel = el("div", "auth-panel");
@@ -245,10 +248,21 @@ function orbSvg() {
   const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
   svg.setAttribute("class", "hero-orb");
   svg.setAttribute("viewBox", "0 0 40 40");
+  /*
+   * 分层轨道球：基环 + 旋转虚线环（雷达感）+ 倾斜椭圆进动（陀螺仪感）+
+   * 旋转扫描扇 + 脉冲核。全部由 CSS keyframes 驱动（确定性：无 JS 随机），
+   * 动效开关 / prefers-reduced-motion 由全局规则统一关闭。
+   */
   svg.innerHTML = `
-    <circle cx="20" cy="20" r="16" fill="none" stroke="currentColor" stroke-width="2.5" />
-    <ellipse cx="20" cy="20" rx="7" ry="16" fill="none" stroke="currentColor" stroke-width="1.5" transform="rotate(58 20 20)" />
-    <circle cx="20" cy="20" r="2.8" fill="currentColor" />`;
+    <g class="hero-orb-ring" transform="rotate(0 20 20)">
+      <circle cx="20" cy="20" r="16" fill="none" stroke="currentColor" stroke-width="2.5" />
+      <circle class="orb-dash" cx="20" cy="20" r="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-dasharray="20 7.5" stroke-linecap="round" />
+    </g>
+    <g transform="rotate(58 20 20)">
+      <ellipse class="hero-orb-tilt" cx="20" cy="20" rx="7" ry="16" fill="none" stroke="currentColor" stroke-width="1.5" />
+    </g>
+    <path class="hero-orb-sweep" d="M20 20 L20 4 A16 16 0 0 1 31.31 8.69 Z" fill="currentColor" opacity="0.16" />
+    <circle class="hero-orb-core" cx="20" cy="20" r="2.8" fill="currentColor" />`;
   return svg;
 }
 
@@ -265,6 +279,17 @@ function particlesSvg() {
     line.setAttribute("y2", String(y + 6));
     line.style.animationDelay = `-${(r % 12)}s`;
     svg.append(line);
+  }
+  /* 漂浮粒子点：延迟由硬编码数组推导（确定性），非裸随机。 */
+  for (let i = 0; i < PARTICLES.length; i += 1) {
+    const [x, y] = PARTICLES[i];
+    const dot = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+    dot.setAttribute("class", "auth-particle-dot");
+    dot.setAttribute("cx", String(x));
+    dot.setAttribute("cy", String(y));
+    dot.setAttribute("r", "0.9");
+    dot.style.animationDelay = `${(i * 1.7) % 10}s`;
+    svg.append(dot);
   }
   return svg;
 }

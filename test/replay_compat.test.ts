@@ -19,6 +19,9 @@ import { InMemoryMcpTransport } from "../src/pae/adapters/mcp/transport";
 import { MCP_PROTOCOL_VERSION } from "../src/pae/adapters/mcp/protocol";
 import { OpenApiPaeAdapter } from "../src/pae/adapters/openapi/OpenApiPaeAdapter";
 import { InMemoryHttpTransport } from "../src/pae/adapters/openapi/transport";
+import { CordisPaeAdapter } from "../src/pae/adapters/cordis/CordisPaeAdapter";
+import { InMemoryCordisTransport } from "../src/pae/adapters/cordis/transport";
+import { CORDIS_PROTOCOL_VERSION } from "../src/pae/adapters/cordis/protocol";
 import { digestInputs } from "../src/utils/digest";
 import { ChannelKind, ChannelCallCtx, ReplayMode } from "../src/types/orbitDomain";
 
@@ -742,5 +745,100 @@ test("replay_compat OpenAPI: a trace replays after the server is gone", async ()
     { msg: "gone" }
   );
   assert.deepEqual(replayed, live, "replay needs the journal, never the foreign server");
+  await hub.teardown();
+});
+
+// ---------------------------------------------------------------------------
+// Cordis adaptation surface (W18) — merge gate for isolated plugin hosts
+// ---------------------------------------------------------------------------
+
+test("replay_compat Cordis: replay serves the host's output without re-entering the process", async () => {
+  let hostCalls = 0;
+  const transport = new InMemoryCordisTransport((method: string, params: unknown) => {
+    if (method === "initialize") {
+      return { protocolVersion: CORDIS_PROTOCOL_VERSION, hostInfo: { name: "compat-cordis", version: "1.0.0" } };
+    }
+    if (method === "tools/list") return { tools: [{ name: "renderCard", description: "render a card" }] };
+    if (method === "tools/call") {
+      hostCalls += 1;
+      const p = params as { arguments: Record<string, unknown> };
+      return { card: `card:${String(p.arguments.title)}` };
+    }
+    throw new Error(`unexpected method ${method}`);
+  });
+
+  const registry = new PaeAdapterRegistry();
+  const adapter = new CordisPaeAdapter({
+    adapterId: "cordis-compat",
+    sourceEdition: "1.0.0",
+    transport
+  });
+  await adapter.setup(makeCtx("record"));
+  registry.register(adapter);
+
+  const hub = new ChannelHub();
+  hub.registerBuiltInChannel(ChannelKind.PAE_TOOL, new PaeChannel(registry));
+  await hub.setupAllBuiltInChannels(makeCtx("record"));
+
+  const { live, replayed, reconcileDigestChain } = await recordThenReplay(hub, async (mode) =>
+    hub.fireChannelCall<string>(ChannelKind.PAE_TOOL, makeCtx(mode), "renderCard", { title: "orbit" })
+  );
+
+  assert.deepEqual(live, { card: "card:orbit" });
+  assert.deepEqual(replayed, live);
+  assert.equal(JSON.stringify(replayed), JSON.stringify(live), "byte-identical across a process boundary");
+  assert.equal(hostCalls, 1, "the host is entered exactly once, during recording");
+  assert.ok(reconcileDigestChain);
+  await hub.teardown();
+});
+
+test("replay_compat Cordis: a trace replays after its host is gone", async () => {
+  const transport = new InMemoryCordisTransport((method: string) => {
+    if (method === "initialize") {
+      return { protocolVersion: CORDIS_PROTOCOL_VERSION, hostInfo: { name: "cordis", version: "1.0.0" } };
+    }
+    if (method === "tools/list") return { tools: [{ name: "hostLookup" }] };
+    return { value: "host-value" };
+  });
+  const registry = new PaeAdapterRegistry();
+  const adapter = new CordisPaeAdapter({
+    adapterId: "cordis-ephemeral",
+    sourceEdition: "1.0.0",
+    transport
+  });
+  await adapter.setup(makeCtx("record"));
+  registry.register(adapter);
+
+  const channel = new PaeChannel(registry);
+  const hub = new ChannelHub();
+  hub.registerBuiltInChannel(ChannelKind.PAE_TOOL, channel);
+  await hub.setupAllBuiltInChannels(makeCtx("record"));
+
+  const recordJournal = new RecordJournal();
+  hub.attachRecordJournal(recordJournal);
+  const live = await hub.fireChannelCall<{ value: string }>(
+    ChannelKind.PAE_TOOL,
+    makeCtx("record"),
+    "hostLookup",
+    {}
+  );
+  assert.deepEqual(live, { value: "host-value" });
+
+  /*
+   * The Cordis host is shut down and its adapter removed — as it would be on a
+   * machine without the plugin instance, its credentials, or its runtime.
+   * Replaying must depend on the journal alone.
+   */
+  registry.unregister("cordis-ephemeral");
+  channel.syncTools();
+
+  hub.attachReplayEngine(new ReplayEngine(recordJournal));
+  const replayed = await hub.fireChannelCall<{ value: string }>(
+    ChannelKind.PAE_TOOL,
+    makeCtx("replay"),
+    "hostLookup",
+    {}
+  );
+  assert.deepEqual(replayed, live, "replay needs the journal, never the foreign host");
   await hub.teardown();
 });

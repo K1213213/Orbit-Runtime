@@ -116,6 +116,35 @@ special-casing.
   `InMemoryHttpTransport`, `FetchHttpTransport`, `parseOpenApiDocument`,
   `buildHttpRequest`, `normaliseHttpResponse`, `resolveDocumentBaseUrl`.
 
+### W18 — Cordis adapter (isolated plugin hosts)
+- **`protocol.ts` — host-defined wire format, pure.** A Cordis isolated
+  instance (VISION: 事件锁在域内，跨域为事务) is a plugin host process with no
+  standardised protocol, so the kernel defines one. The envelope borrows
+  JSON-RPC 2.0's discipline (id, result XOR error) but is deliberately
+  self-contained — adapter families stay independent, and a protocol revision
+  here cannot ripple into MCP. `decodeFrame` skips blank/log lines and rejects
+  envelope violations; `parseCordisToolList` treats a malformed host as a hard
+  error; `normaliseCordisToolResult` passes host results through verbatim.
+- **`transport.ts` — injected seam.** `ICordisTransport` + in-memory
+  implementation for network-free tests, and `ChildProcessCordisTransport`
+  (spawn `node` host, newline-delimited JSON, correlated responses, caller
+  deadlines, in-flight requests failed when the host dies, bounded stderr tail
+  surfaced on failure). Same responsibilities as the MCP stdio transport.
+- **`CordisPaeAdapter`** — `kind: "cordis"`, `isolation: "L2"`, `IO_BOUND` like
+  every cross-process family. `setup()` performs the `initialize` handshake,
+  adopts the host-reported version as `sourceEdition` (semver-guarded, `0.0.0`
+  placeholder until then), then discovers the tool surface via `tools/list`.
+  Default fidelity is **`reduced`** with an honest note: validation is remote
+  (the announced `input` shape is not locally enforced), results are whatever
+  JSON the host returns, and the host's internal events and services stay
+  inside the isolated instance. `toolNamePrefix` and per-tool overrides follow
+  the MCP pattern. Closes the W15–W18 difficulty ladder: JS (L0) → MCP (L2,
+  standard protocol) → OpenAPI (L2, stateless) → Cordis (L2, host-defined
+  protocol).
+- Public API: `CordisPaeAdapter`, `CORDIS_DEFAULT_FIDELITY_NOTE`,
+  `InMemoryCordisTransport`, `ChildProcessCordisTransport`, `encodeFrame`,
+  `decodeFrame`, `parseCordisToolList`, `normaliseCordisToolResult`.
+
 ### Console
 - **Adapter Studio** (`web/public/views/pae.js`) — the PAE surface becomes
   operable: pick a tool template, register the adapter, negotiate fidelity, then

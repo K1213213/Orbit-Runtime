@@ -106,6 +106,31 @@ export type {
   ParsedOpenApiDocument,
   NormalisedHttpResponse
 } from "./pae/adapters/openapi/spec";
+// W18: Cordis — a host-defined protocol to an isolated plugin instance (L2).
+export { CordisPaeAdapter, CORDIS_DEFAULT_FIDELITY_NOTE } from "./pae/adapters/cordis/CordisPaeAdapter";
+export type { CordisPaeAdapterConfig, CordisToolOverride } from "./pae/adapters/cordis/CordisPaeAdapter";
+export { InMemoryCordisTransport, ChildProcessCordisTransport, unwrapCordisResponse } from "./pae/adapters/cordis/transport";
+export type {
+  ICordisTransport,
+  CordisRequestHandler,
+  ChildProcessCordisTransportConfig
+} from "./pae/adapters/cordis/transport";
+export {
+  CORDIS_PROTOCOL_VERSION,
+  decodeFrame,
+  encodeFrame,
+  isCordisResponse,
+  normaliseCordisToolResult,
+  parseCordisToolList,
+  remoteErrorOf
+} from "./pae/adapters/cordis/protocol";
+export type {
+  CordisErrorObject,
+  CordisRequest,
+  CordisResponse,
+  CordisToolDefinition,
+  NormalisedCordisResult
+} from "./pae/adapters/cordis/protocol";
 export {
   PaeAdapterRejectError,
   PaeToolMissingError,

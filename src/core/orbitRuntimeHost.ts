@@ -226,10 +226,45 @@ export class OrbitRuntimeHost {
   }
 
   /**
+   * Register an adapter whose surface is only knowable *after* a handshake.
+   *
+   * `registerPaeToolAdapter` resolves the capability surface at registration
+   * time, which presupposes that the surface already exists. An MCP server
+   * announces its tools over the wire, so there is nothing to resolve until the
+   * connection is up. This variant connects first, lets the adapter discover
+   * what the peer actually exposes, and then registers exactly that.
+   *
+   * The handshake is not a governance bypass: registration still runs the same
+   * static validation and still derives a dynamic pact from the *discovered*
+   * surface, so a server that later announces a new tool is configuration drift
+   * on the next replay rather than a silently expanded capability.
+   */
+  public async connectPaeToolAdapter(
+    adapter: IPaeAdapter,
+    opts: { registerPact?: boolean; requireHostMinEdition?: string; maxWaitMs?: number } = {}
+  ): Promise<PluginUnitPact> {
+    if (adapter.setup) {
+      await adapter.setup({
+        traceMarkId: makeUniqueMark(),
+        maxWaitMs: opts.maxWaitMs ?? HOST_DEFAULT_TIMEOUT_MS
+      });
+    }
+    return this.registerPaeToolAdapter(adapter, {
+      registerPact: opts.registerPact,
+      requireHostMinEdition: opts.requireHostMinEdition
+    });
+  }
+
+  /**
    * Detach an adapter: its tools stop being dispatchable, its derived pact is
    * revoked, and the routing flag clears once the surface is empty. A trace
    * recorded while it was present then replays as configuration drift, not as
    * a mysterious digest mismatch.
+   *
+   * Resources held by the adapter are released in the background; use
+   * `releasePaeToolAdapter` when you need to wait for that to complete (for
+   * example before the process exits, or in a test that asserts a subprocess
+   * is gone).
    */
   public unregisterPaeToolAdapter(adapterId: string): void {
     this.paeRegistry.unregister(adapterId);
@@ -239,6 +274,18 @@ export class OrbitRuntimeHost {
     if (this.paeRegistry.isEmpty()) {
       this.paeAdapterKinds.delete(ChannelKind.PAE_TOOL);
     }
+  }
+
+  /**
+   * Detach an adapter and await its release.
+   *
+   * Same as `unregisterPaeToolAdapter`, plus a wait for `teardown` to finish —
+   * the difference matters for adapters that own an OS process (MCP), where
+   * "unregistered" and "peer actually shut down" are separated by real time.
+   */
+  public async releasePaeToolAdapter(adapterId: string): Promise<void> {
+    this.unregisterPaeToolAdapter(adapterId);
+    await this.paeRegistry.drainReleases();
   }
 
   /**

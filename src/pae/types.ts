@@ -152,6 +152,23 @@ export class PaeFidelityRejectError extends OrbitDomainError {
   }
 }
 
+/**
+ * The foreign runtime failed to deliver — a transport breakdown, a protocol
+ * error, or a tool-level error reported by the remote side.
+ *
+ * Deliberately distinct from the two registration-time errors:
+ * `PaeAdapterRejectError` means "this adapter was never accepted", and
+ * `PaeToolMissingError` means "that name is not on the surface". This one means
+ * "the tool exists and the gateway authorized the call, but the peer did not
+ * deliver" — a runtime condition, and one worth surfacing separately because it
+ * is usually retryable and never fixable by changing the pact.
+ */
+export class PaeRemoteError extends OrbitDomainError {
+  public constructor(message: string, traceMarkId?: string, adapterId?: string) {
+    super(message, "PAE_REMOTE", traceMarkId, adapterId);
+  }
+}
+
 /** Ordering used by fidelity negotiation: `full` ≻ `reduced` ≻ `lossy`. */
 export const FIDELITY_RANK: Record<PaeFidelity, number> = {
   full: 2,

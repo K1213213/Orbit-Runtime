@@ -14,6 +14,9 @@ import { SeededRng } from "../src/replay/injectors";
 import { PaeAdapterRegistry } from "../src/pae/PaeAdapterRegistry";
 import { PaeChannel } from "../src/pae/PaeChannel";
 import { JsPaeAdapter } from "../src/pae/adapters/JsPaeAdapter";
+import { McpPaeAdapter } from "../src/pae/adapters/mcp/McpPaeAdapter";
+import { InMemoryMcpTransport } from "../src/pae/adapters/mcp/transport";
+import { MCP_PROTOCOL_VERSION } from "../src/pae/adapters/mcp/protocol";
 import { digestInputs } from "../src/utils/digest";
 import { ChannelKind, ChannelCallCtx, ReplayMode } from "../src/types/orbitDomain";
 
@@ -542,4 +545,103 @@ test("replay_compat: digest of identical inputs matches across channels and runs
   const c = digestInputs("x", 2, { k: "v" });
   assert.equal(a, b);
   assert.notEqual(a, c);
+});
+
+// ---------------------------------------------------------------------------
+// MCP adaptation surface (W16) — merge gate for cross-process foreign runtimes
+// ---------------------------------------------------------------------------
+
+test("replay_compat MCP: replay serves the peer's output without re-entering the process", async () => {
+  let peerCalls = 0;
+  const transport = new InMemoryMcpTransport((method: string, params: unknown) => {
+    if (method === "initialize") {
+      return { protocolVersion: MCP_PROTOCOL_VERSION, serverInfo: { name: "compat-mcp", version: "1.0.0" } };
+    }
+    if (method === "notifications/initialized") return {};
+    if (method === "tools/list") return { tools: [{ name: "renderCard", description: "render a card" }] };
+    if (method === "tools/call") {
+      peerCalls += 1;
+      const p = params as { arguments: Record<string, unknown> };
+      return { content: [{ type: "text", text: `card:${String(p.arguments.title)}` }] };
+    }
+    throw new Error(`unexpected method ${method}`);
+  });
+
+  const registry = new PaeAdapterRegistry();
+  const adapter = new McpPaeAdapter({
+    adapterId: "mcp-compat",
+    sourceEdition: "1.0.0",
+    transport
+  });
+  await adapter.setup(makeCtx("record"));
+  registry.register(adapter);
+
+  const hub = new ChannelHub();
+  hub.registerBuiltInChannel(ChannelKind.PAE_TOOL, new PaeChannel(registry));
+  await hub.setupAllBuiltInChannels(makeCtx("record"));
+
+  const { live, replayed, reconcileDigestChain } = await recordThenReplay(hub, async (mode) =>
+    hub.fireChannelCall<string>(ChannelKind.PAE_TOOL, makeCtx(mode), "renderCard", { title: "orbit" })
+  );
+
+  assert.equal(live, "card:orbit");
+  assert.equal(replayed, live);
+  assert.equal(JSON.stringify(replayed), JSON.stringify(live), "byte-identical across a process boundary");
+  assert.equal(peerCalls, 1, "the peer is entered exactly once, during recording");
+  assert.ok(reconcileDigestChain);
+  await hub.teardown();
+});
+
+test("replay_compat MCP: a trace replays after its peer is gone", async () => {
+  const transport = new InMemoryMcpTransport((method: string) => {
+    if (method === "initialize") {
+      return { protocolVersion: MCP_PROTOCOL_VERSION, serverInfo: { name: "mcp", version: "1.0.0" } };
+    }
+    if (method === "notifications/initialized") return {};
+    if (method === "tools/list") return { tools: [{ name: "remoteLookup" }] };
+    return { content: [{ type: "text", text: "remote-value" }] };
+  });
+  const registry = new PaeAdapterRegistry();
+  const adapter = new McpPaeAdapter({
+    adapterId: "mcp-ephemeral",
+    sourceEdition: "1.0.0",
+    transport
+  });
+  await adapter.setup(makeCtx("record"));
+  registry.register(adapter);
+
+  const channel = new PaeChannel(registry);
+  const hub = new ChannelHub();
+  hub.registerBuiltInChannel(ChannelKind.PAE_TOOL, channel);
+  await hub.setupAllBuiltInChannels(makeCtx("record"));
+
+  const recordJournal = new RecordJournal();
+  hub.attachRecordJournal(recordJournal);
+  const live = await hub.fireChannelCall<string>(
+    ChannelKind.PAE_TOOL,
+    makeCtx("record"),
+    "remoteLookup",
+    {}
+  );
+  assert.equal(live, "remote-value");
+
+  /*
+   * The MCP server is shut down and its adapter removed — as it would be on a
+   * machine that lacks the peer, its credentials, or the network to reach it.
+   * Replaying must depend on the journal alone.
+   */
+  registry.unregister("mcp-ephemeral");
+  channel.syncTools();
+  await registry.drainReleases();
+  assert.equal(transport.closed, true, "the peer is released when its adapter goes away");
+
+  hub.attachReplayEngine(new ReplayEngine(recordJournal));
+  const replayed = await hub.fireChannelCall<string>(
+    ChannelKind.PAE_TOOL,
+    makeCtx("replay"),
+    "remoteLookup",
+    {}
+  );
+  assert.equal(replayed, live, "replay needs the journal, never the foreign process");
+  await hub.teardown();
 });

@@ -61,6 +61,16 @@ export class PaeAdapterRegistry {
   private readonly toolIndex = new Map<string, PaeToolBinding>();
   /** Adapters whose optional `setup` already ran; keeps `setupAll` idempotent. */
   private readonly setupDone = new Set<string>();
+  /**
+   * In-flight `teardown` promises for adapters that were already unregistered.
+   *
+   * `unregister` stays synchronous (its callers are, and the tool index must be
+   * cleaned up before it returns), but an adapter may hold a real resource — a
+   * spawned MCP server, an open socket — that must not outlive the registration.
+   * Releases are therefore started immediately and tracked here so they can be
+   * awaited via `drainReleases` instead of leaking a process.
+   */
+  private readonly releasing = new Set<Promise<void>>();
 
   /**
    * Register an adapter after full static validation. Validation is strict on
@@ -125,10 +135,40 @@ export class PaeAdapterRegistry {
 
   /** Remove an adapter and every tool it served. */
   public unregister(adapterId: string): void {
-    if (!this.adapters.delete(adapterId)) return;
+    const adapter = this.adapters.get(adapterId);
+    if (!adapter) return;
+    this.adapters.delete(adapterId);
     this.setupDone.delete(adapterId);
     for (const [name, binding] of [...this.toolIndex]) {
       if (binding.adapter.meta.adapterId === adapterId) this.toolIndex.delete(name);
+    }
+    if (adapter.teardown) {
+      const release = Promise.resolve()
+        .then(() => adapter.teardown!())
+        .catch(() => {
+          /*
+           * A failed release must neither mask the unregister nor surface as an
+           * unhandled rejection — the adapter is already gone from the surface,
+           * and the caller's next question is "is the tool gone", not "did the
+           * peer shut down cleanly".
+           */
+        });
+      this.releasing.add(release);
+      void release.finally(() => this.releasing.delete(release));
+    }
+  }
+
+  /**
+   * Await every pending adapter release.
+   *
+   * Needed because `unregister` is synchronous by contract but teardown is not:
+   * an adapter holding a real resource (a spawned MCP server, an open socket)
+   * is released as soon as it is unregistered, and this is how a caller waits
+   * for that to actually finish. Safe to call when nothing is pending.
+   */
+  public async drainReleases(): Promise<void> {
+    while (this.releasing.size > 0) {
+      await Promise.allSettled([...this.releasing]);
     }
   }
 

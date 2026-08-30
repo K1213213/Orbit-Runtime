@@ -65,10 +65,34 @@ export type { PaeToolBinding } from "./pae/PaeAdapterRegistry";
 export { PaeChannel } from "./pae/PaeChannel";
 export { JsPaeAdapter } from "./pae/adapters/JsPaeAdapter";
 export type { JsPaeAdapterConfig, JsToolSpec } from "./pae/adapters/JsPaeAdapter";
+// W16: MCP — the first adapter family that crosses a process boundary.
+export { McpPaeAdapter, MCP_DEFAULT_FIDELITY_NOTE } from "./pae/adapters/mcp/McpPaeAdapter";
+export type { McpPaeAdapterConfig, McpToolOverride } from "./pae/adapters/mcp/McpPaeAdapter";
+export { InMemoryMcpTransport, StdioMcpTransport, unwrapResponse } from "./pae/adapters/mcp/transport";
+export type { IMcpTransport, McpRequestHandler, StdioMcpTransportConfig } from "./pae/adapters/mcp/transport";
+export {
+  MCP_PROTOCOL_VERSION,
+  decodeJsonRpc,
+  encodeJsonRpc,
+  isJsonRpcResponse,
+  isRemoteToolError,
+  normaliseToolResult,
+  parseToolList
+} from "./pae/adapters/mcp/protocol";
+export type {
+  JsonRpcErrorObject,
+  JsonRpcMessage,
+  JsonRpcNotification,
+  JsonRpcRequest,
+  JsonRpcResponse,
+  McpToolDefinition,
+  NormalisedToolResult
+} from "./pae/adapters/mcp/protocol";
 export {
   PaeAdapterRejectError,
   PaeToolMissingError,
   PaeFidelityRejectError,
+  PaeRemoteError,
   FIDELITY_RANK
 } from "./pae/types";
 export type {

@@ -21,19 +21,15 @@
       </div>
     </div>
 
-    <nav class="nav" id="nav" aria-label="主导航">
-      <button class="nav-item" data-route="overview"><span class="nav-ico">◈</span>总览</button>
-      <button class="nav-item" data-route="plugins"><span class="nav-ico">◱</span>插件注册</button>
-      <button class="nav-item" data-route="boxes"><span class="nav-ico">▣</span>沙箱对话</button>
-      <button class="nav-item" data-route="channels"><span class="nav-ico">⊡</span>模型通道</button>
-      <button class="nav-item" data-route="trace"><span class="nav-ico">≡</span>追踪日志</button>
-      <button class="nav-item" data-route="replay"><span class="nav-ico">↻</span>回放台</button>
-      <button class="nav-item" data-route="graph"><span class="nav-ico">✧</span>影响域图</button>
-      <button class="nav-item" data-route="pae"><span class="nav-ico">❖</span>异构适配</button>
-      <button class="nav-item" data-route="routing"><span class="nav-ico">⌁</span>成本路由</button>
-    </nav>
+    <!-- 导航由 app.js 依据 lib.js 的 NAV_GROUPS 生成：声明与入口不会分家 -->
+    <nav class="nav" id="nav" aria-label="主导航"></nav>
 
     <div class="sidebar-foot">
+      <button class="palette-hint" id="btn-palette" title="打开命令面板">
+        <span class="ph-ico">⌘</span>
+        <span class="ph-text">命令面板</span>
+        <span class="ph-keys"><kbd>Ctrl</kbd><kbd>K</kbd></span>
+      </button>
       <div class="host-pill" id="host-pill" title="主机运行状态">
         <span class="dot" id="host-dot"></span>
         <span id="host-pill-text">连接中…</span>
@@ -54,6 +50,32 @@
 
     <section class="view" id="view" aria-live="polite"></section>
   </main>
+
+  <!-- 命令面板：跳转任何视图、执行任何主机动作 -->
+  <div class="palette" id="palette" role="dialog" aria-modal="true" aria-label="命令面板">
+    <div class="palette-panel">
+      <div class="palette-head">
+        <span class="palette-ico">⌘</span>
+        <input
+          id="palette-input"
+          class="palette-input"
+          type="text"
+          placeholder="跳转到视图，或执行动作…"
+          autocomplete="off"
+          spellcheck="false"
+          aria-label="搜索视图或动作"
+        />
+        <kbd class="palette-esc">Esc</kbd>
+      </div>
+      <div class="palette-list" id="palette-list" role="listbox" aria-label="结果"></div>
+      <div class="palette-foot">
+        <span><kbd>↑</kbd><kbd>↓</kbd> 选择</span>
+        <span><kbd>Enter</kbd> 执行</span>
+        <span><kbd>Esc</kbd> 关闭</span>
+        <span class="palette-tip">直接按 <kbd>/</kbd> 也可唤起</span>
+      </div>
+    </div>
+  </div>
 
   <div class="toast-root" id="toast-root" aria-live="assertive"></div>
 

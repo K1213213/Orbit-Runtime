@@ -135,9 +135,10 @@ node bin/orbit.mjs diff trace.jsonl trace.jsonl
 ### 底层 API 与演示
 
 ```bash
-npm test           # 构建 + 运行单元测试（node:test）—— 176 用例
-npm run demo       # 构建 + 运行演示入口（覆盖全部核心机制）
-npm run demo:replay  # 确定性重放：约 1s 真实运行 → 约 2ms 重放
+npm test               # 构建 + 运行内核单元测试（node:test）—— 205 用例
+npm run test:console   # 运行控制台前端单测（node:test）—— 49 用例
+npm run demo           # 构建 + 运行演示入口（覆盖全部核心机制）
+npm run demo:replay    # 确定性重放：约 1s 真实运行 → 约 2ms 重放
 ```
 
 演示输出要点：

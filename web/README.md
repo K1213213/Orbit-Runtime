@@ -32,7 +32,8 @@
 
 | 板块 | 说明 |
 |---|---|
-| **总览** | 运行时状态统计（通道 / 插件 / 沙箱 / 追踪）、六大机制导航、最近追踪流、主机生命周期控制 |
+| **总览** | 任务式工作台：系统健康结论 + 基于真实状态推导的下一步 + 关键指标 + 最近追踪与通道画像 |
+| **命令面板** | `Ctrl/⌘+K`（或 `/`）唤起，模糊检索全部视图与主机动作，↑↓/Enter 全键盘操作 |
 | **插件注册** | Pact 表单注册（字段 / 版本 / 能力三重校验）、注册清单、插件通道覆盖演示（plugin-first） |
 | **沙箱对话** | 创建 Agent 沙箱、逐轮对话、循环预算进度、预算耗尽隔离、轮次重置 / 释放 |
 | **追踪日志** | 追加式全链路事件流、按沙箱 / 事件类型过滤、自动刷新、JSON 导出 |
@@ -59,9 +60,10 @@ node web/bridge-server.mjs
 
 ```
 ┌──────────────────────────── 浏览器 SPA（web/public/）────────────────────────────┐
-│  index.html · styles.css · app.js（hash 路由） · api.js（fetch 封装）               │
-│  lib.js（纯函数工具 + PAE 模板目录，可被 Node 单测直接 import）                     │
-│  views/  overview · plugins · boxes · trace · replay · graph · routing · pae       │
+│  index.html · styles.css · app.js（hash 路由 + 命令面板） · api.js（fetch 封装）     │
+│  lib.js（纯函数：导航模型 / 模糊匹配 / 健康推导 / PAE 模板，可被 Node 直接单测）      │
+│  views/  overview · plugins · boxes · channels · trace · replay                     │
+│          graph · routing · pae                                                      │
 └──────────────────────────────────────┬────────────────────────────────────────────┘
                                        │ HTTP /api/*（JSON）
 ┌──────────────────────────────────────▼────────────────────────────────────────────┐
@@ -75,7 +77,7 @@ node web/bridge-server.mjs
 │  dist/src/  OrbitRuntimeHost · ChannelHub · PluginPactVerifier · TripProtector     │
 │            TraceJournal · SandboxPool · ImpactDomainGraph · CostRouter            │
 │            RecordJournal · ReplayEngine                                            │
-│            PaeAdapterRegistry · PaeChannel · JsPaeAdapter                          │
+│            PaeAdapterRegistry · PaeChannel · JsPaeAdapter · McpPaeAdapter          │
 └────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -87,6 +89,37 @@ node web/bridge-server.mjs
   追踪日志、熔断、预算等行为就是内核的真实行为。
 - **通道覆盖演示**：`POST /api/channels/plugin` 注册 echo 插件通道，可直观看到
   ChannelHub 的 plugin-first（插件通道优先于内置通道）。
+
+## 信息架构
+
+九个能力面不是九个并列页面，而是三种用户意图：
+
+| 分组 | 意图 | 视图 |
+|---|---|---|
+| **运行时** | 观察并驱动正在跑的 Agent | 总览 · 沙箱对话 · 追踪日志 |
+| **构件** | 接入某种外部能力 | 插件注册 · 模型通道 · 异构适配 |
+| **治理** | 证明隔离、复现执行、控制成本 | 影响域图 · 回放台 · 成本路由 |
+
+分组导航与命令面板**共用同一份数据**（`lib.js` 的 `NAV_GROUPS`），因此两处的
+信息架构不可能走偏。侧栏按钮不是写在 HTML 里的，而是由这份数据在启动时生成——
+这源于一次真实事故：`channels` 视图在路由表里，但导航没有对应按钮，整页不可达
+且无人发现。现在"声明了却渲染不出来"会在测试里直接失败
+（`missingRenderers`），而不是等用户点不到。
+
+### 命令面板
+
+`Ctrl/⌘+K`，或直接按 `/`：
+
+- 检索范围同时覆盖**视图**与**主机动作**（启动 / 停止 / 重启 / 刷新）
+- 模糊匹配中英文混排，支持按关键词命中标题里没有的同义词（搜 `mcp` 直达"异构适配"）
+- `↑` `↓` 选择，`Enter` 执行，`Esc` 关闭，鼠标与键盘等价
+
+### 首屏为什么是"下一步"
+
+首屏不重复导航，而是回答两个问题：**现在能干活吗**、**接下来做什么**。
+系统健康给出结论并列出得出该结论的每一条理由；下一步由真实内核状态推导
+（`deriveSystemHealth` / `suggestNextSteps`），每条都是可直接点进去执行的操作，
+不是说明文字。主机未运行时，它只给一条建议——先启动。
 
 ## 推荐体验路径
 
@@ -126,8 +159,25 @@ DELETE /api/pae/:id                 注销适配器并撤销其动态 Pact
 
 ## 异构适配工作台（Adapter Studio）
 
-`#pae` 视图把内核 W15 的 **PAE（Plugin Adaptation Engine）** 完整暴露成可操作的界面。
+`#pae` 视图把内核的 **PAE（Plugin Adaptation Engine）** 完整暴露成可操作的界面。
 它不是又一个表单页——它把"外来运行时如何被内核收编"这条链路拆成四步，每一步都可见：
+
+支持**两种适配器家族**，差异决定了工作流差异：
+
+| 家族 | 进程 | 工具面何时可知 | 默认保真度 |
+|---|---|---|---|
+| **JS 工具集** | 内核进程内（L0） | 注册时即可声明 | `full`（同语言、同值空间） |
+| **MCP 服务器** | 独立子进程（L2） | 握手后由对端声明 | `reduced`（见下，且必带说明） |
+
+MCP 默认 `reduced` 不是保守，是诚实：参数 `inputSchema` 由**远端**校验而非内核，
+返回值由 MCP 的 `content[]` 块映射为 JSON，非文本块（图片 / 资源）原样保留而不强转。
+声称 `full` 会是这个适配器能做出的最具破坏性的假声明，因为下游所有假设都建立在它之上。
+
+**连接一个 MCP 服务器**：填启动命令与参数（如 `node mcp-server.mjs` 或
+`npx -y @modelcontextprotocol/server-x`），点"连接"——控制台会真的 spawn 子进程、
+完成 `initialize` 握手、`tools/list` 发现工具面，**然后**才注册。界面只会列出对端
+真正声明过的工具。握手失败会关闭子进程且不留下任何注册痕迹。
+Windows 上的 `npx` 是批处理脚本，此时勾选"经系统 shell 启动"。
 
 ```
 ① 选模板 → ② 注册适配器（动态 Pact）→ ③ 协商保真度 → ④ 经网关调用
@@ -185,13 +235,19 @@ web/
 ## 测试
 
 ```bash
-npm run test:console     # 前端单元测试（16 例）
-npm test                 # 内核全量测试（176 例）
+npm run test:console     # 前端单元测试（49 例）
+npm test                 # 内核全量测试（205 例）
 ```
 
 测试策略与内核一致：**零第三方断言库**，直接使用 Node 内置 `node:test` + `node:assert`。
-`lib.js` 刻意做成 DOM-free 纯模块，让模板目录与保真度规则能在 Node 中被直接断言，
-避免把业务规则锁死在浏览器里。
+
+`lib.js` 刻意做成 DOM-free 纯模块——凡是"决定用户接下来看到什么"的逻辑
+（导航模型、命令面板排序、健康判定、下一步推荐、参数解析）都放在里面，
+因此可以在 Node 里被直接断言，而不必把业务规则锁死在浏览器里。
+
+`web/test/fixtures/mcp-stdio-server.mjs` 是一个真实的最小 MCP 服务器（子进程 +
+stdio + JSON-RPC），用于端到端验证 MCP 链路：spawn、换行分帧、握手、工具发现、
+跨进程调用、注销时回收，每一步都是真的。
 
 ## 模型通道页
 

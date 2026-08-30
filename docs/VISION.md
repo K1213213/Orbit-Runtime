@@ -122,7 +122,7 @@
 | 成本治理 | ✅ 通道成本档案 + Token 预算引擎（纯函数）+ 路由决策 + 配置哈希指纹 | 账本对账用例完备 | 低 |
 | 网关统一入口 | ✅ `capabilityInvoke` 事务化入口（决策记录 + 重放还原 + 三分漂移分类） | 抽包骨架（v0.3） | 低 |
 | 进程级隔离域 | ❌ 仅逻辑隔离 | Worker / 子进程域 | 高 |
-| PAE 异构适配 | ✅ W15 JS 适配器 + 动态 Pact + 保真度协商（MCP/OpenAPI/Cordis 待 W16–W18） | MCP 优先 → JS → Cordis，逐步扩面 | 中 |
+| PAE 异构适配 | ✅ W15 JS（L0/进程内）+ W16 MCP（L2/跨进程 stdio，握手后动态发现工具面，默认 reduced 保真度）+ 动态 Pact + 保真度协商（OpenAPI/Cordis 待 W17–W18） | OpenAPI → Cordis，逐步扩面 | 中 |
 | 持久化 | ❌ 内存态 | 事务日志落盘 | 中 |
 
 ---

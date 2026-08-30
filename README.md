@@ -158,9 +158,10 @@ under ten minutes. Every command accepts `--json` for machine-readable output.
 ### Lower-level API & demos
 
 ```bash
-npm test           # build + run unit tests (node:test) — 176 cases
-npm run demo       # build + run demo-host.ts (full lifecycle demo)
-npm run demo:replay  # deterministic replay: ~1s real run replayed in ~2ms
+npm test               # build + run kernel unit tests (node:test) — 205 cases
+npm run test:console   # web console unit tests (node:test) — 49 cases
+npm run demo           # build + run demo-host.ts (full lifecycle demo)
+npm run demo:replay    # deterministic replay: ~1s real run replayed in ~2ms
 ```
 
 Expected demo output highlights:

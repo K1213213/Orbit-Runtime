@@ -68,7 +68,7 @@
 
 | 阶段 | 内容 | 依据 |
 |---|---|---|
-| **W15 ✅** · W16–W18 | **W15 完成（2026-08-29）**：PAE 契约层 + 注册表 + PaeChannel + JsPaeAdapter；外来 JS 运行时经网关代理、四重校验、replay 零重入；适配面配置哈希进指纹。W16–W18：MCP → OpenAPI → Cordis 隔离实例 | UPGRADE §C.3 |
+| **W15 ✅ / W16 ✅** · W17–W18 | **W15 完成（2026-08-29）**：PAE 契约层 + 注册表 + PaeChannel + JsPaeAdapter；外来 JS 运行时经网关代理、四重校验、replay 零重入；适配面配置哈希进指纹。**W16 完成（2026-08-30）**：MCP 适配器（JSON-RPC 2.0 协议层 / stdio + memory 双传输 / McpPaeAdapter，L2 跨进程、握手后才发现工具面、默认 reduced 保真度且必带说明）；宿主新增 `connectPaeToolAdapter`（先握手后注册）与 `releasePaeToolAdapter`（注销并等待释放）；修复 `registry.unregister` 不调用 `teardown` 导致 MCP 子进程泄漏。W17–W18：OpenAPI → Cordis 隔离实例 | UPGRADE §C.3 |
 | W19–W20 | 隔离域 L2（子进程）+ 图驱动域分配 | VISION 升级三 |
 | W21–W23 | 三段式抽包：Project References 划界 → 自底向上抽（infra-common → core-hub → sandbox-runtime → pae-engine），每包全量回归 | UPGRADE B.1–B.2 |
 | W24–W26 | pnpm workspace + 各包独立 version/test + admin-console 包 + v0.3.0 发布 | UPGRADE B.3 |
@@ -102,7 +102,7 @@
 
 ## 5. 度量（每周站会看的数字）
 
-- **质量**：测试数（基线 176，只增不减）· strict 编译错误（0）· replay_compat 用例数
+- **质量**：测试数（**内核基线 205** · **前端基线 49**，均只增不减）· strict 编译错误（0）· replay_compat 用例数
 - **进度**：就绪清单勾选数（W6 目标 14/14）· 波次退出标准达成状态
 - **产品（W6 起）**：npm 周下载 · GitHub star · 首次 record→replay 成功率（目标 >70%）
 
@@ -122,3 +122,5 @@
 | 2026-08-29 | W11–W14 落地（v0.2.0）：RateLimiter 纯函数限流 + BehaviorCollector 三模式采集器；网关 rateLimited 决策记录原值/重放旁路、collector record 落盘/live 提案/replay 旁路；三分漂移分类（RunFingerprintDriftError/DecisionDriftError/ReplayDriftError）+ reconcile.decisionDriftFields；replay_compat 网关门禁扩至 7 类用例；CHANGELOG/README/VISION 同步更新；KERNEL_VERSION 与 package.json 升 0.2.0。单测 13 例（限流 3 + 采集 3 + A.5 网关 7），全量 151 测试绿，strict 编译零错误 |
 | 2026-08-29 | W15 落地（v0.3.0 首波）：PAE 插件适配引擎契约层（src/pae/types.ts）+ PaeAdapterRegistry（静态校验/动态 Pact/保真度协商/配置哈希）+ PaeChannel（整体发布为能力通道，外来调用必经网关落入 RecordJournal）+ JsPaeAdapter（L0/full，注入式 RngSource/ClockSource）。两条架构铁律：适配器不直连内核、不引入非确定性。单测 22 例（pae_adapter）+ replay_compat 合并门禁 3 例，全量 176 测试绿，strict 编译零错误 |
 | 2026-08-30 | **控制台同步（贯穿性工作流 §3 达成）**：web 控制台新增「异构适配 Adapter Studio」视图（`web/public/views/pae.js`），把 W15 抽象层做成可操作界面——模板化注册 → 动态 Pact → 保真度协商 → 经网关调用，调用结果显示 route/耗时/返回值；12 个工具模板集中于 DOM-free 的 `lib.js`，handler 由 bridge 注入且随机/时钟走 SeededRng + 注入 clock。bridge 增 `GET\|POST /api/pae`、`/invoke`、`/negotiate`、`DELETE /api/pae/:id`，PAE 状态进 `/api/state`、适配器节点进 `/api/graph`。修复：`channels` 路由无导航按钮导致模型通道不可达；overview 引用的 `--accent/--accent-2/--purple` 令牌从未定义；力导向布局用 `Math.random` 播种导致每次打开图布局乱跳（改为按节点 id 的 FNV-1a 确定性抖动）。新增 `--coupler` 接驳橙设计角色。前端单测 16 例（`npm run test:console`，纯目录逻辑 + 真实 host 集成），内核 176 例不变，strict 编译零错误 |
+| 2026-08-30 | **W16 落地（MCP 适配器）**：`src/pae/adapters/mcp/` 三件套——`protocol.ts`（JSON-RPC 2.0 信封 / 换行分帧 / tools-list 校验 / content[] 归一化，全纯函数）、`transport.ts`（`IMcpTransport` + `StdioMcpTransport` 子进程 stdio + `InMemoryMcpTransport`，含请求关联、调用方 deadline、对端死亡即失败在途请求、失败时附 stderr 尾部）、`McpPaeAdapter.ts`（kind=mcp、isolation=L2、determinism=IO_BOUND；setup 内先完成 initialize 握手再 tools/list 发现工具面；采用对端上报版本作 sourceEdition；默认 fidelity=reduced 且必带说明——参数 schema 由远端校验、content[] 映射为 JSON）。宿主新增 `connectPaeToolAdapter`（先握手后注册）与 `releasePaeToolAdapter`（注销并 await teardown）；修复 `PaeAdapterRegistry.unregister` 从不调用 `adapter.teardown()` 导致 MCP 子进程泄漏（改为 unregister 时启动释放 + `drainReleases()` 等待）。新增 `PaeRemoteError`。单测 27 例（mcp_adapter）+ replay_compat 合并门禁 2 例，全量 205 测试绿，strict 编译零错误 |
+| 2026-08-30 | **控制台改版（信息架构与工作流）**：九个平铺页面重构为三种用户意图分组（运行时 / 构件 / 治理），导航由 `lib.js` 的 `NAV_GROUPS` 数据驱动生成而非 HTML 手写，并新增 `missingRenderers` 断言使"声明了却渲染不出来"在测试中失败（源于 channels 不可达事故）。新增命令面板（`Ctrl/⌘+K` 或 `/`，模糊检索视图与主机动作，全键盘操作，排序由纯函数 `fuzzyScore` 实现）。首屏改为任务式工作台：系统健康结论（含每条理由）+ 由真实内核状态推导的下一步（`deriveSystemHealth` / `suggestNextSteps`）+ 关键指标 + 现场证据。Adapter Studio 支持 MCP 家族。修复：`/api/health` 硬编码 `0.1.0`（实际 0.2.0）改为读 `KERNEL_VERSION`；overview 的熔断保护卡片指向不存在的 `safeguard` 路由。前端单测 49 例，内核 205 例，strict 编译零错误 |

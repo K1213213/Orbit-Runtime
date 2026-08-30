@@ -8,7 +8,10 @@
  */
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
+import { fileURLToPath } from "node:url";
 import { api, host } from "../bridge-server.mjs";
+
+const MCP_FIXTURE = fileURLToPath(new URL("./fixtures/mcp-stdio-server.mjs", import.meta.url));
 
 before(async () => {
   // 触发 ensureRunning（首次 api 调用会装配内核）。
@@ -117,4 +120,104 @@ test("注销后适配面清空（自清理无泄漏）", async () => {
   });
   assert.equal(after.adapters.length, 0);
   assert.equal(after.tools.length, 0);
+});
+
+/* ------------------------------------------------------------------ */
+/* W16 · MCP：真实子进程经 stdio 接驳                                   */
+/* ------------------------------------------------------------------ */
+
+/** 连接夹具服务器，执行 fn，最后无论如何都注销（回收子进程）。 */
+async function withMcp(adapterId, fn, extra = {}) {
+  const res = await api.registerPae({
+    kind: "mcp",
+    adapterId,
+    command: process.execPath,
+    args: [MCP_FIXTURE],
+    timeoutMs: 15000,
+    ...extra
+  });
+  try {
+    return await fn(res);
+  } finally {
+    await api.removePae(adapterId);
+  }
+}
+
+test("MCP：连接真实子进程并发现其声明的工具面", async () => {
+  const res = await withMcp("mcp.it", (r) => r);
+  assert.equal(res.paeEnabled, true);
+  assert.equal(res.adapters.length, 1);
+
+  const adapter = res.adapters[0];
+  assert.equal(adapter.adapterId, "mcp.it");
+  assert.equal(adapter.kind, "mcp");
+  assert.equal(adapter.isolation, "L2", "the peer is a separate OS process");
+  assert.deepEqual(adapter.serverInfo, {
+    protocolVersion: "2024-11-05",
+    name: "fixture-mcp",
+    version: "2.3.4"
+  });
+
+  assert.deepEqual(res.tools.map((t) => t.name), ["greet", "total"]);
+});
+
+test("MCP：发现的工具默认 reduced 保真度且带降级说明", async () => {
+  const res = await withMcp("mcp.it", (r) => r);
+  for (const tool of res.tools) {
+    assert.equal(tool.fidelity, "reduced", "argument validation is remote, so full would be a lie");
+    assert.match(tool.fidelityNote, /validated by the remote server/);
+    assert.equal(tool.determinism, "io-bound", "a cross-process call is IO by definition");
+  }
+});
+
+test("MCP：经网关注入 JSON 命名参数调用远端工具", async () => {
+  const out = await withMcp("mcp.it", async () =>
+    api.invokePae({ toolName: "greet", argText: '{"name":"orbit"}' })
+  );
+  assert.equal(out.output, "hello, orbit");
+  assert.equal(out.route, "pae");
+  assert.equal(out.channel, "pae-tool");
+  assert.deepEqual(out.args, [{ name: "orbit" }]);
+});
+
+test("MCP：空入参视为无参数调用而非报错", async () => {
+  const out = await withMcp("mcp.it", async () => api.invokePae({ toolName: "greet", argText: "" }));
+  assert.equal(out.output, "hello, world");
+});
+
+test("MCP：非 JSON 入参被明确拒绝，不会带着脏参数打到对端", async () => {
+  await withMcp("mcp.it", async () => {
+    await assert.rejects(
+      () => api.invokePae({ toolName: "greet", argText: "not json" }),
+      /JSON 对象/
+    );
+  });
+});
+
+test("MCP：工具名前缀避免与另一个 server 撞名", async () => {
+  const res = await withMcp("mcp.it", (r) => r, { toolNamePrefix: "fx_" });
+  assert.deepEqual(res.tools.map((t) => t.name), ["fx_greet", "fx_total"]);
+});
+
+test("MCP：注销后工具面清空", async () => {
+  const after = await withMcp("mcp.it", async () => api.removePae("mcp.it"));
+  assert.equal(after.adapters.length, 0);
+  assert.equal(after.tools.length, 0);
+});
+
+test("MCP：连接不可用的服务器时失败并把错误说清楚", async () => {
+  await assert.rejects(
+    () =>
+      api.registerPae({
+        kind: "mcp",
+        adapterId: "mcp.dead",
+        command: process.execPath,
+        args: ["-e", "process.exit(3);"],
+        timeoutMs: 5000
+      }),
+    /MCP 连接失败/
+  );
+  // 失败后不得留下任何注册痕迹
+  const after = await api.pae();
+  assert.equal(after.adapters.some((a) => a.adapterId === "mcp.dead"), false);
 });

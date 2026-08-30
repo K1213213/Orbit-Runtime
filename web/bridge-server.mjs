@@ -30,6 +30,9 @@ import { createHash } from "node:crypto";
 import { JsPaeAdapter } from "../dist/src/pae/adapters/JsPaeAdapter.js";
 import { SeededRng } from "../dist/src/replay/injectors.js";
 import { PAE_TEMPLATES, describePaeTool } from "./public/lib.js";
+import { KERNEL_VERSION } from "../dist/src/utils/versionIdGen.js";
+import { McpPaeAdapter } from "../dist/src/pae/adapters/mcp/McpPaeAdapter.js";
+import { StdioMcpTransport } from "../dist/src/pae/adapters/mcp/transport.js";
 
 const __dirname = fileURLToPath(new URL(".", import.meta.url));
 const PUBLIC_DIR = join(__dirname, "public");
@@ -204,7 +207,12 @@ const api = {
   async health() {
     return {
       running,
-      version: "0.1.0",
+      /*
+       * Read from the kernel rather than restating it: a hard-coded version
+       * silently goes stale at every release (this one claimed 0.1.0 while the
+       * kernel was already at 0.2.0, and the console dutifully displayed it).
+       */
+      version: KERNEL_VERSION,
       kernel: "OrbitRuntimeHost",
       uptimeSec: Math.round(process.uptime())
     };
@@ -530,13 +538,19 @@ const api = {
 
   async pae() {
     await ensureRunning();
-    const adapters = host.paeRegistry.listAdapters().map((m) => ({
-      adapterId: m.adapterId,
-      kind: m.kind,
-      sourceEdition: m.sourceEdition,
-      isolation: m.isolation,
-      toolCount: host.paeRegistry.get(m.adapterId)?.describe().length ?? 0
-    }));
+    const adapters = host.paeRegistry.listAdapters().map((m) => {
+      const instance = host.paeRegistry.get(m.adapterId);
+      return {
+        adapterId: m.adapterId,
+        kind: m.kind,
+        sourceEdition: m.sourceEdition,
+        isolation: m.isolation,
+        toolCount: instance?.describe().length ?? 0,
+        // MCP peers identify themselves during the handshake; JS adapters have
+        // no such notion, so this is null rather than absent.
+        serverInfo: instance?.serverInfo ?? null
+      };
+    });
     const tools = host.paeRegistry.listTools().map((t) => ({
       name: t.name,
       capability: t.capability,
@@ -556,6 +570,8 @@ const api = {
 
   async registerPae(body) {
     await ensureRunning();
+    if (body?.kind === "mcp") return this.registerMcp(body);
+
     const adapterId = body?.adapterId;
     const tools = body?.tools;
     if (!adapterId) throw new Error("adapterId required");
@@ -571,6 +587,60 @@ const api = {
     return this.pae();
   },
 
+  /**
+   * Connect a real MCP server over stdio.
+   *
+   * The peer is spawned, handed through `initialize` → `tools/list`, and only
+   * registered once the surface is known — so the console never advertises a
+   * tool the peer did not actually announce.
+   *
+   * Security note: the console is a local, developer-operated tool bound to
+   * loopback, and letting the operator name the server they want to connect to
+   * is the entire point of MCP. `shell` defaults to false so the command is
+   * executed directly; enabling it (needed for `npx` on Windows) is an explicit
+   * opt-in by the person already at the keyboard.
+   */
+  async registerMcp(body) {
+    await ensureRunning();
+    const adapterId = body?.adapterId;
+    const command = body?.command;
+    if (!adapterId) throw new Error("adapterId required");
+    if (!command) throw new Error("command required — 启动 MCP 服务器的可执行文件");
+
+    const args = Array.isArray(body?.args) ? body.args.map(String) : [];
+    const timeoutMs = Number(body?.timeoutMs) || 15000;
+
+    const transport = new StdioMcpTransport({
+      command: String(command),
+      args,
+      shell: body?.shell === true,
+      ...(body?.cwd ? { cwd: String(body.cwd) } : {})
+    });
+
+    const adapter = new McpPaeAdapter({
+      adapterId,
+      sourceEdition: body?.sourceEdition || "unknown",
+      transport,
+      ...(body?.toolNamePrefix ? { toolNamePrefix: String(body.toolNamePrefix) } : {}),
+      defaultTimeoutMs: timeoutMs
+    });
+
+    try {
+      await host.connectPaeToolAdapter(adapter, { maxWaitMs: timeoutMs });
+    } catch (err) {
+      /*
+       * A failed handshake must not leave an orphan process behind. This is the
+       * one place where "we never registered it" and "nothing is running" have
+       * to be made true by hand.
+       */
+      await transport.close().catch(() => {});
+      throw new Error(`MCP 连接失败：${err.message}`);
+    }
+
+    for (const t of adapter.describe()) paeToolMeta.set(t.name, { template: "mcp" });
+    return this.pae();
+  },
+
   async invokePae(body) {
     await ensureRunning();
     const toolName = body?.toolName;
@@ -580,6 +650,22 @@ const api = {
     let args;
     if (meta?.template === "add") {
       args = argText.split(",").map((s) => Number(s.trim())).filter((n) => !Number.isNaN(n));
+    } else if (meta?.template === "mcp") {
+      /*
+       * MCP tools take named arguments, so the console sends a JSON object
+       * rather than a positional string. Empty input is a legitimate call with
+       * no arguments; anything unparseable is surfaced as-is so the caller can
+       * see what they actually sent.
+       */
+      const text = argText.trim();
+      try {
+        args = [text === "" ? {} : JSON.parse(text)];
+      } catch (err) {
+        throw new Error(`MCP 工具入参需为 JSON 对象，如 {"name":"world"}（收到：${text.slice(0, 80)}）`);
+      }
+      if (args[0] === null || typeof args[0] !== "object" || Array.isArray(args[0])) {
+        throw new Error(`MCP 工具入参需为 JSON 对象，如 {"name":"world"}`);
+      }
     } else {
       args = [argText];
     }
@@ -619,7 +705,12 @@ const api = {
     await ensureRunning();
     if (!adapterId) throw new Error("adapterId required");
     const before = host.paeRegistry.get(adapterId)?.describe().map((t) => t.name) ?? [];
-    host.unregisterPaeToolAdapter(adapterId);
+    /*
+     * `release` rather than `unregister`: for an MCP adapter the difference is
+     * real — unregister drops it from the index immediately, but the spawned
+     * peer only actually exits once teardown has been awaited.
+     */
+    await host.releasePaeToolAdapter(adapterId);
     for (const name of before) paeToolMeta.delete(name);
     return this.pae();
   }

@@ -48,12 +48,51 @@ special-casing.
   `IPaeAdapter` / `PaeAdapterKind` / `PaeAdapterMeta` / `PaeFidelity` /
   `PaeInvokeCtx` / `PaeIsolationLevel` / `PaeToolDescriptor` types.
 
+### W16 — MCP adapter (cross-process foreign runtimes)
+- **MCP protocol layer** (`src/pae/adapters/mcp/protocol.ts`) — JSON-RPC 2.0
+  envelopes, newline framing, `tools/list` validation and `tools/call` result
+  normalisation as pure functions. Parsing untrusted peer output is exactly the
+  kind of logic that must be testable without I/O, so it lives here.
+- **Transports** (`src/pae/adapters/mcp/transport.ts`) — `IMcpTransport` with a
+  stdio implementation (`node:child_process`, newline-delimited JSON, correlated
+  responses, caller deadlines, in-flight requests failed when the peer dies) and
+  an in-memory one so protocol behaviour is testable without a subprocess. A
+  failing peer's stderr is kept as a bounded tail and attached to the error —
+  previously a server that died on startup reported only its exit code, which is
+  undiagnosable.
+- **`McpPaeAdapter`** (`src/pae/adapters/mcp/McpPaeAdapter.ts`) — `kind: "mcp"`,
+  `isolation: "L2"`, determinism `IO_BOUND`. `setup` performs the handshake and
+  *then* discovers the tool surface, because a remote peer's capabilities are
+  not knowable any earlier. The edition the peer reports is adopted as
+  `sourceEdition` once known, so a server upgrade shows up as fingerprint drift
+  instead of passing unnoticed.
+- **Honest default fidelity** — MCP tools default to `reduced` with a mandatory
+  note: the argument schema is enforced by the *peer*, not the kernel, and
+  results are mapped from MCP `content[]` (non-text blocks preserved verbatim
+  rather than coerced). Claiming `full` would be shorter; it would also be the
+  most damaging false claim this adapter could make, because every downstream
+  assumption rests on it.
+- **Host** — `connectPaeToolAdapter` (handshake, then register the surface the
+  peer actually announced) and `releasePaeToolAdapter` (unregister, then await
+  teardown, so an MCP subprocess does not outlive its registration).
+- **Registry fix** — `unregister` never called `adapter.teardown()`. Harmless for
+  in-process adapters, but it meant an MCP peer stayed alive after its adapter
+  was removed. Releases are now started on unregister and can be awaited via
+  `drainReleases()`.
+- New error type `PaeRemoteError` for peer/transport failures — distinct from
+  registration-time rejection and from a missing tool name.
+
 ### Console
-- **Adapter Studio** (`web/public/views/pae.js`) — the W15 surface becomes
+- **Adapter Studio** (`web/public/views/pae.js`) — the PAE surface becomes
   operable: pick a tool template, register the adapter, negotiate fidelity, then
   invoke the tool through the gateway and read back the routing decision, the
   elapsed time and the returned value. The view reuses the Bio-Lineage system
   with a new `--coupler` role (接驳橙 `#ff9d4d`) for foreign adapters.
+- **MCP in the console** — a second adapter family alongside JS. Connecting
+  spawns the server, completes the handshake and registers only the tools the
+  peer actually announced; a failed handshake closes the child and leaves no
+  registration behind. Discovered tools are shown with the peer's identity and
+  their honest `reduced` fidelity.
 - **12 tool templates** (`web/public/lib.js`) — `echo`, `reverse`, `upper`,
   `lower`, `length`, `hash`, `base64`, `json`, `add`, `now`, `random`, `uuid`.
   Templates are descriptors only; the bridge injects real handlers and routes
@@ -69,27 +108,54 @@ special-casing.
   `adapter → pae-tool`).
 - **Graph view** — new `pae` / `pae-adapter` node kinds with the coupler color,
   halo, layout band and legend entry.
-- **Fixes** — the `channels` route existed in the router but had no nav button,
-  making 模型通道 unreachable; it now has one. The `--accent` / `--accent-2` /
-  `--purple` tokens referenced by the overview were undefined and are now
-  declared.
-- **Front-end tests** (`web/test/`, `npm run test:console`, 16 cases) —
-  `pae-catalog.test.mjs` covers the pure helpers and the template catalog;
-  `bridge-pae.test.mjs` drives a real `OrbitRuntimeHost` through register →
-  invoke → negotiate → unregister. Pure logic lives in DOM-free `lib.js` so it
-  is assertable in Node without a browser.
+- **Command palette** — `Ctrl/⌘+K` or `/` opens a fuzzy-searchable index of
+  every view *and* every host action (boot / shutdown / restart / refresh).
+  `↑` `↓` to move, `Enter` to run, `Esc` to close. Ranking is a pure function
+  (`fuzzyScore`) and is unit-tested, including Chinese/English mixed queries.
+- **Task-oriented overview** — the front page stopped restating the nine views
+  and now answers two questions instead: *can this host work right now* (a health
+  verdict with every reason behind it) and *what should I do next* (derived from
+  real kernel state, each step a clickable action rather than prose). A stopped
+  host gets exactly one suggestion: start it.
+- **Grouped navigation, generated from data** — the sidebar is built from
+  `NAV_GROUPS` in `lib.js`, not hand-written in HTML, and the palette indexes the
+  same data. Nine flat pages became three intent groups: 运行时 / 构件 / 治理.
+- **Fixes**:
+  - `channels` had a route but no nav button — 模型通道 was unreachable.
+  - `--accent` / `--accent-2` / `--purple` were referenced by the overview but
+    never declared.
+  - `/api/health` reported a hard-coded `0.1.0` while the kernel was at `0.2.0`;
+    it now reads `KERNEL_VERSION`, so the console cannot go stale again.
+  - The overview's 熔断保护 card pointed at a `safeguard` route that does not
+    exist, silently sending the user to the sandbox page instead.
+- **Front-end tests** (`web/test/`, `npm run test:console`, 49 cases) —
+  `pae-catalog.test.mjs` (pure helpers + template catalog),
+  `bridge-pae.test.mjs` (a real `OrbitRuntimeHost`, now including seven MCP cases
+  driving a genuine subprocess peer), and `console-core.test.mjs` (navigation
+  model, palette ranking, health derivation, next-step suggestions, argv
+  parsing). `web/test/fixtures/mcp-stdio-server.mjs` is a minimal but real MCP
+  server used to exercise the full cross-process path.
 
 ### Tests
 - `test/pae_adapter.test.ts` (22 cases): registration validation, dynamic-pact
   derivation, fidelity-negotiation rejection, order-independent `configHash`,
   JS-adapter determinism, host routing decisions, write-tool lockdown for
   read-only callers, replay zero re-entry, and `paeAdaptersHash` drift.
-- `test/replay_compat.test.ts` (+3 PAE merge-gate cases): record→replay is
+- `test/mcp_adapter.test.ts` (27 cases): protocol framing and validation,
+  `content[]` normalisation, transport correlation / deadlines / closure,
+  handshake-driven discovery, `L2` + `IO_BOUND` defaults, honest `reduced`
+  fidelity, `toolNamePrefix` collision avoidance, remote tool errors, host
+  registration and drift, a real subprocess over stdio, and a dead or dying peer
+  failing in-flight requests with its stderr attached.
+- `test/replay_compat.test.ts` (+3 PAE, +2 MCP merge-gate cases): record→replay is
   byte-identical and the adapter runs exactly once; after unregistering an
   adapter its replay needs no implementation; a `Math.random` poison in the
-  adapter body is caught.
-- Full suite: **176 cases** green, strict compile zero errors (baseline 151 →
-  176, only grows).
+  adapter body is caught; an MCP trace replays without re-entering the peer; a
+  trace replays after its MCP peer has been shut down and released.
+- Full kernel suite: **205 cases** green, strict compile zero errors
+  (baseline 151 → 176 after W15 → 205 after W16; only grows).
+- Full console suite (`npm run test:console`): **49 cases** green. Kernel and
+  console suites are independent; a change on either side runs both.
 
 ## [0.2.0] — 2026-08-29 · Gateway determinism boundary (v0.2.0)
 

@@ -16,6 +16,11 @@ export interface DomainInvokeCtx {
   maxWaitMs: number;
   rng?: RngSource;
   clock?: ClockSource;
+  /**
+   * The calling plugin unit, when the caller is itself a unit. A cross-domain
+   * transaction records it so a hop is attributable at both ends (W20).
+   */
+  pluginUnitId?: string;
 }
 
 /** Identity reported by a host during handshake; `null` before `setup`. */

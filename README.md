@@ -34,6 +34,8 @@ Orbit Agent Runtime is a lightweight, dependency-free runtime host for plugin-ba
 - **Three-way drift classification (W13)** — replay failures are reported as distinct errors: config drift (`RunFingerprintDriftError`, version/fingerprint), decision drift (`DecisionDriftError`, e.g. a revoked pact), and call drift (`ReplayDriftError`, data/signature). Reconciliation also reports `decisionDriftFields`
 - **`replay_compat` determinism gate (W12)** — a 7-case CI gate proves the gateway boundary stays faithful under compression / rate-limit / collector / fingerprint-drift / decision-drift: every decision is recorded and replayed byte-identically
 - **Plugin Adaptation Engine (W15)** — foreign runtimes (in-process JS, and later MCP / OpenAPI / Cordis) are mapped onto the kernel capability contract through adapters that surface as a single capability channel; every foreign call is a gateway transaction, recorded and replayed byte-identically. Fidelity is negotiated honestly (`full | reduced | lossy`), and the adapter surface is hashed into the run fingerprint for drift detection
+- **Isolation domains (W19)** — the impact graph allocates the physical layer: a unit whose failure closure exceeds the threshold gets its own L2 child process (`iso:<unit>`), the rest share deterministic chunks (`shared:<n>`). The sync is a diff, not a rebuild, and domains are published as one capability channel, so a domain call is recorded and replayed byte-identically
+- **Cross-domain transactions (W20)** — every hop between domains is an atomic gateway transaction: `decision (assignment / isolation) + execution + result + audit`, settled in a ledger that reconciles by (source → target) pair. Orphans (a hop that crossed a boundary and never settled) and refusals are both detectable from the records alone; replay injects the frozen output without re-entering the domain
 - **Zero runtime dependencies** — pure TypeScript, strict mode, runs on Node.js ≥ 20
 
 ## Architecture
@@ -105,6 +107,50 @@ host.registerPaeToolAdapter(adapter); // foreign surface → derived Pact, gated
 // Inside an agent script, a foreign tool is just another channel call:
 //   const out = await ctx.call(ChannelKind.PAE_TOOL, "echo", [{ text: "hi" }]);
 ```
+
+## Isolation domains & cross-domain transactions (W19–W20)
+
+The physical layer is allocated from the graph, not from a static trust table:
+
+```ts
+const host = new OrbitRuntimeHost();
+await host.bootHost();
+
+host.registerPlugin({
+  id: "p.worker",
+  displayName: "p.worker",
+  edition: "1.0.0",
+  requireHostMinEdition: "0.2.0",
+  allowCapabilities: ["channel:read", "channel:write"],
+  declareChannelDeps: [ChannelKind.LLM_ACCESS]
+});
+
+// Graph → plan: closure > threshold ⇒ own L2 process; the rest share chunks.
+// Omit `transportFactory` to use the built-in pure-unit host (node -e shim).
+const plan = await host.allocateIsolationDomains({ maxImpactClosure: 1 });
+plan.domains; // [{ id: "iso:p.worker", isolation: "L2", units: ["p.worker"] }, ...]
+
+// A hop into a domain is a gateway transaction — recorded, replayed, settled.
+const out = await host.invokeDomainUnit("p.worker", "ping", [{ hello: "world" }], {
+  pluginUnitId: "p.worker"
+});
+
+host.domainLedger();                    // decision → execution → result
+host.reconcileDomainTransactions();     // { balanced, pairs, orphans, rejected, totals }
+host.runFingerprint();                  // gains `domainPlanHash` once domains exist
+```
+
+Three properties worth stating explicitly:
+
+- **No bare randomness, no bare clock.** Coordinates and delays are hardcoded or
+  derived from indices; latency is measured through an injected clock, so a
+  ledger hashes identically for identical runs.
+- **Backward compatible fingerprints.** `domainPlanHash` is *omitted* (not empty)
+  while no plan exists, so traces from hosts that never allocate domains keep the
+  exact fingerprint they had before the physical layer existed.
+- **Replay never re-enters a domain.** The frozen output is injected at the
+  gateway, so the child process is not touched and no transaction is opened —
+  axiom A1 expressed on the ledger.
 
 ## Web console
 

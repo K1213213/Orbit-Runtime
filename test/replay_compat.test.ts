@@ -27,6 +27,7 @@ import { IsolationDomainManager } from "../src/sandbox/domains/IsolationDomainMa
 import { InMemoryDomainTransport } from "../src/sandbox/domains/transport";
 import { DOMAIN_PROTOCOL_VERSION } from "../src/sandbox/domains/protocol";
 import { ImpactDomainGraph } from "../src/graph/impact_domain";
+import { OrbitRuntimeHost } from "../src/core/orbitRuntimeHost";
 import { digestInputs } from "../src/utils/digest";
 import { ChannelKind, ChannelCallCtx, ReplayMode } from "../src/types/orbitDomain";
 
@@ -942,4 +943,123 @@ test("replay_compat domain: a trace replays after the domain is gone", async () 
   );
   assert.equal(replayed, live, "replay needs the journal, never the domain host");
   await hub.teardown();
+});
+
+// ---------------------------------------------------------------------------
+// Domain transactions (W20) — a cross-domain hop as a gateway transaction
+// ---------------------------------------------------------------------------
+
+/** A host with one plugin unit whose domain host answers `ping` with its args. */
+async function hostWithDomainUnit() {
+  const host = new OrbitRuntimeHost();
+  await host.bootHost();
+  host.registerPlugin({
+    id: "p.txn",
+    displayName: "p.txn",
+    edition: "1.0.0",
+    requireHostMinEdition: "0.2.0",
+    allowCapabilities: ["channel:read", "channel:write"],
+    declareChannelDeps: [ChannelKind.LLM_ACCESS]
+  });
+  await host.allocateIsolationDomains({
+    transportFactory: () =>
+      new InMemoryDomainTransport((method: string, params: unknown) => {
+        if (method === "initialize") {
+          return { protocolVersion: DOMAIN_PROTOCOL_VERSION, hostInfo: { name: "txn-host", version: "1.0.0" } };
+        }
+        if (method === "units/list") {
+          return { units: [{ id: "p.txn", tools: [{ name: "ping" }] }] };
+        }
+        const p = params as { arguments: Record<string, unknown> };
+        return { pong: p.arguments };
+      }),
+    maxImpactClosure: 1
+  });
+  return host;
+}
+
+test("replay_compat domain txn: a cross-domain hop records and replays byte-identically", async () => {
+  const host = await hostWithDomainUnit();
+  try {
+    const recordJournal = host.beginRecording();
+    const live = await host.invokeDomainUnit<{ pong: { hello: string } }>(
+      "p.txn",
+      "ping",
+      [{ hello: "world" }],
+      { pluginUnitId: "p.txn" }
+    );
+    assert.deepEqual(live.pong, { hello: "world" });
+
+    // One transaction, settled — the ledger balances before replay even starts.
+    const ledger = host.domainLedger();
+    assert.equal(ledger.length, 1);
+    assert.equal(ledger[0].state, "settled");
+    assert.equal(host.reconcileDomainTransactions().balanced, true);
+
+    host.attachReplayEngine(recordJournal);
+    const replayed = await host.invokeDomainUnit<{ pong: { hello: string } }>(
+      "p.txn",
+      "ping",
+      [{ hello: "world" }],
+      { pluginUnitId: "p.txn", mode: "replay" }
+    );
+
+    assert.deepEqual(replayed, live);
+    assert.equal(JSON.stringify(replayed), JSON.stringify(live), "byte-identical across the domain boundary");
+    /*
+     * Replay never re-enters the domain: the frozen output is injected at the
+     * gateway, so the physical layer is not touched and no new transaction is
+     * opened. That is axiom A1 expressed on the ledger.
+     */
+    assert.equal(host.domainLedger().length, 1, "replay injects the output, it does not re-enter the domain");
+    assert.equal(host.reconcileDomainTransactions().balanced, true);
+
+    /*
+     * Replay is not a free pass. A fresh replay session (attaching the engine
+     * resets the cursor) replaying a *different* input must surface as call
+     * drift, not silently serve the frozen output.
+     */
+    host.attachReplayEngine(recordJournal);
+    await assert.rejects(
+      () =>
+        host.invokeDomainUnit("p.txn", "ping", [{ hello: "changed" }], {
+          pluginUnitId: "p.txn",
+          mode: "replay"
+        }),
+      /signature mismatch/,
+      "a changed input is call drift, not a replay hit"
+    );
+  } finally {
+    await host.shutdownHost();
+  }
+});
+
+test("replay_compat domain txn: a trace replays after every domain is released", async () => {
+  const host = await hostWithDomainUnit();
+  const recordJournal = host.beginRecording();
+  const live = await host.invokeDomainUnit<{ pong: { n: number } }>(
+    "p.txn",
+    "ping",
+    [{ n: 1 }],
+    { pluginUnitId: "p.txn" }
+  );
+  assert.deepEqual(live.pong, { n: 1 });
+
+  /*
+   * Release the physical layer entirely — every domain host is torn down, as it
+   * would be on a machine that never had the child processes. Replaying must
+   * depend on the journal alone.
+   */
+  await host.releaseIsolationDomains();
+  assert.deepEqual(host.domains(), []);
+  host.attachReplayEngine(recordJournal);
+
+  const replayed = await host.invokeDomainUnit<{ pong: { n: number } }>(
+    "p.txn",
+    "ping",
+    [{ n: 1 }],
+    { pluginUnitId: "p.txn", mode: "replay" }
+  );
+  assert.deepEqual(replayed, live, "replay needs the journal, never the domain host");
+  await host.shutdownHost();
 });

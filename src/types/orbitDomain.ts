@@ -77,6 +77,13 @@ export interface RunVersionFingerprint {
    * later as an unexplained digest mismatch.
    */
   paeAdaptersHash?: string;
+  /**
+   * W20: hash of the allocated isolation-domain plan (domain ids plus their
+   * units). Optional for the same reason as `paeAdaptersHash`: a host that
+   * never allocates domains keeps the exact fingerprint it had before the
+   * physical layer existed, so old traces stay replayable.
+   */
+  domainPlanHash?: string;
 }
 
 /**

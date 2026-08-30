@@ -21,7 +21,18 @@ import type { IPaeAdapter, PaeFidelity, PaeToolDescriptor } from "../pae/types";
 import type { GatewayInvokeParams } from "../gateway/CapabilityGateway";
 import type { GatewayCheckers } from "../gateway/types";
 import type { AgentSandbox } from "../sandbox/AgentSandbox";
-import { ChannelKind, ChannelCallCtx, PluginUnitPact, AgentBoxConfig, CapabilityKey, ReplayMode } from "../types/orbitDomain";
+import {
+  ChannelKind, ChannelCallCtx, PluginUnitPact, AgentBoxConfig, CapabilityKey, ReplayMode
+} from "../types/orbitDomain";
+import type { RunVersionFingerprint } from "../types/orbitDomain";
+import type { ClockSource } from "../types/orbitDomain";
+// W20: the physical layer becomes host state.
+import { IsolationDomainManager } from "../sandbox/domains/IsolationDomainManager";
+import { DomainChannel } from "../sandbox/domains/DomainChannel";
+import type { DomainTransportFactory } from "../sandbox/domains/IsolationDomainManager";
+import type { IsolationDomainPlan } from "../sandbox/domains/allocate";
+import type { DomainInvokeCtx } from "../sandbox/domains/IsolationDomain";
+import type { DomainReconciliation, DomainTransaction } from "../sandbox/domains/transaction";
 
 const HOST_DEFAULT_TIMEOUT_MS = 10_000;
 
@@ -54,6 +65,16 @@ export class OrbitRuntimeHost {
   public readonly paeChannel: PaeChannel;
   /** W8: kinds served by a PAE adapter; routing flips to "pae" when non-empty. */
   private readonly paeAdapterKinds = new Set<ChannelKind>();
+  /**
+   * W20: the physical layer — isolation domains allocated from the impact
+   * graph. Created lazily: a host that never allocates domains keeps its
+   * previous hub surface and fingerprint byte for byte.
+   */
+  private domainManager: IsolationDomainManager | null = null;
+  /** W20: the gateway surface over the domain manager's units. */
+  private domainChannel: DomainChannel | null = null;
+  /** W20: the graph changed since the last allocation (plan needs a re-sync). */
+  private domainsStaleFlag = false;
 
   public constructor() {
     this.costRouter = new CostRouter();
@@ -95,15 +116,7 @@ export class OrbitRuntimeHost {
       route: (_pluginId, kind) =>
         kind === ChannelKind.PAE_TOOL || this.paeAdapterKinds.size > 0 ? "pae" : "native",
       compression: (output) => this.tokenBudget.decideCompression(output),
-      fingerprint: () => ({
-        kernelVersion: KERNEL_VERSION,
-        pactVersions: {},
-        tokenConfigHash: this.tokenBudget.configHash(),
-        paeEnabled: this.paeAdapterKinds.size > 0,
-        // Omitted while no adapter is registered, so traces produced by hosts
-        // that never touch PAE keep exactly the fingerprint they had before.
-        ...(this.paeRegistry.isEmpty() ? {} : { paeAdaptersHash: this.paeRegistry.configHash() })
-      }),
+      fingerprint: () => this.runFingerprint(),
       accountTokens: (pluginId, output) => {
         if (typeof output === "string") {
           this.tokenBudget.account(pluginId, this.tokenBudget.estimateTokens(output));
@@ -141,12 +154,38 @@ export class OrbitRuntimeHost {
     if (kind === ChannelKind.PAE_TOOL) {
       return this.paeRegistry.capabilityOf(funcName) ?? "channel:write";
     }
+    if (kind === ChannelKind.DOMAIN_TOOL) {
+      // W20: a domain hop is a cross-process call into another unit's process.
+      // The capability is not yet declared per unit tool, so the conservative
+      // default governs — the same fail-closed rule the adapter surface uses.
+      return "channel:write";
+    }
     return requiredCapability(kind, funcName);
   }
 
   /** Host-private trip pre-check delegating to the gateway's per-plugin map. */
   private tripPreCheckFor(pluginId: string): boolean {
     return this.gateway.tripPreCheck(pluginId);
+  }
+
+  /**
+   * The run-version fingerprint a recorded trace carries (W7, extended W15/W20).
+   *
+   * Both optional fields are **omitted rather than empty**: a host that never
+   * registers an adapter or allocates a domain produces exactly the fingerprint
+   * it produced before those layers existed, so a trace recorded on an older
+   * kernel is reported as configuration drift — never as a mystery digest
+   * mismatch.
+   */
+  public runFingerprint(): RunVersionFingerprint {
+    return {
+      kernelVersion: KERNEL_VERSION,
+      pactVersions: {},
+      tokenConfigHash: this.tokenBudget.configHash(),
+      paeEnabled: this.paeAdapterKinds.size > 0,
+      ...(this.paeRegistry.isEmpty() ? {} : { paeAdaptersHash: this.paeRegistry.configHash() }),
+      ...(this.domainManager?.planOf() ? { domainPlanHash: this.domainManager.planHash() } : {})
+    };
   }
 
   public async bootHost(): Promise<void> {
@@ -158,6 +197,9 @@ export class OrbitRuntimeHost {
     this.sandboxPool.clear();
     this.pluginPactVerifier.clear();
     this.pluginSandboxGuard.releaseAllGuard();
+    // W20: release the physical layer before the hubs — every domain host is a
+    // real child process and must not outlive the kernel that spawned it.
+    await this.releaseIsolationDomains();
     await this.channelHub.teardown();
     // Channel teardown already released every adapter (PaeChannel.teardown);
     // dropping the registry afterwards leaves no dangling foreign surface.
@@ -175,6 +217,8 @@ export class OrbitRuntimeHost {
     for (const dep of pact.declareChannelDeps ?? []) {
       this.impactGraph.addEdge(pact.id, dep);
     }
+    // W20: the graph feeds domain allocation — a change invalidates the plan.
+    this.domainsStaleFlag = true;
   }
 
   /** Spawn an agent sandbox; its channel deps feed the impact graph (M3). */
@@ -184,6 +228,8 @@ export class OrbitRuntimeHost {
     for (const dep of cfg.channelDeps ?? []) {
       this.impactGraph.addEdge(cfg.agentBoxId, dep);
     }
+    // W20: same invalidation rule as `registerPlugin`.
+    this.domainsStaleFlag = true;
     return box;
   }
 
@@ -271,6 +317,8 @@ export class OrbitRuntimeHost {
     this.paeChannel.syncTools();
     this.pluginPactVerifier.unregisterPluginUnit(adapterId);
     this.impactGraph.removeNode(adapterId);
+    // W20: removing a node can shrink closures, so the plan must be recomputed.
+    this.domainsStaleFlag = true;
     if (this.paeRegistry.isEmpty()) {
       this.paeAdapterKinds.delete(ChannelKind.PAE_TOOL);
     }
@@ -351,6 +399,121 @@ export class OrbitRuntimeHost {
   /** M4: choose the cheapest channel that fits the budget and latency target. */
   public routeChannel(kinds: ChannelKind[], budget: number, maxLatencyMs: number): ChannelKind | undefined {
     return this.costRouter.choose(kinds, budget, maxLatencyMs);
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* W20 · 图驱动域分配与域间事务化调用                                  */
+  /* ------------------------------------------------------------------ */
+
+  /** Whether the impact graph changed since the last domain allocation. */
+  public domainsStale(): boolean {
+    return this.domainsStaleFlag;
+  }
+
+  /**
+   * Allocate isolation domains from the current impact graph and publish their
+   * unit surface on the gateway (W19 channel, W20 host state).
+   *
+   * Idempotent for a given graph: the sync is a diff, so re-running after a
+   * no-op graph change neither restarts child processes nor perturbs the plan
+   * hash. Registering the channel happens here and only here — a host that
+   * never allocates domains keeps its previous hub surface and fingerprint.
+   */
+  public async allocateIsolationDomains(
+    opts: {
+      transportFactory?: DomainTransportFactory;
+      clock?: ClockSource;
+      maxImpactClosure?: number;
+      maxDomainSize?: number;
+      defaultTimeoutMs?: number;
+    } = {}
+  ): Promise<IsolationDomainPlan> {
+    let manager = this.domainManager;
+    if (!manager) {
+      manager = new IsolationDomainManager({
+        transportFactory: opts.transportFactory,
+        clock: opts.clock,
+        defaultTimeoutMs: opts.defaultTimeoutMs,
+        maxImpactClosure: opts.maxImpactClosure,
+        maxDomainSize: opts.maxDomainSize
+      });
+      const channel = new DomainChannel(manager);
+      this.domainManager = manager;
+      this.domainChannel = channel;
+      this.channelHub.registerBuiltInChannel(ChannelKind.DOMAIN_TOOL, channel);
+      // A domain hop is a cross-process call: priced and timed like the
+      // adaptation surface, so budget routing sees the real cost.
+      this.costRouter.register(ChannelKind.DOMAIN_TOOL, { costPerCall: 2, latencyMs: 40, quality: 1 });
+    }
+    const plan = await manager.syncDomains(this.impactGraph, this.domainCtx(), opts);
+    this.domainChannel?.syncTools();
+    this.domainsStaleFlag = false;
+    return plan;
+  }
+
+  /** The current domain plan, or `null` before the first allocation. */
+  public domainPlan(): IsolationDomainPlan | null {
+    return this.domainManager?.planOf() ?? null;
+  }
+
+  /** Running domains: id, units and isolation level, sorted. */
+  public domains(): Array<{ domainId: string; units: string[]; isolation: string }> {
+    return this.domainManager?.domainsOf() ?? [];
+  }
+
+  /**
+   * Invoke a unit in its domain through the gateway — the cross-domain hop.
+   * Recorded and replayed like any other governed call; settled in the domain
+   * transaction ledger either way.
+   */
+  public invokeDomainUnit<T>(
+    unitId: string,
+    tool: string,
+    args: unknown[] = [],
+    opts: { pluginUnitId?: string; mode?: ReplayMode; ctx?: Partial<ChannelCallCtx> } = {}
+  ): Promise<T> {
+    return this.gateway.capabilityInvoke<T>({
+      kind: ChannelKind.DOMAIN_TOOL,
+      pluginId: opts.pluginUnitId,
+      funcName: `${unitId}:${tool}`,
+      args,
+      mode: opts.mode ?? "live",
+      ctx: opts.ctx
+    } as GatewayInvokeParams);
+  }
+
+  /** The cross-domain transaction ledger (decision → execution → result). */
+  public domainLedger(): readonly DomainTransaction[] {
+    return this.domainManager?.txnLedger() ?? [];
+  }
+
+  /** Reconcile the ledger — cross-domain events must balance (VISION 2.2). */
+  public reconcileDomainTransactions(): DomainReconciliation {
+    return this.domainManager
+      ? this.domainManager.reconcile()
+      : {
+          balanced: true,
+          pairs: [],
+          orphans: [],
+          rejected: [],
+          totals: { transactions: 0, settled: 0, failed: 0, rejected: 0 }
+        };
+  }
+
+  /** Tear down every domain and release its host process. */
+  public async releaseIsolationDomains(): Promise<void> {
+    if (!this.domainManager) return;
+    const manager = this.domainManager;
+    this.domainManager = null;
+    this.domainChannel = null;
+    this.domainsStaleFlag = false;
+    await manager.teardownAll();
+  }
+
+  /** Context for domain synchronization calls. */
+  private domainCtx(): DomainInvokeCtx {
+    const ctx = this.newHostCtx();
+    return { traceMarkId: ctx.traceMarkId, maxWaitMs: ctx.maxWaitMs };
   }
 
   private newHostCtx(): ChannelCallCtx {

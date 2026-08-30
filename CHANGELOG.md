@@ -182,6 +182,42 @@ special-casing.
   `ChildProcessDomainTransport`, `DOMAIN_HOST_SHIM`, `DOMAIN_HOST_VERSION`,
   the protocol functions, and `ChannelKind.DOMAIN_TOOL`.
 
+### W20 — Cross-domain transactions & graph-driven allocation as host state
+- **`transaction.ts` — the settlement record.** VISION 2.1 declares every
+  capability call an atomic transaction; 2.2 adds that interaction *between*
+  isolation domains is a gateway transaction whose events can be reconciled.
+  `beginTransaction` / `markExecuted` / `settleTransaction` / `reconcileTransactions`
+  implement that with no clock, no randomness and no I/O. Transaction ids are
+  `dtx:<seq>`, so a run replays to the same id stream. Reconciliation groups by
+  (source domain → target domain) and detects two failure shapes from the
+  records alone: **orphans** (a hop crossed a boundary and never settled) and
+  **refusals** (refused before execution — not an error, but a wall of them
+  means the plan no longer matches the graph).
+- **`IsolationDomainManager.invokeUnit` is now transactional.** Every hop opens
+  a transaction (decision: is the unit assigned, at what isolation level),
+  executes, and settles with its outcome — success or failure. A refused hop is
+  *recorded as rejected* rather than thrown away, so "the plan no longer matches
+  the graph" is visible in the ledger, not only in a stack trace. Latency is
+  measured through an injected clock; `txnLedger()` / `reconcile()` /
+  `ledgerHash()` / `clearLedger()` expose the record.
+- **The plan becomes host state.** `OrbitRuntimeHost` owns the domain manager:
+  graph mutations (`registerPlugin`, `spawnAgentBox`, `unregisterPaeToolAdapter`)
+  mark the plan stale via `domainsStale()`, and `allocateIsolationDomains()`
+  syncs it (a diff, so re-running changes nothing) and publishes the surface on
+  `ChannelKind.DOMAIN_TOOL` — registering that channel happens only on
+  allocation, so a host that never allocates domains keeps its previous hub
+  surface and fingerprint byte for byte.
+- **Backward-compatible fingerprint.** `RunVersionFingerprint.domainPlanHash` is
+  *omitted* while no plan exists (the W15/W16 PAE rule applied to the physical
+  layer), and `host.runFingerprint()` is now public for drift diagnosis.
+- **Replay does not re-enter a domain.** The frozen output is injected at the
+  gateway, so the child process is untouched and no transaction is opened —
+  asserted directly in the replay gate.
+- Public API: `allocateIsolationDomains`, `domainPlan`, `domains`, `domainsStale`,
+  `invokeDomainUnit`, `domainLedger`, `reconcileDomainTransactions`,
+  `releaseIsolationDomains`, `runFingerprint`, plus the transaction functions and
+  types.
+
 ### Console
 - **Adapter Studio** (`web/public/views/pae.js`) — the PAE surface becomes
   operable: pick a tool template, register the adapter, negotiate fidelity, then

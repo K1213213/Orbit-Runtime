@@ -2,6 +2,18 @@ import { ChildProcessDomainTransport, type IDomainTransport } from "./transport"
 import { DOMAIN_HOST_SHIM } from "./hostShim";
 import { DomainUnitMissingError } from "./errors";
 import {
+  beginTransaction,
+  markExecuted,
+  reconcileTransactions as reconcileOf,
+  stableHash,
+  settleTransaction,
+  ledgerHash as ledgerHashOf,
+  type DomainReconciliation,
+  type DomainTransaction,
+  type DomainTxnDecision
+} from "./transaction";
+import type { ClockSource } from "../../types/orbitDomain";
+import {
   allocateDomains,
   type AllocateOptions,
   type IsolationDomainPlan,
@@ -21,6 +33,11 @@ export interface IsolationDomainManagerOptions extends AllocateOptions {
   transportFactory?: DomainTransportFactory;
   /** Per-call deadline when the caller supplies none. */
   defaultTimeoutMs?: number;
+  /**
+   * Clock used only to measure hop latency in the transaction ledger — it never
+   * reaches a recorded value, so injecting one keeps tests deterministic.
+   */
+  clock?: ClockSource;
 }
 
 /**
@@ -41,9 +58,13 @@ export class IsolationDomainManager {
   private readonly transportFactory: DomainTransportFactory;
   private readonly options: IsolationDomainManagerOptions;
   private lastPlan: IsolationDomainPlan | null = null;
+  private ledger: DomainTransaction[] = [];
+  private txnSeq = 0;
+  private readonly clock: ClockSource;
 
   public constructor(options: IsolationDomainManagerOptions = {}) {
     this.options = options;
+    this.clock = options.clock ?? { now: () => Date.now() };
     this.transportFactory =
       options.transportFactory ??
       ((domainId) =>
@@ -88,11 +109,35 @@ export class IsolationDomainManager {
   }
 
   /**
+   * Stable hash of the current plan — domain ids plus their units. Empty when
+   * no plan exists, so a host that never allocates domains keeps the exact
+   * fingerprint it had before the physical layer existed (backward compatible,
+   * same rule as the PAE adapter hash).
+   */
+  public planHash(): string {
+    const plan = this.lastPlan;
+    if (!plan) return "";
+    const shape = plan.domains.map((d) => `${d.id}[${d.units.join(",")}]`).join(";");
+    const escalated = plan.escalated.slice().sort().join(",");
+    return stableHash(`${shape}|${escalated}`);
+  }
+
+  /**
    * Recompute the domain plan from the graph and reconcile the running set.
    * Idempotent per plan: calling twice with the same graph is a no-op.
+   * `override` lets the host change allocation thresholds for a single sync.
    */
-  public async syncDomains(graph: ImpactDomainGraph, ctx: DomainInvokeCtx): Promise<IsolationDomainPlan> {
-    const plan = allocateDomains(graph, this.options);
+  public async syncDomains(
+    graph: ImpactDomainGraph,
+    ctx: DomainInvokeCtx,
+    override: AllocateOptions = {}
+  ): Promise<IsolationDomainPlan> {
+    const options: AllocateOptions = {
+      ...this.options,
+      ...(override.maxImpactClosure !== undefined ? { maxImpactClosure: override.maxImpactClosure } : {}),
+      ...(override.maxDomainSize !== undefined ? { maxDomainSize: override.maxDomainSize } : {})
+    };
+    const plan = allocateDomains(graph, options);
     const next = new Map<string, IsolationDomainSpec>();
     for (const spec of plan.domains) next.set(spec.id, spec);
 
@@ -128,22 +173,93 @@ export class IsolationDomainManager {
     return plan;
   }
 
-  /** Route an invocation to the domain that owns the unit. */
+  /**
+   * Open a cross-domain transaction, execute the hop, and settle it — VISION
+   * 2.1/2.2: every hop is `decision + execution + result + audit`, and the
+   * ledger is what makes cross-domain interaction reconcilable after the fact.
+   *
+   * A refused hop (unit not assigned) is recorded as `rejected` rather than
+   * thrown away, so "the plan no longer matches the graph" is visible in the
+   * ledger instead of only in a stack trace.
+   */
   public async invokeUnit(unitId: string, tool: string, args: unknown[], ctx: DomainInvokeCtx): Promise<unknown> {
     const domainId = this.ownerOf.get(unitId);
     const domain = domainId ? this.domains.get(domainId) : undefined;
+    const targetDomain = domainId ?? "—";
+    const isolation = domainId ? (this.domains.get(domainId)?.meta.isolation ?? "L2") : "—";
+
+    const decision: DomainTxnDecision = domain
+      ? { targetDomain, isolation, allowed: true }
+      : {
+          targetDomain,
+          isolation: "—",
+          allowed: false,
+          reason: `no isolation domain owns unit ${unitId}; run syncDomains first`
+        };
+
+    let txn = beginTransaction({
+      seq: this.txnSeq++,
+      ctx,
+      targetUnit: unitId,
+      tool,
+      decision,
+      sourceUnit: ctx.pluginUnitId,
+      sourceDomain: ctx.pluginUnitId ? this.ownerOf.get(ctx.pluginUnitId) : undefined
+    });
+    this.ledger.push(txn);
+
     if (!domain) {
-      throw new DomainUnitMissingError(
-        `no isolation domain owns unit ${unitId}; run syncDomains first`,
-        ctx.traceMarkId
-      );
+      txn = settleTransaction(txn, { ok: false, error: decision.reason });
+      this.ledger[this.ledger.length - 1] = txn;
+      throw new DomainUnitMissingError(decision.reason ?? "domain call refused", ctx.traceMarkId);
     }
-    return domain.invokeUnit(unitId, tool, args, ctx);
+
+    txn = markExecuted(txn);
+    const index = this.ledger.length - 1;
+    this.ledger[index] = txn;
+
+    const started = this.clock.now();
+    try {
+      const output = await domain.invokeUnit(unitId, tool, args, ctx);
+      this.ledger[index] = settleTransaction(txn, {
+        ok: true,
+        latencyMs: Math.max(0, this.clock.now() - started)
+      });
+      return output;
+    } catch (err) {
+      this.ledger[index] = settleTransaction(txn, {
+        ok: false,
+        latencyMs: Math.max(0, this.clock.now() - started),
+        error: err instanceof Error ? err.message : String(err)
+      });
+      throw err;
+    }
   }
 
   /** Unit ids currently assigned to a domain, sorted. */
   public assignedUnits(): string[] {
     return [...this.ownerOf.keys()].sort();
+  }
+
+  /** The cross-domain transaction ledger, in transaction order. */
+  public txnLedger(): readonly DomainTransaction[] {
+    return this.ledger.slice();
+  }
+
+  /** Reconcile the ledger — see `reconcileTransactions` in ./transaction. */
+  public reconcile(): DomainReconciliation {
+    return reconcileOf(this.ledger);
+  }
+
+  /** Stable hash of the ledger, for drift checks. */
+  public ledgerHash(): string {
+    return ledgerHashOf(this.ledger);
+  }
+
+  /** Drop the ledger (e.g. between runs of the same host). */
+  public clearLedger(): void {
+    this.ledger = [];
+    this.txnSeq = 0;
   }
 
   /** Stop every domain and release every host. */

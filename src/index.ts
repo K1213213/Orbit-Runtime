@@ -172,6 +172,25 @@ export type {
 } from "./sandbox/domains/protocol";
 export { DOMAIN_HOST_SHIM, DOMAIN_HOST_VERSION } from "./sandbox/domains/hostShim";
 export { DomainRemoteError, DomainUnitMissingError } from "./sandbox/domains/errors";
+// W20: cross-domain transactions — decision + execution + result + audit.
+export {
+  beginTransaction,
+  markExecuted,
+  newTxnId,
+  reconcileTransactions,
+  settleTransaction,
+  ledgerHash as domainLedgerHash,
+  stableHash
+} from "./sandbox/domains/transaction";
+export type {
+  BeginTransactionInput,
+  DomainPairBalance,
+  DomainReconciliation,
+  DomainTransaction,
+  DomainTxnDecision,
+  DomainTxnState,
+  SettlementOutcome
+} from "./sandbox/domains/transaction";
 export {
   PaeAdapterRejectError,
   PaeToolMissingError,

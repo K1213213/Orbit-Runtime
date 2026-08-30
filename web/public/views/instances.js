@@ -12,7 +12,7 @@
  * 比单个实例能聊多少轮更重要。
  */
 import { api } from "../api.js";
-import { el, esc, badge, toast, empty, drawer, confirmDialog } from "../app.js";
+import { el, esc, badgeEl, toast, empty, drawer, confirmDialog } from "../app.js";
 
 export async function renderInstances(root) {
   const wrap = el("div", "");
@@ -144,7 +144,7 @@ function buildBoxCard(box, reload) {
   meta.append(el("b", "", esc(box.boxAlias || box.agentBoxId)));
   meta.append(el("span", "sub mono", esc(box.agentBoxId)));
   head.append(meta);
-  head.append(spent ? badge("预算耗尽", "warn") : badge(`${box.cycleNow}/${box.maxCycleRun} 轮`, "ok"));
+  head.append(spent ? badgeEl("预算耗尽", "warn") : badgeEl(`${box.cycleNow}/${box.maxCycleRun} 轮`, "ok"));
   card.append(head);
 
   const rows = el("div", "ix-rows");

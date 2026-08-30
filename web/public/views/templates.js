@@ -6,7 +6,7 @@
  * 新版本并记下 rollbackOf——否则"当前是第几版"就会变成一个谎言。
  */
 import { api } from "../api.js";
-import { el, esc, badge, toast, empty, drawer, modal, confirmDialog, fmtDate } from "../app.js";
+import { el, esc, badge, badgeEl, toast, empty, drawer, modal, confirmDialog, fmtDate } from "../app.js";
 import { channelLabel } from "../lib.js";
 
 const REPLAY_TONE = { live: "ok", record: "warn", replay: "violet" };
@@ -56,16 +56,16 @@ export async function renderTemplates(root) {
     const meta = el("div", "grow");
     meta.append(el("b", "", esc(t.name)));
     meta.append(el("div", "hint", `v${esc(t.currentVersion)} · 更新于 ${esc(fmtDate(t.updatedAt))}`));
-    head.append(meta, badge(REPLAY_LABEL[snap.replayMode] ?? snap.replayMode ?? "—", REPLAY_TONE[snap.replayMode] ?? "neutral"));
+    head.append(meta, badgeEl(REPLAY_LABEL[snap.replayMode] ?? snap.replayMode ?? "—", REPLAY_TONE[snap.replayMode] ?? "neutral"));
     card.append(head);
 
     card.append(el("div", "tx-desc mt8", esc(t.desc || "（无描述）")));
 
     const tags = el("div", "tx-tags mt8");
-    for (const dep of snap.channelDeps ?? []) tags.append(badge(channelLabel(dep), "violet"));
-    tags.append(badge(`循环上限 ${snap.maxCycleRun ?? "—"} 轮`, "neutral"));
+    for (const dep of snap.channelDeps ?? []) tags.append(badgeEl(channelLabel(dep), "violet"));
+    tags.append(badgeEl(`循环上限 ${snap.maxCycleRun ?? "—"} 轮`, "neutral"));
     if (snap.budgetPerCycle !== undefined && snap.budgetPerCycle !== null) {
-      tags.append(badge(`每轮预算 ${snap.budgetPerCycle}`, "gold"));
+      tags.append(badgeEl(`每轮预算 ${snap.budgetPerCycle}`, "gold"));
     }
     card.append(tags);
 
@@ -194,7 +194,7 @@ export async function renderTemplates(root) {
         });
         item.append(rb);
       } else {
-        item.append(badge("当前", "ok"));
+        item.append(badgeEl("当前", "ok"));
       }
       if (v.version > 1) {
         const cmp = el("button", "btn sm", "对比上一版");

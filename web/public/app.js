@@ -104,6 +104,20 @@ export function el(tag, cls, html) {
   return node;
 }
 
+/**
+ * 神经徽章的元素版。
+ *
+ * `badge()`（lib.js）返回 HTML 字符串，只适合 innerHTML / 模板拼接；直接
+ * `append(badge(...))` 会把字符串当文本节点渲染，露出 `<span>` 原文（模板
+ * 卡片曾因此整排标签原样显示）。需要 append 真元素时用本函数。
+ */
+export function badgeEl(text, tone = "neutral") {
+  const s = document.createElement("span");
+  s.className = `badge ${tone}`;
+  s.textContent = String(text);
+  return s;
+}
+
 export function loading(text = "加载中…") {
   return el("div", "loading", `<span class="spinner"></span>${esc(text)}`);
 }

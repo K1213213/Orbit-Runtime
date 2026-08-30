@@ -134,3 +134,16 @@ test("view refs: every called identifier is defined, imported or a global", () =
   }
   assert.deepEqual(problems, [], "every called identifier must be defined or imported");
 });
+
+test("badge() 字符串不得直接 append（会按文本渲染露出 <span> 原文，须用 badgeEl）", () => {
+  const files = readdirSync(VIEWS_DIR).filter((f) => f.endsWith(".js"));
+  const problems = [];
+  for (const file of files) {
+    const src = readFileSync(join(VIEWS_DIR, file), "utf8");
+    // append( 之后直接出现 badge( 且中间没有 el( 包裹（el 的 innerHTML 场景合法）
+    for (const m of src.matchAll(/\.append\(\s*((?!el\()[^)]*?)badge\(/g)) {
+      problems.push(`${file}: append(${m[1].trim().slice(0, 40)}badge(…) — 字符串被当文本渲染，改用 badgeEl()`);
+    }
+  }
+  assert.deepEqual(problems, [], "badge 字符串直接 append 会把标签原文显示出来");
+});

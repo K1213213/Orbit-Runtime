@@ -9,7 +9,7 @@
  * 也应该允许用户关掉动画（前庭敏感 / 低性能设备）。
  */
 import { api, setToken } from "../api.js";
-import { el, esc, badge, toast, motionEnabled, setMotion, confirmDialog, currentUserInfo, go } from "../app.js";
+import { el, esc, badge, badgeEl, toast, motionEnabled, setMotion, confirmDialog, currentUserInfo, go } from "../app.js";
 import { ROLE_MATRIX, ROLE_LABEL, can } from "../lib.js";
 
 const SECTIONS = [
@@ -77,12 +77,12 @@ export async function renderSettings(root) {
   appearance.append(row(
     "命令面板",
     "任何页面按 Ctrl/⌘ + K 或 / 唤起，全键盘可达。",
-    badge("常开", "ok")
+    badgeEl("常开", "ok")
   ));
   appearance.append(row(
     "会话令牌",
     "存于 localStorage；服务端会话失效时自动回到登录页。",
-    badge("Bearer", "neutral")
+    badgeEl("Bearer", "neutral")
   ));
 
   /* ---- 主机 ---- */
@@ -91,7 +91,7 @@ export async function renderSettings(root) {
   hostPanel.append(row(
     "主机状态",
     `OrbitRuntimeHost · v${health.version} · ${health.running ? "运行中" : "已停止"}`,
-    badge(health.running ? "运行中" : "已停止", health.running ? "ok" : "neutral")
+    badgeEl(health.running ? "运行中" : "已停止", health.running ? "ok" : "neutral")
   ));
   const hostOps = el("div", "row");
   for (const [text, fn, cls] of [

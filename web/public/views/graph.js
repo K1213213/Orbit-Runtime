@@ -59,8 +59,8 @@ export async function renderGraph(root) {
   const checker = el("div", "card mt16");
   checker.append(el("div", "card-head", "<h3>隔离定理检查</h3><span class='sub'>两条血脉互不相通 ⇒ 故障互不传染（provably independent）</span>"));
   const cBody = el("div", "card-body");
-  const selA = el("select");
-  const selB = el("select");
+  const selA = el("select", "select");
+  const selB = el("select", "select");
   const checkBtn = el("button", "btn primary", "检查独立性");
   const cResult = el("div", "mt12");
   cBody.append(

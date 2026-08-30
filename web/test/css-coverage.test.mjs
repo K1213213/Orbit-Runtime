@@ -60,3 +60,21 @@ test("旧词表兼容令牌已就位（早期视图的 inline var(--coupler) 等
     assert.ok(css.includes(token + ":"), `兼容令牌 ${token} 未定义`);
   }
 });
+
+test("表单控件必须带主题类（el('input') 裸建会渲染成浏览器默认白底控件）", () => {
+  const views = readdirSync(join(webRoot, "public", "views")).filter((f) => f.endsWith(".js"));
+  const problems = [];
+  const NATIVE_ONLY_TYPES = /\.type\s*=\s*"(?:checkbox|radio|range|color|file|hidden)"/;
+  const THEMED_LATER = /className\s*=\s*["'](?:input|select)["']/;
+  for (const f of views) {
+    const js = readFileSync(join(webRoot, "public", "views", f), "utf8");
+    for (const m of js.matchAll(/(?:el|document\.createElement)\(["'](input|select|textarea)["']\)/g)) {
+      // 紧邻的 type=checkbox/range 等原生控件是豁免的（加 .input 反而破坏样式）；
+      // 紧邻的 className="input"/"select" 赋值视为已主题化。
+      const next = js.slice(m.index + m[0].length, m.index + m[0].length + 90);
+      if (NATIVE_ONLY_TYPES.test(next) || THEMED_LATER.test(next)) continue;
+      problems.push(`${f}: 裸 ${m[1]}（缺主题类，见 .input/.select/textarea.input）`);
+    }
+  }
+  assert.deepEqual(problems, [], "裸表单控件会与主题不匹配，必须带主题类");
+});

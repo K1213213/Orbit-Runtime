@@ -6,6 +6,7 @@ import { el, esc, badge, toast, empty, loading } from "../app.js";
 
 function input(type, value = "", ph = "") {
   const i = document.createElement("input");
+  i.className = "input";
   i.type = type;
   i.value = value;
   i.placeholder = ph;

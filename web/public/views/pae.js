@@ -82,7 +82,7 @@ export async function renderPae(root) {
   const capF = select(["channel:read", "channel:write"], "channel:read");
   const detF = select(["deterministic", "stochastic", "io-bound"], "deterministic");
   const fidF = select(["full", "reduced", "lossy"], "full");
-  const fidNoteF = el("textarea");
+  const fidNoteF = el("textarea", "input");
   fidNoteF.placeholder = "保真度非 full 时必填：说明具体降损或有损了什么";
 
   function syncTplPreview() {
@@ -426,14 +426,14 @@ function label(text) {
   return el("label", "", `<span style="font-size:12px;color:var(--text-2);font-weight:550">${esc(text)}</span>`);
 }
 function input(type, value, placeholder) {
-  const i = el("input");
+  const i = el("input", "input");
   i.type = type;
   i.value = value;
   if (placeholder) i.placeholder = placeholder;
   return i;
 }
 function select(options, value) {
-  const s = el("select");
+  const s = el("select", "select");
   for (const o of options) {
     const opt = el("option", "", o);
     if (o === value) opt.selected = true;

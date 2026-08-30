@@ -254,7 +254,7 @@ function createUser({ account, password, name, email, role }) {
 
 /* Seed administrator — printed on the boot banner so it is discoverable
    rather than secret knowledge. */
-createUser({ account: "admin", password: "orbit-admin", name: "阵主", email: "admin@orbit.local" });
+createUser({ account: "admin", password: "orbit-admin", name: "管理员", email: "admin@orbit.local" });
 
 function publicUser(u) {
   return { account: u.account, name: u.name, email: u.email, role: u.role, createdAt: u.createdAt };
@@ -331,7 +331,7 @@ function auditList(query = {}) {
   return events.slice(0, Number(query.limit ?? 200));
 }
 
-/* ---- spend ledger (灵能账本) ---- */
+/* ---- spend ledger (Token 账本) ---- */
 
 const SPARK_GRANT = 10_000;
 const ledger = [];
@@ -354,7 +354,7 @@ function charge(taskId, box, channel, reason) {
     const balance = SPARK_GRANT - ledger.reduce((a, e) => a + e.units, 0);
     if (balance < 500) {
       lowBalanceAnnounced = true;
-      audit("billing.low", "wallet", `灵能余额跌破 500（剩 ${balance}）`, "warn");
+      audit("billing.low", "wallet", `Token余额跌破 500（剩 ${balance}）`, "warn");
     }
   }
 }
@@ -415,9 +415,9 @@ const NOTIFY_TITLES = {
   "task.aborted": "任务被手动终止",
   "task.done": "任务完成",
   "template.rollback": "模板已回滚",
-  "workflow.run": "阵法执行",
-  "rag.run": "灵域推演完成",
-  "billing.low": "灵能余额预警",
+  "workflow.run": "工作流执行",
+  "rag.run": "RAG推演完成",
+  "billing.low": "Token余额预警",
   "channel.register": "通道提供方变更",
   "channel.remove": "通道提供方移除",
   "kb.upload": "知识库有新文档"
@@ -617,7 +617,7 @@ function seedWorkflow() {
         title: "首轮推演",
         x: 220,
         y: 200,
-        config: { instruct: "你是 Orbit 阵法的首轮推演者，对输入给出简明回应。", prompt: "推演以下输入：" }
+        config: { instruct: "你是 Orbit 工作流的首轮推演者，对输入给出简明回应。", prompt: "推演以下输入：" }
       },
       {
         id: "b1",
@@ -633,7 +633,7 @@ function seedWorkflow() {
         title: "补卦推演",
         x: 400,
         y: 360,
-        config: { instruct: "你是 Orbit 阵法的补卦者，对上一轮结论做补充与修正。", prompt: "补充推演：" }
+        config: { instruct: "你是 Orbit 工作流的补充推演者，对上一轮结论做补充与修正。", prompt: "补充推演：" }
       },
       { id: "e1", type: "end", title: "收势", x: 580, y: 200, config: {} }
     ],
@@ -1432,14 +1432,18 @@ const api = {
     if (!name) throw new Error("文档名称 required");
     if (!content.trim()) throw new Error("文档内容为空");
     if (content.length > 200_000) throw new Error("文档过长（上限 200,000 字符）");
+    /* 切片参数由前端面板透传：切片大小（字符）与重叠率（0–0.5）。
+       未传时回退到 chunkText 的默认（320 / 0.15），与 UI 默认值一致。 */
+    const size = body?.chunkSize != null ? Number(body.chunkSize) : undefined;
+    const overlap = body?.overlap != null ? Number(body.overlap) : undefined;
     kbSeq += 1;
-    const chunks = chunkText(content).map((c) => ({ index: kb.nextIndex++, text: c.text }));
+    const chunks = chunkText(content, { size, overlap }).map((c) => ({ index: kb.nextIndex++, text: c.text }));
     if (chunks.length === 0) throw new Error("切片结果为空");
     const doc = { id: `doc-${pad(kbSeq)}`, name, createdAt: Date.now(), chunks };
     kb.docs.push(doc);
     kb.indexCache = null;
     audit("kb.upload", `${kb.id}/${doc.id}`, `《${name}》入库：${chunks.length} 个切片`);
-    return { ...kbSummary(kb), uploaded: { id: doc.id, name, chunkCount: chunks.length } };
+    return { ...kbSummary(kb), uploaded: { id: doc.id, name, chunkCount: chunks.length, chunkSize: size, overlap } };
   },
 
   kbDoc(kbId, docId) {
@@ -1507,7 +1511,7 @@ const api = {
 
     ragSeq += 1;
     const runId = `rag-${pad(ragSeq)}`;
-    const task = beginTask("rag", `灵域推演 · ${question.slice(0, 24)}`, { kbId: kb.id, question });
+    const task = beginTask("rag", `RAG推演 · ${question.slice(0, 24)}`, { kbId: kb.id, question });
     const steps = RAG_STEPS.map((s) => ({ ...s, status: "pending", detail: "", ms: null }));
     const run = {
       id: runId,
@@ -1604,7 +1608,7 @@ const api = {
       await runStep("synthesize", async () => {
         const context = hits.map((h, i) => `[${i + 1}]（${h.docName} · 片段${h.chunkIndex}）${h.text}`).join("\n\n");
         const prompt = [
-          "你是 Orbit 灵域推演引擎。仅依据下列检索结果回答问题，引用来源用 [编号] 标注；检索结果不足以回答时明确说明。",
+          "你是 Orbit RAG 推演引擎。仅依据下列检索结果回答问题，引用来源用 [编号] 标注；检索结果不足以回答时明确说明。",
           "",
           "检索结果：",
           context,
@@ -1724,7 +1728,7 @@ const api = {
 
     wfRunSeq += 1;
     const runId = `wfr-${pad(wfRunSeq)}`;
-    const task = beginTask("workflow", `阵法编排 · ${wf.name}`, { workflowId: wf.id });
+    const task = beginTask("workflow", `工作流编排 · ${wf.name}`, { workflowId: wf.id });
     const run = {
       id: runId,
       taskId: task.id,
@@ -1900,6 +1904,50 @@ const api = {
     return auditList(query);
   },
 
+  /* 零依赖生成合法多页 PDF（Helvetica/WinAnsi；非 ASCII 折叠为 '?'）。
+     仅用于审计导出，不引入任何第三方库。 */
+  pdfText(s) {
+    return String(s ?? "").replace(/[^\x20-\x7E]/g, "?").replace(/\\/g, "\\\\").replace(/\(/g, "\\(").replace(/\)/g, "\\)");
+  },
+  buildPdf(textLines) {
+    const pageH = 842, perPage = 50;
+    const pages = [];
+    for (let i = 0; i < textLines.length; i += perPage) pages.push(textLines.slice(i, i + perPage));
+    if (pages.length === 0) pages.push([""]);
+
+    const objs = {};
+    const fontObj = 3;
+    objs[1] = "<< /Type /Catalog /Pages 2 0 R >>";
+    objs[fontObj] = "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>";
+    let next = fontObj + 1;
+    const pageObjNums = [], contentObjNums = [];
+    for (let p = 0; p < pages.length; p++) { pageObjNums.push(next++); contentObjNums.push(next++); }
+    objs[2] = `<< /Type /Pages /Kids [${pageObjNums.map((n) => `${n} 0 R`).join(" ")}] /Count ${pages.length} >>`;
+
+    for (let p = 0; p < pages.length; p++) {
+      const ops = [];
+      let y = pageH - 50;
+      for (const ln of pages[p]) { ops.push(`BT /F1 11 Tf 50 ${y} Td (${this.pdfText(ln)}) Tj ET`); y -= 15; }
+      const stream = ops.join("\n");
+      objs[pageObjNums[p]] = `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 ${fontObj} 0 R >> >> /Contents ${contentObjNums[p]} 0 R >>`;
+      objs[contentObjNums[p]] = `<< /Length ${Buffer.byteLength(stream)} >>\nstream\n${stream}\nendstream`;
+    }
+
+    const maxObj = next - 1;
+    let pdf = "%PDF-1.4\n";
+    const offsets = {};
+    for (let i = 1; i <= maxObj; i++) {
+      const seg = `${i} 0 obj\n${objs[i]}\nendobj\n`;
+      offsets[i] = Buffer.byteLength(pdf);
+      pdf += seg;
+    }
+    const xrefStart = Buffer.byteLength(pdf);
+    let xref = `xref\n0 ${maxObj + 1}\n0000000000 65535 f \n`;
+    for (let i = 1; i <= maxObj; i++) xref += `${String(offsets[i]).padStart(10, "0")} 00000 n \n`;
+    pdf += xref + `trailer\n<< /Size ${maxObj + 1} /Root 1 0 R >>\nstartxref\n${xrefStart}\n%%EOF`;
+    return pdf;
+  },
+
   auditExport(format = "md", params = {}) {
     const events = auditList(params);
     const generatedAt = new Date().toISOString();
@@ -1907,6 +1955,21 @@ const api = {
       const content = JSON.stringify({ generatedAt, actor: currentActor(), count: events.length, events }, null, 2);
       audit("audit.export", "json", `导出 ${events.length} 条事件`);
       return { format: "json", filename: `orbit-audit-${generatedAt.slice(0, 10)}.json`, mime: "application/json", content };
+    }
+    if (format === "pdf") {
+      const lines = [
+        "Orbit 事件审计报告",
+        `生成时间: ${generatedAt}`,
+        `操作者: ${currentActor()}`,
+        `事件数: ${events.length}`,
+        ""
+      ];
+      for (const e of events) {
+        const t = new Date(e.ts).toISOString().replace("T", " ").slice(0, 19);
+        lines.push(`[${t}] ${e.actor ?? "-"} ${e.action ?? "-"} ${e.target ?? "-"} (${e.level ?? "-"}) ${e.detail ?? ""}`);
+      }
+      audit("audit.export", "pdf", `导出 ${events.length} 条事件`);
+      return { format: "pdf", filename: `orbit-audit-${generatedAt.slice(0, 10)}.pdf`, mime: "application/pdf", content: this.buildPdf(lines) };
     }
     const esc_ = (s) => String(s ?? "").replace(/\|/g, "\\|");
     const lines = [

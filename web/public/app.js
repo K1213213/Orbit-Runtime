@@ -18,7 +18,7 @@ import {
   searchCommands,
   ROLE_LABEL
 } from "./lib.js";
-import { esc } from "./lib.js";
+import { esc, can } from "./lib.js";
 
 import { renderLogin } from "./views/login.js";
 import { renderDashboard } from "./views/dashboard.js";
@@ -38,6 +38,7 @@ import { renderReplay } from "./views/replay.js";
 import { renderGraph } from "./views/graph.js";
 import { renderSettings } from "./views/settings.js";
 import { renderProfile } from "./views/profile.js";
+import { renderStatePage } from "./views/state.js";
 
 /* ------------------------------------------------------------------ */
 /* 视图注册表 → 路由表                                                  */
@@ -78,6 +79,15 @@ const routes = NAV_ITEMS.filter((i) => VIEW_RENDERERS[i.path]).map((i) => ({
   groupLabel: i.groupLabel,
   render: VIEW_RENDERERS[i.path]
 }));
+
+/* 路由 → 权限动作（与 lib.js 的 ROLE_MATRIX 对齐）。缺省表示无需特殊权限。 */
+const ROUTE_PERMS = {
+  trace: "audit",
+  billing: "billing",
+  settings: "settings",
+  workflow: "workflow",
+  plugins: "market"
+};
 
 /* ------------------------------------------------------------------ */
 /* DOM 助手                                                            */
@@ -324,7 +334,19 @@ async function doNavigate() {
 
   let path = currentPath();
   let route = routes.find((r) => r.path === path);
-  if (!route) route = routes[0];
+
+  /* 404：未知路由不再静默回退首页，而是给出明确状态页 */
+  if (!route) {
+    currentView = await renderStatePage(viewEl, "404", `#/${path}`);
+    return;
+  }
+
+  /* 403：基于角色权限矩阵拦截无权限访问 */
+  const required = ROUTE_PERMS[path];
+  if (required && currentUser && !can(currentUser.role, required)) {
+    currentView = await renderStatePage(viewEl, "403", `${currentUser.role} 无 ${required} 权限`);
+    return;
+  }
 
   currentRoute = route;
   markActive(route.path);

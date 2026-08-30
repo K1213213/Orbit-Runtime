@@ -1,8 +1,8 @@
 /**
- * 阵法任务 · 六态任务中心
+ * 任务中心 · 六态任务中心
  *
- * 任务是把"一次执行"变成"一份可追责记录"的载体：实例轮次、阵法编排、
- * 灵域推演三类动作都会落到这里，每类都带步骤明细与耗时。
+ * 任务是把"一次执行"变成"一份可追责记录"的载体：实例轮次、工作流编排、
+ * RAG推演工作台三类动作都会落到这里，每类都带步骤明细与耗时。
  *
  * 一个刻意的克制：终止是**协作式**的。执行是单线程的，运行中的任务只在
  * 下一个 await 边界（步骤之间）才检查终止请求；因此点击"终止"后状态可能
@@ -28,7 +28,7 @@ export async function renderTasks(root) {
   }
   const kindF = el("select", "select");
   kindF.append(el("option", "", "全部类型"));
-  for (const [k, meta] of Object.entries({ agent: "实例轮次", workflow: "阵法编排", rag: "灵域推演" })) {
+  for (const [k, meta] of Object.entries({ agent: "实例轮次", workflow: "工作流编排", rag: "RAG推演工作台" })) {
     const o = el("option", "", esc(meta));
     o.value = k;
     kindF.append(o);
@@ -68,7 +68,7 @@ export async function renderTasks(root) {
       if (countEl) countEl.textContent = `${list.length} 个任务`;
       if (list.length === 0) {
         tbody.replaceChildren();
-        tblWrap.append(empty("没有匹配的任务", "⧉", "实例轮次、阵法编排与灵域推演都会在这里留下记录。"));
+        tblWrap.append(empty("没有匹配的任务", "⧉", "实例轮次、工作流编排与RAG推演工作台都会在这里留下记录。"));
         return;
       }
       tbody.replaceChildren(...list.map(rowOf));

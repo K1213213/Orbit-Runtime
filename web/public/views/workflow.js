@@ -1,5 +1,5 @@
 /**
- * 阵法编排 · 工作流 DAG 画布
+ * 工作流编排 · 工作流 DAG 画布
  *
  * 画布是可编辑的，但**图必须先通过校验才允许保存或执行**（validateWorkflow）：
  * 唯一起点、存在终点、无悬空连线、顺序流不成环。回流是显式的——只有标记
@@ -605,7 +605,7 @@ export async function renderWorkflow(root) {
     const nameF = el("input", "input");
     nameF.placeholder = "如：三段式评审阵";
     const descF = el("input", "input");
-    descF.placeholder = "一句话说明这个阵法做什么";
+    descF.placeholder = "一句话说明这个工作流做什么";
     const m = modal("新建工作流", el("div", "", [field("名称 *", nameF), field("描述", descF)]), el("div", "row"));
     const cancel = el("button", "btn", "取消");
     const ok = el("button", "btn primary", "创建");

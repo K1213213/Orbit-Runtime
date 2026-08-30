@@ -8,14 +8,16 @@
  * 动效开关是唯一写进 localStorage 的偏好：一个以"确定性"为卖点的产品，
  * 也应该允许用户关掉动画（前庭敏感 / 低性能设备）。
  */
-import { api } from "../api.js";
-import { el, esc, badge, toast, motionEnabled, setMotion, confirmDialog, currentUserInfo } from "../app.js";
+import { api, setToken } from "../api.js";
+import { el, esc, badge, toast, motionEnabled, setMotion, confirmDialog, currentUserInfo, go } from "../app.js";
 import { ROLE_MATRIX, ROLE_LABEL, can } from "../lib.js";
 
 const SECTIONS = [
   { id: "appearance", label: "外观与体验", icon: "◐" },
   { id: "host", label: "主机生命周期", icon: "▷" },
+  { id: "adapters", label: "模型适配器", icon: "◈" },
   { id: "access", label: "权限矩阵", icon: "⚿" },
+  { id: "security", label: "安全设置", icon: "⊟" },
   { id: "danger", label: "危险操作", icon: "⚠" }
 ];
 
@@ -105,6 +107,47 @@ export async function renderSettings(root) {
   if (!can(role, "host")) hostOps.append(el("span", "hint", "当前角色无权启停主机（见权限矩阵）"));
   hostPanel.append(row("生命周期操作", "自底向上装配 / 严格反序释放。", hostOps));
 
+  /* ---- 模型适配器（DeepSeek / OpenAI 兼容） ---- */
+  const adapters = panels.get("adapters");
+  const adStatus = el("span", "badge neutral", "加载中…");
+  async function refreshAdapterStatus() {
+    const ch = await api.channels().catch(() => []);
+    const llm = ch.find((c) => c.kind === "llm-access") ?? {};
+    adStatus.className = `badge ${llm.type === "deepseek" ? "ok" : "neutral"}`;
+    adStatus.textContent = llm.type === "deepseek" ? "已接入真实模型" : "模拟通道";
+  }
+  await refreshAdapterStatus();
+  adapters.append(row(
+    "当前模型通道",
+    "llm-access 当前承载：真实模型或内置模拟通道（合成答案带 [Llm-Sim]）。",
+    adStatus
+  ));
+  const akF = el("input", "input"); akF.type = "password"; akF.placeholder = "API Key（Ollama 等可留空）";
+  const urlF = el("input", "input"); urlF.placeholder = "Base URL（可选；默认 DeepSeek，可填 OpenAI 兼容端点）";
+  const modelF = el("input", "input"); modelF.value = "deepseek-chat";
+  const tempF = el("input", "input"); tempF.type = "number"; tempF.value = "0.7"; tempF.step = "0.1"; tempF.min = "0"; tempF.max = "2";
+  const adBtn = el("button", "btn primary sm", "接入 / 更新模型通道");
+  adBtn.type = "button";
+  adBtn.addEventListener("click", async () => {
+    adBtn.disabled = true;
+    try {
+      await api.registerDeepSeek(akF.value, modelF.value.trim() || "deepseek-chat", Number(tempF.value || 0.7), urlF.value.trim() || undefined);
+      await refreshAdapterStatus();
+      toast("模型通道已接入（真实合成经此通道）", "ok");
+    } catch (err) { toast(err.message, "err"); }
+    finally { adBtn.disabled = false; }
+  });
+  adapters.append(row(
+    "配置真实模型",
+    "接入 DeepSeek 或任意 OpenAI 兼容端点（OpenAI / Qwen / Kimi / GLM / Ollama / vLLM）。接入后 RAG 合成走真实模型。",
+    el("div", "row", [adBtn])
+  ));
+  adapters.append(el("div", "setting-row", `<div class="sr-body">
+      <div class="sr-title">通道参数</div>
+      <div class="sr-desc">密钥仅提交给桥接服务用于调用，不写入审计日志正文。</div>
+    </div>`));
+  adapters.append(el("div", "", [field("API Key", akF), field("Base URL（可选）", urlF), el("div", "grid cols-2", [field("模型", modelF), field("温度", tempF)])]));
+
   /* ---- 权限矩阵 ---- */
   const access = panels.get("access");
   const roles = Object.keys(ROLE_MATRIX);
@@ -129,6 +172,36 @@ export async function renderSettings(root) {
       <div class="sr-desc">当前角色：${esc(ROLE_LABEL[role] ?? role)}（${esc(me.account ?? "—")}）。首个注册的账号为管理员，自助注册固定为操作员。</div>
     </div>`));
   access.append(tblWrap);
+
+  /* ---- 安全设置 ---- */
+  const security = panels.get("security");
+  const oldF = el("input", "input"); oldF.type = "password"; oldF.placeholder = "当前密码";
+  const newF = el("input", "input"); newF.type = "password"; newF.placeholder = "新密码（≥ 6 位）";
+  const confirmF = el("input", "input"); confirmF.type = "password"; confirmF.placeholder = "再输入一次新密码";
+  const pwBtn = el("button", "btn primary sm", "修改密码");
+  pwBtn.type = "button";
+  pwBtn.addEventListener("click", async () => {
+    if (newF.value.length < 6) { toast("新密码至少 6 位", "err"); return; }
+    if (newF.value !== confirmF.value) { toast("两次输入不一致", "err"); return; }
+    pwBtn.disabled = true;
+    try {
+      await api.changePassword(oldF.value, newF.value);
+      toast("密码已修改，请重新登录", "ok");
+      oldF.value = newF.value = confirmF.value = "";
+    } catch (err) { toast(err.message, "err"); }
+    finally { pwBtn.disabled = false; }
+  });
+  security.append(row("修改密码", "密码本地以 scrypt 派生存储，登录会话不携带明文。", el("div", "row", [pwBtn])));
+  security.append(el("div", "", [field("当前密码", oldF), field("新密码", newF), field("确认新密码", confirmF)]));
+  const logoutBtn = el("button", "btn sm danger", "退出登录");
+  logoutBtn.type = "button";
+  logoutBtn.addEventListener("click", async () => {
+    try { await api.logout(); } catch { /* 即便失败也清本地令牌 */ }
+    setToken(null);
+    toast("已退出登录", "ok");
+    go("login");
+  });
+  security.append(row("会话", "退出后清除本地令牌并回到登录页。", el("div", "row", [logoutBtn])));
 
   /* ---- 危险操作 ---- */
   const danger = panels.get("danger");

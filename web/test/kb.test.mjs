@@ -64,6 +64,20 @@ test("chunkText: 参数被夹紧，不会因恶意参数崩溃", () => {
   assert.equal(chunks.length, 1);
 });
 
+/* 上传面板（§10.2）依赖的确定性契约：切片大小与重叠率可观测地改变结果。 */
+test("chunkText: 切片大小改变片数，重叠率改变总字符量（上传面板契约）", () => {
+  const text = "知识图谱引擎用于检索与推理与多跳问答。".repeat(60); // 单段长文
+  const small = chunkText(text, { size: 40, overlap: 0 });
+  const large = chunkText(text, { size: 400, overlap: 0 });
+  assert.ok(small.length > large.length, "切片越小，片数越多");
+
+  const noOverlap = chunkText(text, { size: 60, overlap: 0 });
+  const withOverlap = chunkText(text, { size: 60, overlap: 0.3 });
+  const sum = (cs) => cs.reduce((a, c) => a + c.text.length, 0);
+  assert.equal(withOverlap.length, noOverlap.length, "重叠不改变片数");
+  assert.ok(sum(withOverlap) > sum(noOverlap), "重叠率>0 时应追加尾部字符，总字符量更大");
+});
+
 /* --------------------------- BM25 检索 -------------------------- */
 
 test("buildIndex + searchIndex: 命中含查询词的切片且分数降序", () => {

@@ -25,7 +25,7 @@ import {
 /* --------------------------- 任务状态词汇 ------------------------- */
 
 test("taskStatusMeta: 已知状态返回中文标签与 tone", () => {
-  assert.equal(taskStatusMeta("running").label, "推演中");
+  assert.equal(taskStatusMeta("running").label, "执行中");
   assert.equal(taskStatusMeta("running").tone, "violet");
   assert.equal(taskStatusMeta("iterating").tone, "warn");
   assert.equal(TASK_STATUS_IDS.length, Object.keys(TASK_STATUS).length);
@@ -39,7 +39,7 @@ test("taskStatusMeta: 未知状态回退到中性", () => {
 
 test("taskKindMeta: 已知大类带路由，未知回退", () => {
   assert.equal(taskKindMeta("rag").route, "rag");
-  assert.equal(taskKindMeta("workflow").label, "阵法编排");
+  assert.equal(taskKindMeta("workflow").label, "工作流编排");
   assert.equal(taskKindMeta("??").route, "tasks");
   assert.equal(Object.keys(TASK_KINDS).length, 3);
 });

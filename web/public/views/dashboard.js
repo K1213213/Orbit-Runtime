@@ -1,39 +1,18 @@
 /**
- * 灵域总览 · 任务式工作台
+ * 数据总览 · 专业数据大盘
  *
- * 首屏要回答的是"现在能干活吗、接下来做什么"，而不是把十几个页面的入口
- * 再抄一遍（那是侧栏和命令面板的职责）。因此首屏只有五件事：
+ * 首屏定位为平台数据总控（区别于聊天型产品）：以实例 / 任务 / 工作流为核心，
+ * 提供指标卡、运行实例矩阵、Token 消耗图表、最近任务、全局事件时间线。
  *
- *   1. 系统健康 —— 一个结论，带得出这个结论的每一条理由
- *   2. 关键指标 —— 数字本身，配一个可点进去的快捷入口
- *   3. 下一步   —— 基于真实状态推导的可执行入口，不是说明文字
- *   4. 现场证据 —— 最近任务与最近追踪，供快速核对
- *   5. 通道画像 —— 成本/延迟/质量，成本路由的输入
- *
- * 数据全部来自 /api/dashboard（桥接的一次性聚合），视图不做二次推导；
- * 健康结论与下一步由 lib.js 的纯函数产出，界面与单测共用同一份判定。
+ * 数据全部来自 /api/dashboard（桥接一次性聚合），视图只做展示与轻量 SVG 图表，
+ * 不做业务推导；健康结论由 lib.js 纯函数产出。
  */
 import { api } from "../api.js";
-import { el, esc, fmtTime, badge, empty, card, toast, go } from "../app.js";
+import { el, esc, fmtTime, badge, empty, card, toast, go, confirmDialog } from "../app.js";
 import { taskStatusMeta, taskKindMeta } from "../lib.js";
 
-const HEALTH_TEXT = {
-  ok: "全部能力面就绪：通道、契约、沙箱、治理均已装配，可直接跑一轮 Agent 并回放验证。",
-  warn: "主机已运行，但存在待处理项——按下方建议逐步补齐即可进入就绪状态。",
-  err: "存在阻断项：在补齐之前，部分能力面无法工作。"
-};
-
-/* 指标卡顶栏色沿用影响域图的通道色板：绿=通道、紫=插件、青=沙箱、橙=接驳。 */
-const METRICS = [
-  { key: "channels", label: "能力通道", route: "channels", color: "#3cf2a8" },
-  { key: "plugins", label: "已注册插件", route: "plugins", color: "#b78bff" },
-  { key: "boxes", label: "Agent 沙箱", route: "boxes", color: "#39e6ff" },
-  { key: "tools", label: "外来工具", route: "pae", color: "#ff9d4d" },
-  { key: "traces", label: "追踪事件", route: "trace", color: "var(--gold)" },
-  { key: "tasks", label: "阵法任务", route: "tasks", color: "var(--brand-2)" },
-  { key: "docs", label: "知识切片", route: "knowledge", color: "var(--ok)" },
-  { key: "workflows", label: "编排阵法", route: "workflow", color: "var(--brand-1)" }
-];
+/* 实例消耗配色：用于环形图分片与图例 */
+const BOX_COLORS = ["#6366F1", "#38BDF8", "#22D3EE", "#FB923C", "#EF4444", "#9CA3AF"];
 
 export async function renderDashboard(root) {
   const wrap = el("div", "");
@@ -50,172 +29,148 @@ export async function renderDashboard(root) {
   }
 
   const health = d.systemIssues ?? { level: "warn", issues: [] };
-  const pae = d.pae ?? { enabled: false, adapters: 0, tools: 0 };
+  const b = d.billing ?? { balance: 0, grant: 0, todaySpend: 0, delta: 0, deltaPct: null, trend: [], topBoxes: [], topTasks: [] };
+  const boxes = d.boxes ?? [];
+  const runningCount = Math.max(0, Math.min(boxes.length, Number(d.running ?? boxes.length)));
+  const offlineCount = Math.max(0, boxes.length - runningCount);
+  const byStatus = d.tasks?.byStatus ?? {};
 
-  /* ---------- 1. 系统健康 ---------- */
-
+  /* ---------- 顶部健康条（专业后台惯用，非娱乐化） ---------- */
+  const lvlText = health.level === "ok" ? "系统就绪" : health.level === "warn" ? "可运行（有告警）" : "不可用";
   wrap.append(
     el("div", `alert ${health.level}`, `
       <span>${health.level === "ok" ? "●" : health.level === "warn" ? "◐" : "○"}</span>
-      <span class="msg"><b>${
-        health.level === "ok" ? "系统就绪" : health.level === "warn" ? "可运行（有告警）" : "不可用"
-      }</b> · ${esc(HEALTH_TEXT[health.level] ?? "")}
+      <span class="msg"><b>${esc(lvlText)}</b>
       <span class="hint">OrbitRuntimeHost v${esc(d.version)} · 已运行 ${esc(fmtDuration(d.uptimeSec))} · 累计 ${esc(d.runCounter)} 轮</span></span>`)
   );
 
-  if (health.issues.length > 0) {
-    const list = el("div", "ver-list");
-    for (const issue of health.issues) {
-      list.append(el("div", "ver-item", `
-        ${badge(issue.level === "err" ? "阻断" : "告警", issue.level === "err" ? "err" : "warn")}
-        <span class="ver-meta"><b>${esc(issue.text)}</b> — ${esc(issue.detail)}</span>`));
+  /* ---------- 模块1：四大核心指标卡 ---------- */
+  const metrics = [
+    {
+      label: "智能体实例", value: boxes.length, route: "boxes",
+      foot: `运行中 ${runningCount} · 离线 ${offlineCount}`, tone: "ok"
+    },
+    {
+      label: "执行任务", value: d.tasks?.total ?? 0, route: "tasks",
+      foot: `成功 ${byStatus.done ?? 0} · 异常 ${byStatus.failed ?? 0}`, tone: "violet"
+    },
+    {
+      label: "知识库", value: d.counts?.docs ?? 0, route: "knowledge",
+      foot: `${d.counts?.kbs ?? 0} 个知识库 · 已索引 ${d.counts?.docs ?? 0} 篇`, tone: "accent"
+    },
+    {
+      label: "今日 Token 消耗", value: b.todaySpend, route: "billing",
+      foot: `较昨日 ${b.delta >= 0 ? "+" : ""}${b.delta}${b.deltaPct != null ? `（${b.deltaPct}%）` : ""}`,
+      tone: b.lowBalance ? "warn" : "ok"
     }
-    wrap.append(el("div", "section-gap"), card(`<h3>待处理项</h3><span class="sub">${health.issues.length} 条 · 由内核状态推导</span>`, list));
-  }
-
-  /* ---------- 2. 关键指标 ---------- */
-
-  const values = {
-    channels: d.channels.length,
-    plugins: d.plugins.length,
-    boxes: d.boxes.length,
-    tools: pae.tools ?? 0,
-    traces: d.traceCount,
-    tasks: d.tasks.total,
-    docs: d.counts.docs,
-    workflows: d.counts.workflows
-  };
-  const foots = {
-    channels: `${d.channels.filter((c) => c.type === "plugin").length} 个由插件覆盖`,
-    plugins: "pact 三重校验通过",
-    boxes: "独立预算执行环境",
-    tools: pae.enabled ? `${pae.adapters} 个适配器` : "未接入",
-    traces: `累计运行 ${d.runCounter} 轮`,
-    tasks: statusLine(d.tasks.byStatus),
-    docs: `${d.counts.kbs} 个知识库`,
-    workflows: `${d.counts.templates} 个灵仆模板`
-  };
-
-  const statGrid = el("div", "stat-grid");
-  for (const m of METRICS) {
-    const c = el("div", "stat-card");
-    c.style.setProperty("--sc", m.color);
-    c.append(
-      el("div", "sc-label", esc(m.label)),
-      el("div", "sc-value", esc(values[m.key] ?? 0)),
-      el("div", "sc-foot", esc(foots[m.key] ?? ""))
-    );
-    const quick = el("button", "sc-quick", "→");
-    quick.title = "前往";
+  ];
+  const metricGrid = el("div", "metric-grid");
+  for (const m of metrics) {
+    const c = el("div", "metric-card");
+    const quick = el("button", "mc-quick", "→");
     quick.type = "button";
+    quick.title = "前往";
     quick.addEventListener("click", () => go(m.route));
-    c.append(quick);
-    statGrid.append(c);
+    c.append(
+      el("div", "mc-label", esc(m.label)),
+      el("div", "mc-value", String(m.value)),
+      el("div", `mc-foot ${m.tone === "warn" ? "warn" : ""}`, esc(m.foot)),
+      quick
+    );
+    metricGrid.append(c);
   }
+  wrap.append(el("div", "section-gap"), metricGrid);
 
-  wrap.append(el("div", "section-gap"), statGrid);
+  /* ---------- 模块2：运行实例状态矩阵 ---------- */
+  const spendById = new Map((b.topBoxes ?? []).map((x) => [x.id, x.units]));
+  const instanceCard = card(
+    `<h3>运行实例状态矩阵</h3><span class="sub">${boxes.length} 个实例 · 点击查看详情</span>`,
+    boxes.length === 0
+      ? empty("暂无运行实例，去「智能体实例」创建一枚", "▣", "实例是平台的核心执行单元，每一轮推理都受循环预算约束并落入追踪日志。")
+      : (() => {
+          const grid = el("div", "instance-grid");
+          for (const box of boxes) {
+            const spend = spendById.get(box.agentBoxId);
+            const card2 = el("div", "instance-card");
+            const head = el("div", "ic-head", `
+              <span class="ic-name">${esc(box.boxAlias ?? box.agentBoxId)}</span>
+              ${badge("运行中", "ok")}`);
+            const meta = el("div", "ic-meta", `
+              <div><span class="hint">绑定模板</span> ${esc(box.baseInstruct ? "已绑定" : "未绑定")}</div>
+              <div><span class="hint">当前任务</span> —</div>
+              <div><span class="hint">今日消耗</span> ${spend != null ? esc(spend) : "—"}</div>
+              <div><span class="hint">预算</span> 剩 ${Math.max(0, (box.maxCycleRun ?? 0) - (box.cycleNow ?? 0))} 轮</div>`);
+            const actions = el("div", "ic-actions");
+            const viewBtn = el("button", "btn sm", "查看");
+            viewBtn.type = "button"; viewBtn.addEventListener("click", () => go("boxes"));
+            const resetBtn = el("button", "btn sm ghost", "重启");
+            resetBtn.type = "button";
+            resetBtn.addEventListener("click", async () => {
+              try { await api.resetBox(box.agentBoxId); toast("实例已重启", "ok"); await refresh(); }
+              catch (e) { toast(`重启失败：${e.message}`, "err"); }
+            });
+            const stopBtn = el("button", "btn sm danger", "终止");
+            stopBtn.type = "button";
+            stopBtn.addEventListener("click", async () => {
+              if (!(await confirmDialog("终止实例", `确认终止 ${box.boxAlias ?? box.agentBoxId}？该实例将移出运行池。`))) return;
+              try { await api.removeBox(box.agentBoxId); toast("实例已终止", "ok"); await refresh(); }
+              catch (e) { toast(`终止失败：${e.message}`, "err"); }
+            });
+            actions.append(viewBtn, resetBtn, stopBtn);
+            card2.append(head, meta, actions);
+            grid.append(card2);
+          }
+          return grid;
+        })()
+  );
+  wrap.append(el("div", "section-gap"), instanceCard);
 
-  /* ---------- 3. 下一步 ---------- */
+  /* ---------- 模块3：Token 消耗统计图表区 ---------- */
+  const trendCard = card(`<h3>7 日消耗趋势</h3><span class="sub">单位 / 日</span>`, makeLineChart(b.trend ?? []));
+  const ringCard = card(`<h3>实例消耗占比</h3><span class="sub">Top 实例</span>`, makeRingChart(b.topBoxes ?? []));
+  const topCard = card(`<h3>Top5 高消耗任务</h3><span class="sub">按 Token 计</span>`, (() => {
+    const list = el("ol", "rank-list");
+    const arr = b.topTasks ?? [];
+    if (arr.length === 0) return empty("暂无消耗记录", "⌾", "运行任务或 RAG 推演后将在此汇总。");
+    for (const t of arr) {
+      list.append(el("li", "rank-item", `
+        <span class="rank-id mono">${esc(t.id)}</span>
+        <span class="rank-val">${esc(t.units)}</span>`));
+    }
+    return list;
+  })());
+  wrap.append(el("div", "section-gap"), el("div", "grid cols-3", [trendCard, ringCard, topCard]));
 
-  const steps = d.nextSteps ?? [];
-  const stepList = el("div", "ver-list");
-  steps.forEach((s, i) => {
-    const item = el("button", `ver-item${s.primary ? " current" : ""}`, `
-      <span class="ver-no">${i + 1}</span>
-      <span class="ver-meta"><b>${esc(s.title)}</b><br>${esc(s.desc)}</span>
-      <span class="hint">${s.action === "boot" ? "立即执行" : "前往"} →</span>`);
-    item.type = "button";
-    item.style.cursor = "pointer";
-    item.addEventListener("click", async () => {
-      if (s.action === "boot") {
-        try {
-          await api.boot();
-          toast("主机已启动（自底向上装配完成）", "ok");
-          await refresh();
-        } catch (err) {
-          toast(`启动失败：${err.message}`, "err");
-        }
-        return;
-      }
-      go(s.route);
-    });
-    stepList.append(item);
-  });
-
-  /* ---------- 4 & 5. 现场证据 ---------- */
-
+  /* ---------- 模块4：最近任务列表（高密度表格） ---------- */
   const taskCard = card(
-    `<h3>最近任务</h3><span class="sub">${d.tasks.total} 个 · 点击查看详情</span>`,
-    d.tasks.recent.length === 0
-      ? empty("还没有任务，去实例或编排页跑一轮", "⧉")
+    `<h3>最近任务</h3><span class="sub">${d.tasks?.total ?? 0} 个 · 点击查看详情</span>`,
+    d.tasks?.recent?.length === 0
+      ? empty("还没有任务，去实例或编排页跑一轮", "⧉", "实例轮次、工作流编排与 RAG 推演都会在这里留下记录。")
       : taskTable(d.tasks.recent)
   );
+  wrap.append(el("div", "section-gap"), taskCard);
 
+  /* ---------- 模块5：全局事件时间线 ---------- */
   const traceCard = card(
-    `<h3>最近追踪</h3><span class="sub">${d.traceCount} 条 · 仅显示前 6 条</span>`,
+    `<h3>全局事件时间线</h3><span class="sub">${d.traceCount ?? 0} 条 · 仅显示前 8 条</span>`,
     (() => {
-      const list = el("div", "mini-trace");
-      for (const entry of (d.recentTrace ?? [])) {
-        const cls = entry.entryClass ?? "OTHER";
-        const who = entry.pluginUnitId ?? entry.agentBoxId ?? "host";
-        const payload = JSON.stringify(entry.factPayload ?? {});
-        list.append(el("div", "t-entry", `
-          <span class="t-time mono">${fmtTime(entry.occurredAt)}</span>
-          <span class="t-class ec-${esc(cls)}">${esc(cls)}</span>
-          <span class="t-payload mono">${esc(who)} ${esc(payload.slice(0, 70))}${payload.length > 70 ? "…" : ""}</span>`));
+      const list = el("div", "timeline");
+      const entries = (d.recentTrace ?? []).slice(0, 8);
+      if (entries.length === 0) return empty("暂无事件", "≡", "实例启动、任务执行、插件调用、知识库构建、异常报错与 Token 扣费都会在此留痕。");
+      for (const e of entries) {
+        const cls = e.entryClass ?? "OTHER";
+        const who = e.pluginUnitId ?? e.agentBoxId ?? "host";
+        const payload = JSON.stringify(e.factPayload ?? {});
+        list.append(el("div", "tl-item", `
+          <span class="tl-dot ec-${esc(cls)}"></span>
+          <span class="tl-time mono">${fmtTime(e.occurredAt)}</span>
+          <span class="tl-class">${esc(cls)}</span>
+          <span class="tl-payload mono">${esc(who)} ${esc(payload.slice(0, 60))}${payload.length > 60 ? "…" : ""}</span>`));
       }
       return list;
     })()
   );
-
-  const channelCard = card(`<h3>通道画像</h3><span class="sub">成本路由的输入</span>`, el("div", "tbl-wrap", `
-    <table class="tbl">
-      <thead><tr><th>通道</th><th>提供方</th><th class="num">成本</th><th class="num">延迟</th><th class="num">质量</th></tr></thead>
-      <tbody>
-        ${d.channels
-          .map(
-            (c) => `
-          <tr>
-            <td class="mono">${esc(c.kind)}</td>
-            <td>${badge(c.type === "builtin" ? "builtin" : "plugin", c.type === "builtin" ? "neutral" : "violet")}</td>
-            <td class="num">${esc(c.cost.costPerCall)}</td>
-            <td class="num">${esc(c.cost.latencyMs)}ms</td>
-            <td class="num">${esc(c.cost.quality)}</td>
-          </tr>`
-          )
-          .join("")}
-      </tbody>
-    </table>`));
-
-  const spendCard = card(`<h3>灵能余额</h3><span class="sub">每次能力调用实时计量</span>`, (() => {
-    const b = d.billing;
-    const pct = b.grant > 0 ? Math.max(0, Math.min(100, (b.balance / b.grant) * 100)) : 0;
-    const box = el("div", "");
-    box.append(el("div", "spread", `
-      <span class="sc-value" style="font-size:26px">${esc(b.balance)}</span>
-      <span class="hint">已消耗 ${esc(b.total)} / ${esc(b.grant)}</span>`));
-    const bar = el("div", `progress mt8${b.lowBalance ? " warn" : ""}`);
-    const fill = el("i");
-    fill.style.width = `${pct}%`;
-    bar.append(fill);
-    box.append(bar);
-    box.append(el("div", "hint mt8", `今日消耗 ${b.todaySpend} · 较昨日 ${b.delta >= 0 ? "+" : ""}${b.delta}`));
-    const link = el("button", "btn sm mt8", "查看账单 →");
-    link.type = "button";
-    link.addEventListener("click", () => go("billing"));
-    box.append(link);
-    return box;
-  })());
-
-  wrap.append(
-    el("div", "section-gap"),
-    card(`<h3>下一步</h3><span class="sub">基于当前内核状态推导</span>`, stepList)
-  );
-
-  const lower = el("div", "grid cols-2 mt16");
-  lower.append(taskCard, el("div", "", [spendCard, el("div", "section-gap"), traceCard]));
-  wrap.append(lower);
-  wrap.append(el("div", "section-gap"), channelCard);
+  wrap.append(el("div", "section-gap"), traceCard);
 
   root.append(wrap);
 
@@ -223,14 +178,82 @@ export async function renderDashboard(root) {
     root.replaceChildren();
     return renderDashboard(root);
   }
-
   return { dispose() {}, refresh };
+}
+
+/* ------------------------------------------------------------------ */
+/* 纯 SVG 图表（零依赖，可直接在 Node 单测中断言结构）                  */
+/* ------------------------------------------------------------------ */
+
+function makeLineChart(trend) {
+  const W = 300, H = 96, pad = 8;
+  const svg = el("svg", "chart-line");
+  svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+  svg.setAttribute("preserveAspectRatio", "none");
+  const data = Array.isArray(trend) ? trend.map((t) => Number(t.units) || 0) : [];
+  if (data.length === 0) {
+    svg.innerHTML = `<text x="${W / 2}" y="${H / 2}" fill="#9CA3AF" font-size="11" text-anchor="middle">暂无数据</text>`;
+    return svg;
+  }
+  const max = Math.max(1, ...data);
+  const stepX = data.length > 1 ? (W - pad * 2) / (data.length - 1) : 0;
+  const pts = data.map((v, i) => [pad + i * stepX, H - pad - (v / max) * (H - pad * 2)]);
+  const line = pts.map((p) => p.join(",")).join(" ");
+  const area = `${pad},${H - pad} ${line} ${pad + (data.length - 1) * stepX},${H - pad}`;
+  svg.innerHTML = `
+    <defs><linearGradient id="lineFill" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#6366F1" stop-opacity="0.35"/>
+      <stop offset="100%" stop-color="#6366F1" stop-opacity="0"/>
+    </linearGradient></defs>
+    <polygon points="${area}" fill="url(#lineFill)"/>
+    <polyline points="${line}" fill="none" stroke="#6366F1" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+    ${pts.map((p, i) => `<circle cx="${p[0]}" cy="${p[1]}" r="2.4" fill="#38BDF8"/>`).join("")}
+  `;
+  return svg;
+}
+
+function makeRingChart(topBoxes) {
+  const seg = (Array.isArray(topBoxes) ? topBoxes : []).slice(0, 6).map((x, i) => ({
+    id: x.id, value: Number(x.units) || 0, color: BOX_COLORS[i % BOX_COLORS.length]
+  }));
+  const total = seg.reduce((a, s) => a + s.value, 0);
+  const wrap = el("div", "ring-wrap");
+  if (total === 0) {
+    wrap.append(el("div", "hint", "暂无消耗数据"));
+    return wrap;
+  }
+  const R = 42, C = 2 * Math.PI * R, cx = 50, cy = 50;
+  const svg = el("svg", "chart-ring");
+  svg.setAttribute("viewBox", "0 0 100 100");
+  let offset = 0;
+  const arcs = seg.map((s) => {
+    const len = (s.value / total) * C;
+    const arc = `<circle cx="${cx}" cy="${cy}" r="${R}" fill="none" stroke="${s.color}" stroke-width="12"
+      stroke-dasharray="${len.toFixed(2)} ${(C - len).toFixed(2)}" stroke-dashoffset="${(-offset).toFixed(2)}"
+      transform="rotate(-90 ${cx} ${cy})"/>`;
+    offset += len;
+    return arc;
+  }).join("");
+  svg.innerHTML = `<circle cx="${cx}" cy="${cy}" r="${R}" fill="none" stroke="#1E2230" stroke-width="12"/>${arcs}
+    <text x="${cx}" y="${cy + 4}" fill="#E5E7EB" font-size="15" text-anchor="middle" font-weight="600">${total}</text>`;
+  const legend = el("div", "ring-legend");
+  seg.forEach((s, i) => {
+    legend.append(el("div", "rl-item", `
+      <span class="rl-dot" style="background:${BOX_COLORS[i % BOX_COLORS.length]}"></span>
+      <span class="rl-id mono">${esc(s.id)}</span>
+      <span class="rl-val">${s.value}</span>`));
+  });
+  wrap.append(svg, legend);
+  return wrap;
 }
 
 function taskTable(tasks) {
   const table = el("div", "tbl-wrap", "");
   const tbl = el("table", "tbl");
-  tbl.innerHTML = `<thead><tr><th>任务</th><th>类型</th><th>状态</th><th class="num">耗时</th></tr></thead>`;
+  tbl.innerHTML = `<thead><tr>
+    <th>任务</th><th>类型</th><th>状态</th><th class="num">耗时</th>
+    <th class="num">Token</th><th>创建时间</th><th></th>
+  </tr></thead>`;
   const tbody = el("tbody");
   for (const t of tasks) {
     const meta = taskStatusMeta(t.status);
@@ -239,7 +262,10 @@ function taskTable(tasks) {
       <td>${esc(t.title)}<div class="hint mono">${esc(t.id)}</div></td>
       <td>${esc(kind.label)}</td>
       <td>${badge(meta.label, meta.tone)}</td>
-      <td class="num">${t.endedAt && t.startedAt ? `${Math.max(0, t.endedAt - t.startedAt)}ms` : "—"}</td>`);
+      <td class="num">${t.endedAt && t.startedAt ? `${Math.max(0, t.endedAt - t.startedAt)}ms` : "—"}</td>
+      <td class="num">${typeof t.units === "number" ? t.units : "—"}</td>
+      <td>${esc(fmtTime(t.createdAt))}</td>
+      <td><button class="btn sm ghost" type="button">查看</button></td>`);
     tr.style.cursor = "pointer";
     tr.addEventListener("click", () => go("tasks"));
     tbody.append(tr);
@@ -247,11 +273,6 @@ function taskTable(tasks) {
   tbl.append(tbody);
   table.append(tbl);
   return table;
-}
-
-function statusLine(byStatus) {
-  const parts = Object.entries(byStatus ?? {}).map(([k, v]) => `${taskStatusMeta(k).label} ${v}`);
-  return parts.length ? parts.join(" · ") : "暂无任务";
 }
 
 function fmtDuration(sec) {

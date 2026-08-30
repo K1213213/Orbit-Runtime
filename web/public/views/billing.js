@@ -1,5 +1,5 @@
 /**
- * 灵能账单
+ * Token账单
  *
  * 计量口径只有一处：桥接在**内核调用真实发生之后**记账（沙箱周期、网关
  * capabilityInvoke），单位取自通道声明的 costPerCall。因此这里没有"预估
@@ -46,7 +46,7 @@ export async function renderBilling(root) {
   const chartCard = card(`<h3>近 7 日消耗</h3><span class="sub">空窗日补零，趋势线不断裂</span>`, (() => {
     const box = el("div", "");
     box.append(lineChart(b.trend));
-    box.append(el("div", "chart-legend", `<span><i style="background:var(--brand-2)"></i>灵能单位 / 日</span><span class="hint">峰值 ${Math.max(0, ...b.trend.map((t) => t.units))}</span>`));
+    box.append(el("div", "chart-legend", `<span><i style="background:var(--brand-2)"></i>Token / 日</span><span class="hint">峰值 ${Math.max(0, ...b.trend.map((t) => t.units))}</span>`));
     return box;
   })());
 
@@ -80,7 +80,7 @@ export async function renderBilling(root) {
   const parts = [statGrid, el("div", "section-gap"), el("div", "grid cols-2", [chartCard, rankCard]), el("div", "section-gap"), detailCard];
   if (b.lowBalance) {
     parts.unshift(
-      el("div", "alert warn", `<span>⚠</span><span class="msg">灵能余额低于 100：成本路由仍会工作，但建议到「成本路由」页收紧预算约束。</span>`),
+      el("div", "alert warn", `<span>⚠</span><span class="msg">Token余额低于 100：成本路由仍会工作，但建议到「成本路由」页收紧预算约束。</span>`),
       el("div", "section-gap")
     );
   }

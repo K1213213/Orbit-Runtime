@@ -1,5 +1,5 @@
 /**
- * 金丹实例（Agent 沙箱）
+ * 智能体实例（Agent 沙箱）
  *
  * 沙箱是内核的执行单元：每轮 runSingleCycle 都带独立 trace ID、受循环预算
  * 约束、并经网关调用通道。视图要如实呈现三件事：
@@ -24,7 +24,7 @@ export async function renderInstances(root) {
 
   /* ---- 创建表单 ---- */
   const form = el("form", "card");
-  form.append(el("div", "card-head", "<h3>生成金丹实例</h3><span class='sub'>循环预算防死循环 · 每轮独立 trace ID · 通道化模型调用</span>"));
+  form.append(el("div", "card-head", "<h3>生成智能体实例</h3><span class='sub'>循环预算防死循环 · 每轮独立 trace ID · 通道化模型调用</span>"));
 
   const tplSel = el("select", "select");
   tplSel.append(el("option", "", "自定义（手填参数）"));
@@ -48,7 +48,7 @@ export async function renderInstances(root) {
   const body = el("div", "card-body");
   body.append(
     el("div", "grid cols-2", [
-      field("灵仆模板（预填参数）", tplSel),
+      field("智能体模板（预填参数）", tplSel),
       el("div", "grid cols-2", [field("实例 ID *（agentBoxId）", idF), field("别名（boxAlias）", aliasF)])
     ]),
     el("div", "grid cols-2", [
@@ -118,7 +118,7 @@ export async function renderInstances(root) {
     }
     countSub.textContent = `${boxes.length} 个实例`;
     if (boxes.length === 0) {
-      listBody.replaceChildren(empty("暂无实例，先用上方表单生成一枚金丹", "▣", "实例是执行单元：每一轮推理都受循环预算约束并落入追踪日志。"));
+      listBody.replaceChildren(empty("暂无实例，先用上方表单生成一枚实例", "▣", "实例是执行单元：每一轮推理都受循环预算约束并落入追踪日志。"));
       return;
     }
     const grid = el("div", "instance-grid");
@@ -159,12 +159,12 @@ function buildBoxCard(box, reload) {
   card.append(bar);
 
   const actions = el("div", "ix-actions");
+  const detailBtn = el("button", "btn sm", "详情");
   const chatBtn = el("button", "btn sm primary", "推演一轮");
   const resetBtn = el("button", "btn sm", "重置轮次");
   const delBtn = el("button", "btn sm danger", "释放");
-  chatBtn.type = "button";
-  resetBtn.type = "button";
-  delBtn.type = "button";
+  detailBtn.type = chatBtn.type = resetBtn.type = delBtn.type = "button";
+  detailBtn.addEventListener("click", () => openDetail(box, reload));
   chatBtn.addEventListener("click", () => openChat(box, reload));
   resetBtn.addEventListener("click", async () => {
     try {
@@ -182,10 +182,57 @@ function buildBoxCard(box, reload) {
       reload();
     } catch (err) { toast(err.message, "err"); }
   });
-  actions.append(chatBtn, resetBtn, delBtn);
+  actions.append(detailBtn, chatBtn, resetBtn, delBtn);
   card.append(actions);
 
   return card;
+}
+
+function openDetail(box, reload) {
+  const spent = box.cycleNow >= box.maxCycleRun;
+  const remaining = Math.max(0, box.maxCycleRun - box.cycleNow);
+  const pct = Math.min(100, Math.round((box.cycleNow / Math.max(1, box.maxCycleRun)) * 100));
+
+  const body = el("div", "");
+  /* 字段表 */
+  const kv = el("div", "kv");
+  const add = (k, v) => kv.append(el("dt", "", esc(k)), el("dd", "", esc(String(v))));
+  add("实例 ID", box.agentBoxId);
+  add("别名", box.boxAlias || "—");
+  add("循环预算", `${box.maxCycleRun} 轮`);
+  add("已用轮次", `${box.cycleNow} 轮`);
+  add("剩余预算", `${remaining} 轮`);
+  add("预算状态", spent ? "已耗尽（需重置）" : "正常");
+  add("通道依赖", "llm-access");
+  body.append(kv);
+
+  /* 基础指令（完整） */
+  body.append(el("div", "sub mt16", "基础指令"));
+  body.append(el("pre", "code-block", esc(box.baseInstruct || "—")));
+
+  /* 进度 */
+  body.append(el("div", "sub mt16", `预算消耗 ${pct}%`));
+  const bar = el("div", `progress${spent ? " warn" : ""}`);
+  const fill = el("i");
+  fill.style.width = `${pct}%`;
+  bar.append(fill);
+  body.append(bar);
+
+  /* 快捷操作 */
+  const acts = el("div", "row mt16");
+  const chat = el("button", "btn primary sm", "推演一轮");
+  chat.type = "button";
+  chat.addEventListener("click", () => openChat(box, reload));
+  const reset = el("button", "btn sm", "重置轮次");
+  reset.type = "button";
+  reset.addEventListener("click", async () => {
+    try { await api.resetBox(box.agentBoxId); toast("轮次已重置", "ok"); reload(); }
+    catch (e) { toast(e.message, "err"); }
+  });
+  acts.append(chat, reset);
+  body.append(acts);
+
+  drawer(`实例详情 · ${box.boxAlias || box.agentBoxId}`, body);
 }
 
 function openChat(box, reload) {
@@ -231,7 +278,7 @@ function openChat(box, reload) {
 function spentHint(box) {
   return box.cycleNow >= box.maxCycleRun
     ? "循环预算已耗尽：需重置轮次才能继续推演。"
-    : `剩余 ${box.maxCycleRun - box.cycleNow} 轮预算 · 每轮经网关调用并计入灵能账单。`;
+    : `剩余 ${box.maxCycleRun - box.cycleNow} 轮预算 · 每轮经网关调用并计入Token账单。`;
 }
 
 function entry(tone, title, text) {

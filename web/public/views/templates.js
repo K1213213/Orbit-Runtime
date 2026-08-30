@@ -1,5 +1,5 @@
 /**
- * 灵仆模板 · 版本化人设快照
+ * 智能体模板 · 版本化人设快照
  *
  * 模板是"可复用的人设配置"：基础指令、循环预算、回放模式与通道依赖。
  * 关键约束是**版本链只追加**：回滚不是改写历史，而是把旧快照复制成一个
@@ -22,9 +22,9 @@ export async function renderTemplates(root) {
   createBtn.addEventListener("click", () => openEditor(null));
   headBody.append(el("div", "row", [
     createBtn,
-    el("span", "hint grow", "模板被实例与阵法引用；保存即产生新版本，历史版本可回滚")
+    el("span", "hint grow", "模板被实例与工作流引用；保存即产生新版本，历史版本可回滚")
   ]));
-  headCard.append(el("div", "card-head", "<h3>灵仆模板</h3><span class='sub' id='tpl-count'>—</span>"), headBody);
+  headCard.append(el("div", "card-head", "<h3>智能体模板</h3><span class='sub' id='tpl-count'>—</span>"), headBody);
 
   wrap.append(headCard, el("div", "section-gap"), grid);
   root.append(wrap);
@@ -70,10 +70,12 @@ export async function renderTemplates(root) {
     const foot = el("div", "tx-foot mt8");
     const edit = el("button", "btn sm", "存为新版本");
     const vers = el("button", "btn sm", `历史（${t.versionCount}）`);
+    const copy = el("button", "btn sm", "复制");
     const del = el("button", "btn sm danger", "删除");
-    edit.type = vers.type = del.type = "button";
+    edit.type = vers.type = copy.type = del.type = "button";
     edit.addEventListener("click", () => openEditor(t));
     vers.addEventListener("click", () => openVersions(t));
+    copy.addEventListener("click", () => copyTemplate(t));
     del.addEventListener("click", async () => {
       const ok = await confirmDialog("删除模板", `确认删除「${t.name}」？全部版本一并移除。`, "删除");
       if (!ok) return;
@@ -83,9 +85,18 @@ export async function renderTemplates(root) {
         await load();
       } catch (err) { toast(err.message, "err"); }
     });
-    foot.append(edit, vers, del);
+    foot.append(edit, vers, copy, del);
     card.append(foot);
     return card;
+  }
+
+  function copyTemplate(tpl) {
+    openEditor({
+      id: undefined,
+      name: `${tpl.name} 副本`,
+      desc: tpl.desc,
+      snapshot: tpl.snapshot
+    });
   }
 
   function openEditor(tpl) {
@@ -183,9 +194,54 @@ export async function renderTemplates(root) {
       } else {
         item.append(badge("当前", "ok"));
       }
+      if (v.version > 1) {
+        const cmp = el("button", "btn sm", "对比上一版");
+        cmp.type = "button";
+        cmp.addEventListener("click", () => openCompare(tpl.name, v, versions));
+        item.append(cmp);
+      }
       list.append(item);
     }
     drawer(`版本历史 · ${tpl.name}`, list);
+  }
+
+  function openCompare(name, cur, all) {
+    const prev = all.find((x) => x.version === cur.version - 1);
+    if (!prev) { toast("没有更早的版本可对比", "err"); return; }
+    const fields = [
+      { key: "baseInstruct", label: "基础指令", type: "text" },
+      { key: "maxCycleRun", label: "循环预算", type: "num" },
+      { key: "budgetPerCycle", label: "每轮预算", type: "num" },
+      { key: "replayMode", label: "回放模式", type: "text" },
+      { key: "channelDeps", label: "通道依赖", type: "list" }
+    ];
+    const body = el("div", "");
+    body.append(el("div", "sub", `v${prev.version} → v${cur.version} · 逐字段差异`));
+    const tbl = el("table", "tbl compare-tbl");
+    tbl.innerHTML = `<thead><tr><th>字段</th><th>上一版</th><th>本版</th><th>变化</th></tr></thead>`;
+    const tbody = el("tbody");
+    for (const f of fields) {
+      const a = prev.snapshot?.[f.key];
+      const b = cur.snapshot?.[f.key];
+      let changed = false;
+      let aStr = "", bStr = "";
+      if (f.type === "list") {
+        aStr = (a ?? []).join(", "); bStr = (b ?? []).join(", ");
+        changed = aStr !== bStr;
+      } else {
+        aStr = String(a ?? "—"); bStr = String(b ?? "—");
+        changed = aStr !== bStr;
+      }
+      const tr = el("tr", changed ? "changed" : "", `
+        <td>${esc(f.label)}</td>
+        <td class="mono">${esc(aStr)}</td>
+        <td class="mono">${esc(bStr)}</td>
+        <td>${changed ? badge("有变更", "warn") : badge("未变", "neutral")}</td>`);
+      tbody.append(tr);
+    }
+    tbl.append(tbody);
+    body.append(tbl);
+    drawer(`版本对比 · ${name}`, body);
   }
 
   await load();

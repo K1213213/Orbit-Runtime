@@ -8,12 +8,23 @@ const BASE = "";
 const TOKEN_KEY = "orbit.session";
 
 export function getToken() {
-  try { return localStorage.getItem(TOKEN_KEY); } catch { return null; }
+  try { return localStorage.getItem(TOKEN_KEY) ?? sessionStorage.getItem(TOKEN_KEY); } catch { return null; }
 }
-export function setToken(token) {
+/**
+ * 写入会话令牌。persist=true（默认，勾选"记住我"）存 localStorage，
+ * 关闭浏览器后仍保留；persist=false 仅存 sessionStorage，关闭标签页即失效。
+ */
+export function setToken(token, persist = true) {
   try {
-    if (token) localStorage.setItem(TOKEN_KEY, token);
-    else localStorage.removeItem(TOKEN_KEY);
+    if (token) {
+      const store = persist ? localStorage : sessionStorage;
+      const other = persist ? sessionStorage : localStorage;
+      store.setItem(TOKEN_KEY, token);
+      other.removeItem(TOKEN_KEY);
+    } else {
+      localStorage.removeItem(TOKEN_KEY);
+      sessionStorage.removeItem(TOKEN_KEY);
+    }
   } catch { /* 隐私模式下静默降级为内存会话 */ }
 }
 

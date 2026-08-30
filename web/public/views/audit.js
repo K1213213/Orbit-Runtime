@@ -53,10 +53,12 @@ export async function renderAudit(root) {
   const actions = el("div", "row mt8");
   const exportMd = el("button", "btn sm", "导出 Markdown");
   const exportJson = el("button", "btn sm", "导出 JSON");
-  exportMd.type = exportJson.type = "button";
+  const exportPdf = el("button", "btn sm", "导出 PDF");
+  exportMd.type = exportJson.type = exportPdf.type = "button";
   exportMd.addEventListener("click", () => exportAs("md"));
   exportJson.addEventListener("click", () => exportAs("json"));
-  actions.append(exportMd, exportJson, el("span", "hint grow", "导出由服务端生成，导出动作本身也会记入审计流"));
+  exportPdf.addEventListener("click", () => exportAs("pdf"));
+  actions.append(exportMd, exportJson, exportPdf, el("span", "hint grow", "导出由服务端生成，导出动作本身也会记入审计流"));
 
   filterBody.append(filter, actions);
   filterCard.append(el("div", "card-head", "<h3>平台审计流</h3><span class='sub' id='audit-count'>—</span>"), filterBody);

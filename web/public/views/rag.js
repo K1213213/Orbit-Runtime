@@ -1,5 +1,5 @@
 /**
- * 灵域推演 · Agentic RAG
+ * RAG推演工作台 · Agentic RAG
  *
  * 八步管线的每一步都在界面上留下痕迹（状态 / 细节 / 耗时），因为"Agentic"
  * 的价值不在答案本身，而在**过程可复盘**：哪一步判定不足、为什么补搜、
@@ -59,7 +59,21 @@ export async function renderRag(root) {
     field("问题", qF),
     el("div", "row", [runBtn, el("span", "hint grow", "合成经内核 llm-access 通道；未配置真实模型时答案以 [Llm-Sim] 标注")])
   );
-  formCard.append(el("div", "card-head", "<h3>灵域推演</h3><span class='sub'>解析 → 初检 → 评估 → 补搜 → 重排 → 合成 → 溯源 → 归档</span>"), body);
+
+  /* 复盘聚焦：选择慢镜头复盘时逐步回顾哪些步骤（仅影响复盘呈现，不改变执行） */
+  const replayFocus = new Set(RAG_STEPS.map((s) => s.id));
+  const focusWrap = el("div", "rag-focus");
+  focusWrap.append(el("span", "hint", "慢镜头复盘聚焦："));
+  for (const s of RAG_STEPS) {
+    const cb = el("input", "cb"); cb.type = "checkbox"; cb.checked = true;
+    cb.addEventListener("change", () => { cb.checked ? replayFocus.add(s.id) : replayFocus.delete(s.id); });
+    const lab = el("label", "cb-lab", esc(s.label));
+    lab.prepend(cb);
+    focusWrap.append(lab);
+  }
+  body.append(focusWrap);
+
+  formCard.append(el("div", "card-head", "<h3>RAG推演工作台</h3><span class='sub'>解析 → 初检 → 评估 → 补搜 → 重排 → 合成 → 溯源 → 归档</span>"), body);
 
   /* ---- 结果区 ---- */
   const resultWrap = el("div", "mt16");
@@ -74,7 +88,7 @@ export async function renderRag(root) {
 
   async function run() {
     const question = qF.value.trim();
-    if (!kbSel.value) { toast("请先选择知识库（若为空，去经卷库新建）", "err"); return; }
+    if (!kbSel.value) { toast("请先选择知识库（若为空，去知识库新建）", "err"); return; }
     if (!question) { toast("请输入问题", "err"); return; }
     runBtn.disabled = true;
     runBtn.textContent = "推演中…";
@@ -96,31 +110,60 @@ export async function renderRag(root) {
   function renderRun(run) {
     const box = el("div", "");
 
-    /* 八步管线 */
-    const stepsCard = card(`<h3>八步管线</h3><span class="sub">${esc(run.id)} · 耗时 ${esc(run.ms)}ms · 补搜 ${esc(run.hops)} 轮</span>`, (() => {
-      const list = el("div", "rag-steps");
-      const byId = new Map((run.steps ?? []).map((s) => [s.id, s]));
-      RAG_STEPS.forEach((def, i) => {
-        const st = byId.get(def.id) ?? { status: "pending", detail: "", ms: null };
-        const tone = STEP_TONE[st.status] ?? STEP_TONE.pending;
-        const dot = st.status === "done" ? "✓" : st.status === "failed" ? "✕" : st.status === "skipped" ? "–" : String(i + 1);
-        const step = el("div", `rag-step ${tone.cls}`, `
-          <div class="rs-rail">
-            <div class="rs-dot">${esc(dot)}</div>
-            ${i < RAG_STEPS.length - 1 ? '<div class="rs-line"></div>' : ""}
+    /* 八步管线（可慢镜头复盘） */
+    const stepEls = new Map();
+    const list = el("div", "rag-steps");
+    const byId = new Map((run.steps ?? []).map((s) => [s.id, s]));
+    RAG_STEPS.forEach((def, i) => {
+      const st = byId.get(def.id) ?? { status: "pending", detail: "", ms: null };
+      const tone = STEP_TONE[st.status] ?? STEP_TONE.pending;
+      const dot = st.status === "done" ? "✓" : st.status === "failed" ? "✕" : st.status === "skipped" ? "–" : String(i + 1);
+      const step = el("div", `rag-step ${tone.cls}`, `
+        <div class="rs-rail">
+          <div class="rs-dot">${esc(dot)}</div>
+          ${i < RAG_STEPS.length - 1 ? '<div class="rs-line"></div>' : ""}
+        </div>
+        <div class="rs-body">
+          <div class="spread">
+            <div class="rs-title">${esc(def.label)}</div>
+            ${badge(tone.label, tone.tone)}${st.ms != null ? `<span class="hint mono">${esc(st.ms)}ms</span>` : ""}
           </div>
-          <div class="rs-body">
-            <div class="spread">
-              <div class="rs-title">${esc(def.label)}</div>
-              ${badge(tone.label, tone.tone)}${st.ms != null ? `<span class="hint mono">${esc(st.ms)}ms</span>` : ""}
-            </div>
-            <div class="rs-desc">${esc(def.desc)}</div>
-            ${st.detail ? `<div class="rs-detail hint">${esc(st.detail)}</div>` : ""}
-          </div>`);
-        list.append(step);
-      });
-      return list;
-    })());
+          <div class="rs-desc">${esc(def.desc)}</div>
+          ${st.detail ? `<div class="rs-detail hint">${esc(st.detail)}</div>` : ""}
+        </div>`);
+      stepEls.set(def.id, step);
+      list.append(step);
+    });
+
+    const stepsCard = el("div", "card");
+    const stepsHead = el("div", "card-head");
+    stepsHead.append(el("h3", "", "八步管线"));
+    stepsHead.append(el("span", "sub", `${esc(run.id)} · 耗时 ${esc(run.ms)}ms · 补搜 ${esc(run.hops)} 轮`));
+    const replayBtn = el("button", "btn sm", "▶ 慢镜头复盘");
+    replayBtn.type = "button";
+    replayBtn.addEventListener("click", () => slowReplay(run));
+    stepsHead.append(el("div", "head-actions", replayBtn));
+    const statusHint = el("div", "sub mt8", `共 ${RAG_STEPS.length} 步 · 点击「慢镜头复盘」逐步回顾`);
+    stepsCard.append(stepsHead, el("div", "card-body", [statusHint, list]));
+
+    async function slowReplay(r) {
+      replayBtn.disabled = true;
+      replayBtn.textContent = "复盘进行中…";
+      const order = RAG_STEPS.map((s) => s.id);
+      for (const id of order) {
+        if (!replayFocus.has(id) || !stepEls.has(id)) continue;
+        stepEls.forEach((e) => e.classList.remove("rs-replaying"));
+        const el2 = stepEls.get(id);
+        el2.classList.add("rs-replaying");
+        el2.scrollIntoView({ behavior: "smooth", block: "center" });
+        statusHint.textContent = `慢镜头复盘 · 第 ${order.indexOf(id) + 1}/${order.length} 步：${RAG_STEPS.find((x) => x.id === id)?.label ?? id}`;
+        await sleep(700);
+      }
+      stepEls.forEach((e) => e.classList.remove("rs-replaying"));
+      statusHint.textContent = `复盘完成 · 共 ${RAG_STEPS.length} 步 · ${r.hops} 轮补搜`;
+      replayBtn.disabled = false;
+      replayBtn.textContent = "▶ 慢镜头复盘";
+    }
 
     /* 答案与引用 */
     const answerBody = el("div", "");
@@ -213,3 +256,5 @@ function field(text, control) {
   f.append(control);
   return f;
 }
+
+function sleep(ms) { return new Promise((r) => setTimeout(r, ms)); }

@@ -228,8 +228,8 @@ export function describePaeTool(templateId, name, overrides = {}) {
 /* 信息架构 · 分组导航模型                                              */
 /* ------------------------------------------------------------------ */
 /**
- * 能力面按用户意图分组（菜单命名保留一套克制的阵法隐喻，页面内部一律
- * 标准工程风格——这是设计铁律，隐喻只到菜单为止）：
+ * 能力面按用户意图分组（导航命名采用标准技术术语，页面内部一律
+ * 企业级专业控制台风格）：
  *
  *   运行时 —— 我要看/驱动正在跑的东西（实例 / 任务 / 编排）
  *   知识   —— 我要沉淀并调用私有语料
@@ -243,10 +243,10 @@ export const NAV_GROUPS = [
     label: "运行时",
     desc: "观察并驱动正在运行的智能体与任务",
     items: [
-      { path: "overview", title: "灵域总览", icon: "◈", keywords: "overview home 首页 总览 大盘 dashboard 指标" },
-      { path: "boxes", title: "金丹实例", icon: "▣", keywords: "box sandbox agent instance 沙箱 实例 对话 执行 金丹" },
-      { path: "tasks", title: "阵法任务", icon: "⧉", keywords: "task job 任务 阵法 运行 记录" },
-      { path: "workflow", title: "阵法编排", icon: "❋", keywords: "workflow dag canvas 编排 工作流 画布 阵纹 节点" }
+      { path: "overview", title: "数据总览", icon: "◈", keywords: "overview home 首页 总览 大盘 dashboard 指标 数据" },
+      { path: "boxes", title: "智能体实例", icon: "▣", keywords: "box sandbox agent instance 沙箱 实例 智能体 对话 执行" },
+      { path: "tasks", title: "任务中心", icon: "⧉", keywords: "task job 任务 运行 记录 中心" },
+      { path: "workflow", title: "工作流编排", icon: "❋", keywords: "workflow dag canvas 编排 工作流 画布 节点" }
     ]
   },
   {
@@ -254,8 +254,8 @@ export const NAV_GROUPS = [
     label: "知识",
     desc: "沉淀私有语料并在推演中调用",
     items: [
-      { path: "knowledge", title: "经卷库", icon: "❑", keywords: "knowledge kb 知识库 文档 切片 索引 经卷" },
-      { path: "rag", title: "灵域推演", icon: "✵", keywords: "rag retrieve 检索 推演 问答 溯源 补搜" }
+      { path: "knowledge", title: "知识库管理", icon: "❑", keywords: "knowledge kb 知识库 文档 切片 索引" },
+      { path: "rag", title: "RAG推演工作台", icon: "✵", keywords: "rag retrieve 检索 推演 问答 溯源 补搜" }
     ]
   },
   {
@@ -263,8 +263,8 @@ export const NAV_GROUPS = [
     label: "构件",
     desc: "接入模板、插件、模型与外来运行时",
     items: [
-      { path: "templates", title: "灵仆模板", icon: "◱", keywords: "template persona 模板 人设 灵仆 版本" },
-      { path: "plugins", title: "符箓市场", icon: "◇", keywords: "plugin market pact 插件 市场 符箓 卸载" },
+      { path: "templates", title: "智能体模板", icon: "◱", keywords: "template persona 模板 人设 智能体 版本" },
+      { path: "plugins", title: "插件市场", icon: "◇", keywords: "plugin market pact 插件 市场 卸载" },
       { path: "channels", title: "模型适配", icon: "⊡", keywords: "channel llm model provider 模型 通道 适配 deepseek" },
       { path: "pae", title: "异构适配", icon: "❖", keywords: "pae adapter mcp openapi 异构 适配 外来 接驳" }
     ]
@@ -274,8 +274,8 @@ export const NAV_GROUPS = [
     label: "治理",
     desc: "证明隔离、复现执行、控制成本",
     items: [
-      { path: "trace", title: "事件溯源", icon: "≡", keywords: "trace audit event 审计 溯源 追踪 日志 事件" },
-      { path: "billing", title: "灵能账单", icon: "⌾", keywords: "billing token cost 账单 灵能 消耗 余额 排行" },
+      { path: "trace", title: "事件审计", icon: "≡", keywords: "trace audit event 审计 溯源 追踪 日志 事件" },
+      { path: "billing", title: "Token账单", icon: "⌾", keywords: "billing token cost 账单 消耗 余额 排行" },
       { path: "routing", title: "成本路由", icon: "⌁", keywords: "routing cost budget 成本 路由 预算 模拟" },
       { path: "replay", title: "回放台", icon: "↻", keywords: "replay deterministic 回放 重放 对账 digest" },
       { path: "graph", title: "影响域图", icon: "✧", keywords: "graph isolation dependency 影响域 依赖 隔离 血缘" }
@@ -541,12 +541,12 @@ export function suggestNextSteps(state, limit = 4) {
 /* 任务状态体系                                                         */
 /* ------------------------------------------------------------------ */
 /**
- * 阵法任务的六态状态机。状态是数据不是样式——桥接只写状态名，
+ * 任务的六态状态机。状态是数据不是样式——桥接只写状态名，
  * 展示语义（徽章 tone / 中文标签）在这里统一裁决。
  */
 export const TASK_STATUS = {
   queued: { label: "排队", tone: "neutral", desc: "已入队，等待执行槽位" },
-  running: { label: "推演中", tone: "violet", desc: "正在执行主流程" },
+  running: { label: "执行中", tone: "violet", desc: "正在执行主流程" },
   iterating: { label: "迭代中", tone: "warn", desc: "评估不足，触发补搜/回流" },
   done: { label: "已完成", tone: "ok", desc: "全部步骤成功结束" },
   failed: { label: "异常中断", tone: "err", desc: "某步骤抛错，任务中止" },
@@ -562,8 +562,8 @@ export function taskStatusMeta(status) {
 /** 任务大类：来源决定详情页跳转与图标。 */
 export const TASK_KINDS = {
   agent: { label: "实例轮次", icon: "▣", route: "boxes" },
-  workflow: { label: "阵法编排", icon: "❋", route: "workflow" },
-  rag: { label: "灵域推演", icon: "✵", route: "rag" }
+  workflow: { label: "工作流编排", icon: "❋", route: "workflow" },
+  rag: { label: "RAG推演", icon: "✵", route: "rag" }
 };
 
 export function taskKindMeta(kind) {
@@ -571,14 +571,14 @@ export function taskKindMeta(kind) {
 }
 
 /* ------------------------------------------------------------------ */
-/* 灵能账单推导                                                         */
+/* Token 账单推导                                                       */
 /* ------------------------------------------------------------------ */
 /**
  * 由账本（ledger：每次能力调用的 {ts, task, box, channel, units, reason}）
  * 推导账单视图需要的全部聚合。
  *
  * 纯函数：视图与桥接（导出报告）共用同一口径，数字对不上时只有一份
- * 实现可查。单位是「灵能单位」——内核成本路由的 costPerCall 计量。
+ * 实现可查。单位是「Token 单位」——内核成本路由的 costPerCall 计量。
  */
 export function deriveBilling(ledger, opts = {}) {
   const entries = Array.isArray(ledger) ? ledger : [];

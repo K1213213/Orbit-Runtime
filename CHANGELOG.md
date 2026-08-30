@@ -82,6 +82,40 @@ special-casing.
 - New error type `PaeRemoteError` for peer/transport failures — distinct from
   registration-time rejection and from a missing tool name.
 
+### W17 — OpenAPI adapter (REST APIs as PAE tools)
+- **`spec.ts` — pure document mapping.** An OpenAPI 3.x / Swagger 2.x document
+  is parsed into a tool surface (`parseOpenApiDocument`): one tool per
+  (method, path) operation, `operationId` used verbatim and a registry-safe
+  `method_path` name synthesized when absent, path-level parameters merged into
+  each operation, and cookie parameters rejected outright (the kernel never
+  attaches ambient credentials). Malformed structure is a hard error, exactly
+  like MCP's `parseToolList`. Request building (`buildHttpRequest`) is also
+  pure: required path parameters must be present and are URL-encoded in place,
+  query keys are serialised in sorted order so identical arguments produce an
+  identical URL (digest stability), and remaining keys become the JSON body when
+  the operation declares one — leftovers without a body are a hard error, never
+  silently dropped. `resolveDocumentBaseUrl` reads `servers[0]` / swagger
+  `schemes+host+basePath` as a fallback.
+- **`transport.ts` — injected HTTP seam.** `IHttpTransport` mirrors the MCP
+  transport contract; `InMemoryHttpTransport` makes the adapter's semantics
+  testable without a network, and `FetchHttpTransport` is the real path
+  (platform `fetch`, per-request deadline, default headers, injectable
+  `fetchImpl` for tests).
+- **`OpenApiPaeAdapter`** — `kind: "openapi"`, `isolation: "L2"`, remote API is
+  `IO_BOUND` like MCP. Unlike MCP there is no live handshake: the surface is
+  read statically from the document, so a malformed spec (or an adapter with no
+  resolvable base URL) fails at construction, before any call is routed to it.
+  `baseUrl` is configuration first, the document's server a fallback. Default
+  fidelity is **`reduced`** with an honest note: validation is remote (only
+  required path parameters are enforced locally; query/header/body pass
+  through), and an HTTP response is collapsed to a single JSON/text value with
+  status code and headers dropped; a non-2xx status raises `PaeRemoteError`
+  with the status and a bounded body tail. Per-operation overrides
+  (`OpenApiOperationOverride`) and `toolNamePrefix` follow the MCP pattern.
+- Public API: `OpenApiPaeAdapter`, `OPENAPI_DEFAULT_FIDELITY_NOTE`,
+  `InMemoryHttpTransport`, `FetchHttpTransport`, `parseOpenApiDocument`,
+  `buildHttpRequest`, `normaliseHttpResponse`, `resolveDocumentBaseUrl`.
+
 ### Console
 - **Adapter Studio** (`web/public/views/pae.js`) — the PAE surface becomes
   operable: pick a tool template, register the adapter, negotiate fidelity, then

@@ -88,6 +88,24 @@ export type {
   McpToolDefinition,
   NormalisedToolResult
 } from "./pae/adapters/mcp/protocol";
+// W17: OpenAPI — maps a foreign REST API onto the capability contract.
+export { OpenApiPaeAdapter, OPENAPI_DEFAULT_FIDELITY_NOTE } from "./pae/adapters/openapi/OpenApiPaeAdapter";
+export type { OpenApiPaeAdapterConfig, OpenApiOperationOverride } from "./pae/adapters/openapi/OpenApiPaeAdapter";
+export { InMemoryHttpTransport, FetchHttpTransport } from "./pae/adapters/openapi/transport";
+export type {
+  IHttpTransport,
+  HttpRequest,
+  HttpResponse,
+  HttpHandler,
+  FetchHttpTransportOptions
+} from "./pae/adapters/openapi/transport";
+export { parseOpenApiDocument, buildHttpRequest, normaliseHttpResponse, isHttpSuccess, bodyTail } from "./pae/adapters/openapi/spec";
+export type {
+  OpenApiOperation,
+  OpenApiParameter,
+  ParsedOpenApiDocument,
+  NormalisedHttpResponse
+} from "./pae/adapters/openapi/spec";
 export {
   PaeAdapterRejectError,
   PaeToolMissingError,

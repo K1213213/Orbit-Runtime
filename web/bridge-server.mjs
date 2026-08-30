@@ -18,7 +18,7 @@
  */
 import http from "node:http";
 import { readFile } from "node:fs/promises";
-import { extname, join, normalize, sep } from "node:path";
+import { extname, join, normalize, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { OrbitRuntimeHost } from "../dist/src/core/orbitRuntimeHost.js";
@@ -26,6 +26,10 @@ import { ChannelKind } from "../dist/src/types/orbitDomain.js";
 import { RecordJournal } from "../dist/src/replay/record_journal.js";
 import { ReplayEngine } from "../dist/src/replay/replay_engine.js";
 import { DeepSeekChannel } from "../dist/src/channel/providers/openai_compat_channel.js";
+import { createHash } from "node:crypto";
+import { JsPaeAdapter } from "../dist/src/pae/adapters/JsPaeAdapter.js";
+import { SeededRng } from "../dist/src/replay/injectors.js";
+import { PAE_TEMPLATES, describePaeTool } from "./public/lib.js";
 
 const __dirname = fileURLToPath(new URL(".", import.meta.url));
 const PUBLIC_DIR = join(__dirname, "public");
@@ -62,6 +66,63 @@ let runCounter = 0;
 
 /** Sandbox → channel deps mirrored here (kernel graph has no node removal). */
 const boxDeps = new Map();
+
+/* ------------------------------------------------------------------ */
+/* PAE · Plugin Adaptation Engine (W15)                                */
+/* ------------------------------------------------------------------ */
+/* tool name → template id, so the console knows how to format args and
+   the graph can label the foreign surface. The kernel registry owns the
+   real tool/adapter state; this is just the bridge-side bookkeeping. */
+const paeToolMeta = new Map();
+
+/* Deterministic seed source for PAE tools that need randomness. The seed
+   advances per invoke so each call is reproducible *and* distinct, and the
+   replay path never re-executes the adapter (snapshot injected). */
+let paeSeed = 0x1a2b3c4d;
+
+/**
+ * Foreign tool implementations, keyed by template id. Every handler takes the
+ * kernel-injected `(args, ctx)` and never touches Math.random / Date.now — the
+ * contract the adapter contract promises (charter axiom A1).
+ */
+function rngHex(ctx, chars) {
+  let s = "";
+  for (let i = 0; i < chars; i++) s += Math.floor(ctx.rng.next() * 16).toString(16);
+  return s;
+}
+
+const PAE_HANDLERS = {
+  echo: (args) => args[0],
+  reverse: (args) => String(args[0] ?? "").split("").reverse().join(""),
+  upper: (args) => String(args[0] ?? "").toUpperCase(),
+  lower: (args) => String(args[0] ?? "").toLowerCase(),
+  length: (args) => String(args[0] ?? "").length,
+  hash: (args) => createHash("sha256").update(String(args[0] ?? "")).digest("hex"),
+  base64: (args) => Buffer.from(String(args[0] ?? ""), "utf8").toString("base64"),
+  json: (args) => JSON.stringify(JSON.parse(String(args[0] ?? "{}")), null, 2),
+  add: (args) => args.filter((n) => typeof n === "number" && !Number.isNaN(n)).reduce((a, b) => a + b, 0),
+  now: (_args, ctx) => (ctx.clock ? ctx.clock.now() : Date.now()),
+  random: (_args, ctx) => ctx.rng.next(),
+  uuid: (_args, ctx) => `${rngHex(ctx, 8)}-${rngHex(ctx, 4)}-${rngHex(ctx, 4)}-${rngHex(ctx, 4)}-${rngHex(ctx, 12)}`
+};
+
+/**
+ * Build a JsToolSpec from a UI payload. Reuses the same descriptor builder the
+ * console uses (shared via lib.js) so the honesty gate — a non-full fidelity
+ * MUST carry a fidelityNote — is enforced identically on both ends.
+ */
+function buildPaeToolSpec(tool) {
+  const tpl = tool.template;
+  if (!tpl || !PAE_TEMPLATES[tpl]) throw new Error(`unknown pae template: ${tpl}`);
+  if (typeof PAE_HANDLERS[tpl] !== "function") throw new Error(`pae template "${tpl}" has no handler`);
+  const descriptor = describePaeTool(tpl, tool.name, {
+    capability: tool.capability,
+    determinism: tool.determinism,
+    fidelity: tool.fidelity,
+    fidelityNote: tool.fidelityNote
+  });
+  return { ...descriptor, handler: PAE_HANDLERS[tpl] };
+}
 
 /* ------------------------------------------------------------------ */
 /* Demo plugin channel (shows plugin-first precedence over built-ins)  */
@@ -130,7 +191,13 @@ const api = {
       sandboxes: listSandboxes(),
       traceCount: entries.length,
       trace: entries.slice(0, 6),
-      runCounter
+      runCounter,
+      pae: {
+        enabled: !host.paeRegistry.isEmpty(),
+        adapters: host.paeRegistry.listAdapters().length,
+        tools: host.paeRegistry.listTools().length,
+        configHash: host.paeRegistry.isEmpty() ? null : host.paeRegistry.configHash()
+      }
     };
   },
 
@@ -409,6 +476,18 @@ const api = {
       else if (id.startsWith("plugin.")) kind = "plugin";
       return { id, kind };
     });
+
+    // PAE surface: the adaptation channel + one node per registered adapter,
+    // wired adapter → pae-tool so the bloodline shows the foreign surface
+    // feeding the capability channel it is published through.
+    if (!host.paeRegistry.isEmpty()) {
+      nodeList.push({ id: ChannelKind.PAE_TOOL, kind: "pae" });
+      for (const m of host.paeRegistry.listAdapters()) {
+        nodeList.push({ id: m.adapterId, kind: "pae-adapter" });
+        edges.push({ from: m.adapterId, to: ChannelKind.PAE_TOOL });
+      }
+    }
+
     return { nodes: nodeList, edges };
   },
 
@@ -445,6 +524,104 @@ const api = {
       fits: meta.cost.costPerCall <= budget && meta.cost.latencyMs <= maxLatencyMs
     }));
     return { budget, maxLatencyMs, chosen, profiles };
+  },
+
+  /* ---- PAE · Plugin Adaptation Engine (W15) ---- */
+
+  async pae() {
+    await ensureRunning();
+    const adapters = host.paeRegistry.listAdapters().map((m) => ({
+      adapterId: m.adapterId,
+      kind: m.kind,
+      sourceEdition: m.sourceEdition,
+      isolation: m.isolation,
+      toolCount: host.paeRegistry.get(m.adapterId)?.describe().length ?? 0
+    }));
+    const tools = host.paeRegistry.listTools().map((t) => ({
+      name: t.name,
+      capability: t.capability,
+      determinism: t.determinism,
+      fidelity: t.fidelity,
+      fidelityNote: t.fidelityNote,
+      description: t.description,
+      template: paeToolMeta.get(t.name)?.template ?? null
+    }));
+    return {
+      paeEnabled: !host.paeRegistry.isEmpty(),
+      configHash: host.paeRegistry.isEmpty() ? null : host.paeRegistry.configHash(),
+      adapters,
+      tools
+    };
+  },
+
+  async registerPae(body) {
+    await ensureRunning();
+    const adapterId = body?.adapterId;
+    const tools = body?.tools;
+    if (!adapterId) throw new Error("adapterId required");
+    if (!Array.isArray(tools) || tools.length === 0) throw new Error("at least one tool required");
+    const adapter = new JsPaeAdapter({
+      adapterId,
+      sourceEdition: body?.sourceEdition || "1.0.0",
+      isolation: body?.isolation || "L0",
+      tools: tools.map(buildPaeToolSpec)
+    });
+    host.registerPaeToolAdapter(adapter);
+    for (const t of tools) paeToolMeta.set(t.name, { template: t.template });
+    return this.pae();
+  },
+
+  async invokePae(body) {
+    await ensureRunning();
+    const toolName = body?.toolName;
+    if (!toolName) throw new Error("toolName required");
+    const meta = paeToolMeta.get(toolName);
+    const argText = String(body?.argText ?? "");
+    let args;
+    if (meta?.template === "add") {
+      args = argText.split(",").map((s) => Number(s.trim())).filter((n) => !Number.isNaN(n));
+    } else {
+      args = [argText];
+    }
+    // Honest determinism: rng/clock are injected, never minted by the adapter.
+    const rng = new SeededRng(paeSeed++);
+    const clock = { now: () => Date.now() };
+    const t0 = performance.now();
+    const output = await host.gateway.capabilityInvoke({
+      kind: ChannelKind.PAE_TOOL,
+      funcName: toolName,
+      args,
+      mode: "live",
+      ctx: { rng, clock }
+    });
+    return {
+      toolName,
+      args,
+      output,
+      ms: Number((performance.now() - t0).toFixed(2)),
+      route: "pae",
+      channel: ChannelKind.PAE_TOOL
+    };
+  },
+
+  async negotiatePae(body) {
+    await ensureRunning();
+    const toolName = body?.toolName;
+    if (!toolName) throw new Error("toolName required");
+    const minFidelity = body?.minFidelity ?? "full";
+    // Throws PaeFidelityRejectError on an honest downgrade; the router reports
+    // it as a normal API error and the console shows the informed-choice gate.
+    const negotiated = host.negotiatePaeTool(toolName, minFidelity);
+    return { negotiated };
+  },
+
+  async removePae(adapterId) {
+    await ensureRunning();
+    if (!adapterId) throw new Error("adapterId required");
+    const before = host.paeRegistry.get(adapterId)?.describe().map((t) => t.name) ?? [];
+    host.unregisterPaeToolAdapter(adapterId);
+    for (const name of before) paeToolMeta.delete(name);
+    return this.pae();
   }
 };
 
@@ -573,6 +750,12 @@ const server = http.createServer(async (req, res) => {
       if (method === "POST" && seg[0] === "routing" && seg[1] === "simulate")
         return ok(res, await api.simulateRoute(await readBody(req)));
 
+      if (method === "GET" && seg[0] === "pae" && seg.length === 1) return ok(res, await api.pae());
+      if (method === "POST" && seg[0] === "pae" && seg.length === 1) return ok(res, await api.registerPae(await readBody(req)));
+      if (method === "POST" && seg[0] === "pae" && seg[1] === "invoke" && seg.length === 2) return ok(res, await api.invokePae(await readBody(req)));
+      if (method === "POST" && seg[0] === "pae" && seg[1] === "negotiate" && seg.length === 2) return ok(res, await api.negotiatePae(await readBody(req)));
+      if (method === "DELETE" && seg[0] === "pae" && seg[1]) return ok(res, await api.removePae(decodeURIComponent(seg[1])));
+
       return fail(res, `no such api: ${method} ${path}`, 404);
     }
 
@@ -602,7 +785,16 @@ async function start() {
   });
 }
 
-start().catch((err) => {
-  console.error("failed to start bridge server:", err);
-  process.exitCode = 1;
-});
+/* Export the bridge surface so the console's own test suite can drive a real
+   host without spawning the HTTP server (importing this module must not boot). */
+export { api, host };
+
+/* Only auto-start when executed directly as `node web/bridge-server.mjs`.
+   Under `node --test`, the module is imported — never started. */
+const isMain = process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url));
+if (isMain) {
+  start().catch((err) => {
+    console.error("failed to start bridge server:", err);
+    process.exitCode = 1;
+  });
+}

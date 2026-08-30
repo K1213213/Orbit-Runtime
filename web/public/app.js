@@ -11,6 +11,7 @@ import { renderTrace } from "./views/trace.js";
 import { renderReplay } from "./views/replay.js";
 import { renderGraph } from "./views/graph.js";
 import { renderRouting } from "./views/routing.js";
+import { renderPae } from "./views/pae.js";
 
 /* ------------------------------------------------------------------ */
 /* 路由表                                                              */
@@ -24,7 +25,8 @@ const routes = [
   { path: "trace", title: "追踪日志", render: renderTrace },
   { path: "replay", title: "回放台", render: renderReplay },
   { path: "graph", title: "影响域图", render: renderGraph },
-  { path: "routing", title: "成本路由", render: renderRouting }
+  { path: "routing", title: "成本路由", render: renderRouting },
+  { path: "pae", title: "异构适配", render: renderPae }
 ];
 
 /* ------------------------------------------------------------------ */
@@ -42,33 +44,10 @@ export function el(tag, cls, html) {
   return node;
 }
 
-export function esc(s) {
-  return String(s ?? "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
-
-export function fmtTime(ts) {
-  const d = new Date(ts);
-  const p = (n) => String(n).padStart(2, "0");
-  return `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}.${String(d.getMilliseconds()).padStart(3, "0")}`;
-}
-
-export function fmtDate(ts) {
-  const d = new Date(ts);
-  const p = (n) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
-}
-
-export function shortId(id, n = 26) {
-  return id.length > n ? id.slice(0, n) + "…" : id;
-}
-
-export function badge(text, tone = "neutral") {
-  return `<span class="badge ${tone}">${esc(text)}</span>`;
-}
+// 纯函数工具（esc / fmtTime / fmtDate / shortId / badge / PAE 目录）集中在
+// lib.js，便于 Node 单测；这里统一再导出，视图无需改动 import 来源。
+import { esc } from "./lib.js";
+export * from "./lib.js";
 
 export function loading() {
   const d = el("div", "loading", `<span class="spinner"></span>加载中…`);

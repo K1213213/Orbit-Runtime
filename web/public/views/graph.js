@@ -20,8 +20,9 @@ const GENE = "#3cf2a8";        // 通道 · 基因绿
 const PLASMA = "#39e6ff";      // 沙箱 · 等离子青
 const NEURON = "#b78bff";      // 插件 · 神经紫
 const LESION = "#ff5c7a";      // 病变 · 猩红
-const KIND_COLOR = { plugin: NEURON, sandbox: PLASMA, channel: GENE };
-const KIND_R = { plugin: 27, sandbox: 23, channel: 21 };
+const COUPLER = "#ff9d4d";     // 异构适配 · 接驳橙
+const KIND_COLOR = { plugin: NEURON, sandbox: PLASMA, channel: GENE, pae: COUPLER, "pae-adapter": COUPLER };
+const KIND_R = { plugin: 27, sandbox: 23, channel: 21, pae: 21, "pae-adapter": 27 };
 
 const W = 940;
 const H = 520;
@@ -38,6 +39,7 @@ export async function renderGraph(root) {
     <span class="lg" style="color:${GENE}"><span class="sw" style="background:${GENE};color:${GENE}"></span>血脉之源 · 通道</span>
     <span class="lg" style="color:${NEURON}"><span class="sw" style="background:${NEURON};color:${NEURON}"></span>神经节 · 插件</span>
     <span class="lg" style="color:${PLASMA}"><span class="sw" style="background:${PLASMA};color:${PLASMA}"></span>细胞体 · 沙箱</span>
+    <span class="lg" style="color:${COUPLER}"><span class="sw" style="background:${COUPLER};color:${COUPLER}"></span>接驳器 · 异构适配</span>
     <span class="lg"><span class="sw" style="background:transparent;border:1.5px dashed rgba(57,230,255,.5);color:${PLASMA}"></span>血缘血脉线 dependent → dependency</span>
   `), side);
 
@@ -88,13 +90,14 @@ export async function renderGraph(root) {
 
   const nodes = data.nodes.map((n) => {
     let x, y;
-    if (n.kind === "channel") {
-      const idxCh = data.nodes.filter((m) => m.kind === "channel").indexOf(n);
-      const chCount = data.nodes.filter((m) => m.kind === "channel").length;
+    if (n.kind === "channel" || n.kind === "pae") {
+      const chNodes = data.nodes.filter((m) => m.kind === "channel" || m.kind === "pae");
+      const idxCh = chNodes.indexOf(n);
+      const chCount = chNodes.length;
       const span = Math.min(W * 0.5, chCount * 110);
       x = W / 2 + (idxCh - (chCount - 1) / 2) * (span / Math.max(1, chCount));
       y = H - 70;
-    } else if (n.kind === "plugin") {
+    } else if (n.kind === "plugin" || n.kind === "pae-adapter") {
       const i = pluginBox.indexOf(n);
       x = W * 0.22 + (i % 2) * 60;
       y = H * 0.28 + Math.floor(i / 2) * 90;
@@ -148,7 +151,7 @@ export async function renderGraph(root) {
     }
   }
   const maxY = Math.max(...nodes.map((n) => n.y));
-  for (const n of nodes) if (n.kind === "channel") n.y = Math.min(H - 36, maxY + 36);
+  for (const n of nodes) if (n.kind === "channel" || n.kind === "pae") n.y = Math.min(H - 36, maxY + 36);
 
   /* ---- SVG 根 ---- */
   const svg = document.createElementNS(NS, "svg");
@@ -176,7 +179,9 @@ export async function renderGraph(root) {
   const haloDefs = {
     channel: makeRadial(defs, "halo-gene", GENE),
     plugin: makeRadial(defs, "halo-neuron", NEURON),
-    sandbox: makeRadial(defs, "halo-plasma", PLASMA)
+    sandbox: makeRadial(defs, "halo-plasma", PLASMA),
+    pae: makeRadial(defs, "halo-coupler", COUPLER),
+    "pae-adapter": makeRadial(defs, "halo-coupler-adp", COUPLER)
   };
 
   /* 血缘贝塞尔路径 */
@@ -265,8 +270,8 @@ export async function renderGraph(root) {
     core.setAttribute("fill", color);
     core.setAttribute("filter", `drop-shadow(0 0 5px ${color})`);
 
-    // 神经节棘突（插件独有：外圈脉冲点）
-    if (n.kind === "plugin") {
+    // 神经节棘突（插件 / 异构适配器：外圈脉冲点）
+    if (n.kind === "plugin" || n.kind === "pae-adapter") {
       for (let k = 0; k < 6; k++) {
         const ang = (Math.PI * 2 * k) / 6 + 0.4;
         const spike = document.createElementNS(NS, "circle");
@@ -348,7 +353,9 @@ export async function renderGraph(root) {
 
     const node = idx.get(id);
     infoCard.style.display = "";
-    const tone = node.kind === "plugin" ? "purple" : node.kind === "sandbox" ? "accent" : "ok";
+    const tone = node.kind === "plugin" ? "purple"
+      : (node.kind === "pae" || node.kind === "pae-adapter") ? "coupler"
+      : node.kind === "sandbox" ? "accent" : "ok";
     infoCard.innerHTML = `
       <div class="card-head"><h3>病变扩散域 · ${esc(id)}</h3><span class="sub">${badge(node.kind, tone)}</span></div>
       <div class="card-body">

@@ -65,5 +65,13 @@ export const api = {
   checkIsolation: (a, b) => request("POST", "/api/graph/check", { a, b }),
 
   routingProfiles: () => request("GET", "/api/routing/profiles"),
-  simulateRoute: (budget, maxLatencyMs) => request("POST", "/api/routing/simulate", { budget, maxLatencyMs })
+  simulateRoute: (budget, maxLatencyMs) => request("POST", "/api/routing/simulate", { budget, maxLatencyMs }),
+
+  /* ---- PAE · Plugin Adaptation Engine (W15) ---- */
+
+  pae: () => request("GET", "/api/pae"),
+  registerPae: (payload) => request("POST", "/api/pae", payload),
+  invokePae: (toolName, args) => request("POST", "/api/pae/invoke", { toolName, args }),
+  negotiatePae: (toolName, minFidelity) => request("POST", "/api/pae/negotiate", { toolName, minFidelity }),
+  removePae: (adapterId) => request("DELETE", `/api/pae/${encodeURIComponent(adapterId)}`)
 };

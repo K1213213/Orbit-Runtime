@@ -210,6 +210,50 @@ and share one DOM-free source of truth with the browser.
   billing → audit → notifications → dashboard with a 401 probe on a bad token.
   Full kernel suite unchanged at **205** cases green, strict compile zero errors.
 
+### Console feature transformation — 2026-08-30 (W16+, continued)
+
+User-facing completion pass driven by the no-xianxia professional-console
+design doc (`74d2a10`). All product copy, navigation, status and type
+vocabulary is fully de-xianxia'd and professional.
+
+- **Knowledge base upload rebuilt** — drag-and-drop / batch / folder upload panel
+  with chunk-size + overlap parameters wired end-to-end through `kbUpload`;
+  per-file status pipeline (排队 → 解析中 → 切片中 → 向量化中 → 完成/失败),
+  global progress and an index-build animation. Contract test added.
+- **Settings extended** — model-adapter section (DeepSeek / OpenAI-compatible
+  endpoints, key, model, temperature) and security section (password change,
+  logout); permission matrix already present.
+- **Templates & instances** — copy-as-new-template, side-by-side version compare
+  (diff vs previous revision), instance detail drawer with the full field set
+  and quick actions.
+- **RAG** — slow-motion step replay with replay-focus step selection.
+- **Cross-cutting** — dashboard rebuilt as a data board with charts, global
+  responsive breakpoints, 404/403 state pages, login/register completion
+  (remember-me, validation, agreement), PDF audit export.
+- Tests: console suite **80 → 81** green; kernel 205 unchanged.
+
+### Console style restoration — 2026-08-30 (fix)
+
+Two user-visible defects traced to the `826c150` full stylesheet rewrite
+(`6bf2249`):
+
+1. **Login page leaked register-only fields** (nickname/email/confirm/agree).
+   Layered root cause: the fields never received an initial `hidden` state
+   (it was only assigned inside `toggle()`), and even with `hidden` set,
+   `.field{display:flex}` / `.shell{display:grid}` override the UA stylesheet's
+   `[hidden]` rule. Fixed by assigning `hidden = true` at creation plus a
+   global `[hidden], .hidden { display:none !important }` rule.
+2. **Early-wave views (pae / channels / graph / replay / routing) lost all
+   styling** — the rewrite dropped every legacy selector still referenced by
+   those views. Restored as an explicit compatibility layer (~200 lines) with
+   token aliases (`--coupler` / `--purple` / `--text-2` → current tokens) and
+   the legacy selectors.
+- **New gate test** `web/test/css-coverage.test.mjs`: every class referenced by
+  a view module must be defined in `styles.css`, the `[hidden]` rule must stay
+  `!important`, and the legacy compat tokens must remain defined — a full
+  stylesheet rewrite can no longer silently strand a view. Console suite
+  **81 → 84** green.
+
 ## [0.2.0] — 2026-08-29 · Gateway determinism boundary (v0.2.0)
 
 The unified gateway (`capabilityInvoke`) is now a complete, faithful determinism

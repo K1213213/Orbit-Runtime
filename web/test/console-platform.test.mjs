@@ -12,7 +12,9 @@ import {
   trendOf,
   ROLE_MATRIX,
   can,
-  ROLE_LABEL
+  ROLE_LABEL,
+  CHANNEL_LABEL,
+  channelLabel
 } from "../public/lib.js";
 
 /**
@@ -122,4 +124,15 @@ test("ROLE_MATRIX / ROLE_LABEL: 三种角色齐全且中文标签正确", () => 
   assert.equal(ROLE_LABEL.admin, "管理员");
   assert.equal(ROLE_LABEL.operator, "操作员");
   assert.equal(ROLE_LABEL.viewer, "观察者");
+});
+
+/* --------------------------- 通道展示名 ------------------------- */
+
+test("channelLabel: 已知通道返回中文名，未知通道原样回退", () => {
+  assert.equal(channelLabel("llm-access"), "模型通道");
+  assert.equal(channelLabel("mem-kv-store"), "记忆存储");
+  assert.equal(channelLabel("pae-tool"), "外来工具");
+  assert.equal(channelLabel("some-future-channel"), "some-future-channel");
+  assert.equal(channelLabel(undefined), "—");
+  assert.deepEqual(Object.keys(CHANNEL_LABEL).sort(), ["domain-tool", "file-system", "llm-access", "mem-kv-store", "pae-tool", "shell-exec"]);
 });

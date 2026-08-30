@@ -691,3 +691,24 @@ export function can(role, action) {
 }
 
 export const ROLE_LABEL = { admin: "管理员", operator: "操作员", viewer: "观察者" };
+
+/**
+ * 通道原始 key → 产品化中文名。
+ *
+ * 视图层把通道依赖直接渲染成 `llm-access` 这类 token，在用户视角就是"代码"。
+ * 模板 / 实例 / 市场等涉及通道展示的地方统一经 channelLabel 翻译。
+ */
+export const CHANNEL_LABEL = {
+  "llm-access": "模型通道",
+  "mem-kv-store": "记忆存储",
+  "file-system": "文件通道",
+  "shell-exec": "命令通道",
+  "pae-tool": "外来工具",
+  "domain-tool": "隔离域工具"
+};
+
+/** 通道展示名：未知通道原样回退，绝不静默丢弃。 */
+export function channelLabel(key) {
+  if (key === undefined || key === null || key === "") return key ?? "—";
+  return CHANNEL_LABEL[key] ?? key;
+}

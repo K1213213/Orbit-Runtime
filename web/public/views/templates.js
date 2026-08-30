@@ -7,6 +7,7 @@
  */
 import { api } from "../api.js";
 import { el, esc, badge, toast, empty, drawer, modal, confirmDialog, fmtDate } from "../app.js";
+import { channelLabel } from "../lib.js";
 
 const REPLAY_TONE = { live: "ok", record: "warn", replay: "violet" };
 const REPLAY_LABEL = { live: "实时", record: "录制", replay: "回放" };
@@ -48,22 +49,23 @@ export async function renderTemplates(root) {
   function cardOf(t) {
     const snap = t.snapshot ?? {};
     const card = el("div", "tpl-card");
+    card.title = t.id; // 原始 id 只进悬浮提示，卡片正面不裸露内部标识
 
     const head = el("div", "tx-head");
     head.append(el("div", "avatar", esc(String(t.name ?? "?").slice(0, 1))));
     const meta = el("div", "grow");
     meta.append(el("b", "", esc(t.name)));
-    meta.append(el("div", "hint mono", `${esc(t.id)} · v${esc(t.currentVersion)}`));
+    meta.append(el("div", "hint", `v${esc(t.currentVersion)} · 更新于 ${esc(fmtDate(t.updatedAt))}`));
     head.append(meta, badge(REPLAY_LABEL[snap.replayMode] ?? snap.replayMode ?? "—", REPLAY_TONE[snap.replayMode] ?? "neutral"));
     card.append(head);
 
     card.append(el("div", "tx-desc mt8", esc(t.desc || "（无描述）")));
 
     const tags = el("div", "tx-tags mt8");
-    for (const dep of snap.channelDeps ?? []) tags.append(badge(dep, "violet"));
-    tags.append(badge(`循环 ${snap.maxCycleRun ?? "—"}`, "neutral"));
+    for (const dep of snap.channelDeps ?? []) tags.append(badge(channelLabel(dep), "violet"));
+    tags.append(badge(`循环上限 ${snap.maxCycleRun ?? "—"} 轮`, "neutral"));
     if (snap.budgetPerCycle !== undefined && snap.budgetPerCycle !== null) {
-      tags.append(badge(`预算 ${snap.budgetPerCycle}`, "gold"));
+      tags.append(badge(`每轮预算 ${snap.budgetPerCycle}`, "gold"));
     }
     card.append(tags);
 

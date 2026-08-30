@@ -1636,3 +1636,201 @@ textarea.input { resize: vertical; min-height: 90px; line-height: 1.55; }
 
 /* 设置 · 区块标题内嵌说明（setting-row 已有，补充紧凑间距） */
 .settings-grid .setting-row .sr-body { padding: 4px 0; }
+
+/* ==========================================================================
+   历史视图兼容层（legacy view compat）
+   --------------------------------------------------------------------------
+   826c150 整体重构样式表时，早期波次视图（适配器工作台 / 通道 / 影响域图 /
+   重放 / 路由）引用的选择器与 Bio-Lineage 令牌未随之迁移，导致这些页面
+   无样式或交互失效。此层补齐：令牌别名 + 恢复选择器。
+   ========================================================================== */
+
+/* ---- 兼容令牌：旧 Bio-Lineage 词表 → 新视觉规范 ---- */
+:root {
+  --text-2: var(--text-dim);
+  --text-3: var(--text-faint);
+  --mono: var(--font-mono);
+  --radius: var(--r-md);
+  --hairline: var(--stroke);
+  --hairline-strong: var(--stroke-strong);
+  --panel: var(--bg-canvas);
+  --plasma: #38BDF8;      /* 旧沙箱青 → 品牌浅青 */
+  --neuron: #A78BFA;      /* 旧插件紫 */
+  --gene: #34D399;        /* 旧通道绿 */
+  --coupler: #FB923C;     /* 旧接驳橙 → 琥珀橙 */
+  --coupler-deep: #F97316;
+  --lesion: #EF4444;      /* 旧病变猩红 → 丹砂红 */
+  --amber: #FBBF24;
+  --violet: #8B5CF6;
+  --pink: #F472B6;
+  --purple: #A78BFA;
+  --accent: var(--brand-2);
+  --accent-2: #A78BFA;
+  --glow-plasma: rgba(56, 189, 248, 0.35);
+  --glow-neuron: rgba(167, 139, 250, 0.35);
+  --glow-gene: rgba(52, 211, 153, 0.35);
+  --glow-coupler: rgba(251, 146, 60, 0.35);
+  --glow-lesion: rgba(239, 68, 68, 0.4);
+}
+
+/* ---- 全局：hidden 属性/类必须压过 display 规则
+   （.shell 设 display:grid、.field 设 display:flex，均会覆盖 UA 的
+   [hidden]{display:none}，导致登录页注册字段泄漏、登录页与控制台同屏） ---- */
+[hidden] { display: none !important; }
+.hidden { display: none !important; }
+
+/* ---- 间距工具类与分隔线补全 ---- */
+.mt0 { margin-top: 0; }
+.mt12 { margin-top: 12px; }
+.rule { border: 0; border-top: 1px solid var(--stroke); margin: 18px 0; }
+
+/* ---- alert.info（重放页说明条） ---- */
+.alert.info { border-color: rgba(96, 180, 255, 0.3); background: rgba(96, 180, 255, 0.06); }
+
+/* ---- 表单布局（通道注册 / PAE 表单） ---- */
+.form-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
+.field-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; }
+.btn-row { display: flex; gap: 10px; margin-top: 14px; flex-wrap: wrap; }
+.ok-banner {
+  display: flex; gap: 10px; align-items: center;
+  padding: 12px 16px; margin-bottom: 14px;
+  border: 1px solid rgba(34, 211, 238, 0.3); border-radius: var(--r-md);
+  background: rgba(34, 211, 238, 0.06); color: var(--ok); font-size: 13px;
+}
+.chan-row {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  padding: 11px 0; border-bottom: 1px solid var(--stroke);
+}
+.chan-row:last-child { border-bottom: 0; }
+.chan-row .sub { flex: 1; min-width: 120px; }
+
+/* ---- 统计卡（.stat：PAE 工作台，--accent 由视图内联注入） ---- */
+.stat {
+  position: relative;
+  background: var(--bg-canvas);
+  border: 1px solid var(--stroke);
+  border-radius: var(--r-md);
+  padding: 16px 18px;
+  overflow: hidden;
+  transition: transform 0.15s var(--ease), border-color 0.15s var(--ease);
+}
+.stat:hover { transform: translateY(-2px); border-color: var(--stroke-strong); }
+.stat::before {
+  content: ""; position: absolute; inset: 14% auto 14% 0;
+  width: 3px; border-radius: 0 3px 3px 0;
+  background: var(--accent, var(--plasma));
+  box-shadow: 0 0 12px var(--accent, var(--glow-plasma));
+}
+.stat::after {
+  content: ""; position: absolute; inset: auto -30% -80% auto;
+  width: 90%; height: 100%; pointer-events: none;
+  background: radial-gradient(closest-side, var(--accent, var(--plasma)), transparent);
+  opacity: 0.06;
+}
+.stat .label { font-size: 12px; color: var(--text-dim); display: flex; align-items: center; gap: 6px; }
+.stat .value {
+  font-size: 28px; font-weight: 700; font-family: var(--font-mono);
+  line-height: 1.2; margin-top: 5px; letter-spacing: -0.5px;
+  color: var(--text);
+  text-shadow: 0 0 22px var(--accent, var(--glow-plasma));
+}
+.stat .foot { font-size: 11px; color: var(--text-faint); margin-top: 7px; }
+
+/* ---- 重放舞台（replay 视图三段卡） ---- */
+.replay-stage { display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; margin-top: 17px; }
+.stage-card {
+  position: relative;
+  background: var(--bg-canvas);
+  border: 1px solid var(--stroke);
+  border-radius: var(--r-md);
+  padding: 17px;
+  overflow: hidden;
+}
+.stage-card::after {
+  content: ""; position: absolute; inset: auto -25% -80% auto;
+  width: 70%; height: 90%; pointer-events: none;
+  background: radial-gradient(closest-side, rgba(167, 139, 250, 0.08), transparent);
+}
+.stage-card .stage-name { font-size: 10.5px; letter-spacing: 1.6px; text-transform: uppercase; color: var(--text-faint); margin-bottom: 9px; }
+.stage-card .stage-val { font-size: 27px; font-weight: 700; font-family: var(--font-mono); color: var(--text); }
+.stage-card .stage-sub { font-size: 12px; color: var(--text-dim); margin-top: 5px; }
+
+/* ---- 影响域图（graph 视图） ---- */
+.graph-shell { position: relative; }
+.graph-shell svg { display: block; width: 100%; height: auto; }
+.graph-legend { display: flex; flex-wrap: wrap; gap: 16px; padding: 12px 18px; font-size: 12px; color: var(--text-dim); }
+.graph-legend .lg { display: inline-flex; align-items: center; gap: 7px; letter-spacing: 0.3px; }
+.graph-legend .sw { width: 11px; height: 11px; border-radius: 50%; display: inline-block; box-shadow: 0 0 8px currentColor; }
+.check-pair { display: flex; gap: 11px; align-items: flex-end; flex-wrap: wrap; }
+.check-pair .field { flex: 1; min-width: 180px; margin: 0; }
+/* 病变扩散高亮：命中边转病变红，未命中边淡出（graph.js 切换） */
+.edge-line.hit { stroke: var(--lesion) !important; }
+.edge-line.fade { opacity: 0.15; }
+
+/* ---- 路由页（routing 视图） ---- */
+.slider-row { display: flex; align-items: center; gap: 13px; }
+.slider-row input[type="range"] { flex: 1; accent-color: var(--brand-2); }
+.slider-val { font-family: var(--font-mono); font-size: 13px; color: var(--brand-2); min-width: 62px; text-align: right; }
+.route-result .route-name { font-size: 19px; font-weight: 700; font-family: var(--font-mono); color: var(--text); }
+.route-result .route-desc { font-size: 12.5px; color: var(--text-dim); }
+
+/* ---- Adapter Studio（pae 视图） ---- */
+.pae-tabs {
+  display: flex; gap: 4px; margin-bottom: 14px; padding: 3px;
+  background: var(--bg-raised);
+  border: 1px solid var(--stroke);
+  border-radius: var(--r-sm);
+}
+.pae-tab {
+  flex: 1; padding: 7px 10px; font: inherit; font-size: 13px;
+  color: var(--text-dim); background: none; border: none;
+  border-radius: 6px; cursor: pointer;
+  transition: background 0.16s var(--ease), color 0.16s var(--ease);
+}
+.pae-tab:hover { color: var(--text); }
+.pae-tab.active {
+  color: #14161f; font-weight: 600;
+  background: var(--coupler);
+}
+.pae-pane { display: block; }
+.pae-pane.hidden { display: none !important; }
+
+/* 适配器表中对端身份（MCP server 握手结果） */
+.peer { margin-top: 2px; font-size: 11px; color: var(--text-faint); }
+
+/* 工具面列表：接驳橙左缘 */
+.pae-tool-list { display: flex; flex-direction: column; gap: 10px; padding: 18px; }
+.pae-tool {
+  position: relative; display: flex; flex-direction: column; gap: 7px;
+  padding: 12px 15px;
+  border: 1px solid var(--stroke); border-left: 3px solid var(--coupler);
+  border-radius: var(--r-sm);
+  background: linear-gradient(120deg, rgba(251, 146, 60, 0.05), rgba(251, 146, 60, 0.02));
+  transition: border-color 0.18s var(--ease), box-shadow 0.18s var(--ease);
+}
+.pae-tool:hover { border-color: rgba(251, 146, 60, 0.4); box-shadow: 0 0 20px rgba(251, 146, 60, 0.08); }
+.pae-tool-main { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.pae-tool-name { font-family: var(--font-mono); font-size: 13.5px; font-weight: 600; color: var(--text); }
+.pae-tool-desc { font-size: 12px; color: var(--text-dim); line-height: 1.5; }
+.pae-note { color: var(--amber); }
+
+/* 调用台 / 协商结果 */
+.pae-result-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+.pae-result {
+  margin: 0; padding: 14px 16px;
+  background: var(--bg-canvas);
+  border: 1px solid var(--stroke); border-radius: var(--r-sm);
+  font-family: var(--font-mono); font-size: 12.5px; color: var(--text);
+  white-space: pre-wrap; word-break: break-word;
+  max-height: 280px; overflow: auto;
+}
+.pae-invoke-out, .pae-neg-out { margin-top: 14px; }
+
+/* ---- RAG 慢镜头复选 ---- */
+.cb { width: 15px; height: 15px; accent-color: var(--brand-1); }
+
+/* ---- 响应式补全（旧视图） ---- */
+@media (max-width: 980px) {
+  .replay-stage { grid-template-columns: 1fr; }
+}
+

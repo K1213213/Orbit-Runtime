@@ -55,6 +55,11 @@ export function renderLogin(root, onAuthed) {
   const nameF = field("昵称", "text", "");
   const emailF = field("邮箱", "text", "");
   const confirmF = field("确认密码", "password", "");
+  /* 注册态专属字段初始即隐藏：hidden 只在 toggle() 里赋值的旧写法
+     会让登录首屏把昵称/邮箱/确认密码/协议勾选全部渲染出来。 */
+  nameF.root.hidden = true;
+  emailF.root.hidden = true;
+  confirmF.root.hidden = true;
 
   /* 登录态：记住我 + 忘记密码 */
   const rememberRow = el("div", "auth-options");
@@ -72,6 +77,7 @@ export function renderLogin(root, onAuthed) {
 
   /* 注册态：用户协议勾选 */
   const agreeRow = el("div", "agree-row");
+  agreeRow.hidden = true;
   const agreeCb = el("input");
   agreeCb.type = "checkbox";
   const agreeLabel = el("label", "check-row");

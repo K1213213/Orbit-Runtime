@@ -27,6 +27,18 @@ const KIND_R = { plugin: 27, sandbox: 23, channel: 21, pae: 21, "pae-adapter": 2
 const W = 940;
 const H = 520;
 
+/* 布局初始抖动：同一节点 id 恒定得到同一偏移（FNV-1a + 双 salt）。
+   用确定性哈希而非 Math.random —— 否则每次打开图布局都乱跳，
+   既伤可读性，也与内核"无裸随机"的宪章气质相悖。 */
+function jitter(id, salt) {
+  let h = 2166136261 ^ salt;
+  for (let i = 0; i < id.length; i++) {
+    h ^= id.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return ((h >>> 0) / 4294967295 - 0.5) * 12;
+}
+
 export async function renderGraph(root) {
   const wrap = el("div", "");
 
@@ -108,8 +120,8 @@ export async function renderGraph(root) {
     }
     return {
       ...n,
-      x: x + (Math.random() - 0.5) * 12,
-      y: y + (Math.random() - 0.5) * 12,
+      x: x + jitter(n.id, 0x9e3779b9),
+      y: y + jitter(n.id, 0x85ebca6b),
       vx: 0,
       vy: 0
     };

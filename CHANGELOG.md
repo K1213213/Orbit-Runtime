@@ -48,6 +48,37 @@ special-casing.
   `IPaeAdapter` / `PaeAdapterKind` / `PaeAdapterMeta` / `PaeFidelity` /
   `PaeInvokeCtx` / `PaeIsolationLevel` / `PaeToolDescriptor` types.
 
+### Console
+- **Adapter Studio** (`web/public/views/pae.js`) — the W15 surface becomes
+  operable: pick a tool template, register the adapter, negotiate fidelity, then
+  invoke the tool through the gateway and read back the routing decision, the
+  elapsed time and the returned value. The view reuses the Bio-Lineage system
+  with a new `--coupler` role (接驳橙 `#ff9d4d`) for foreign adapters.
+- **12 tool templates** (`web/public/lib.js`) — `echo`, `reverse`, `upper`,
+  `lower`, `length`, `hash`, `base64`, `json`, `add`, `now`, `random`, `uuid`.
+  Templates are descriptors only; the bridge injects real handlers and routes
+  `random` / `now` through `SeededRng` plus an injected clock, so the console
+  never smuggles nondeterminism into the kernel.
+- **Honesty gate in the UI** — selecting `reduced` / `lossy` turns
+  `fidelityNote` into a required field; an undocumented downgrade cannot be
+  registered from the console either.
+- **Bridge server** — `GET|POST /api/pae`, `POST /api/pae/invoke`,
+  `POST /api/pae/negotiate`, `DELETE /api/pae/:id`; PAE state surfaced in
+  `/api/state` (enabled / adapter+tool counts / config hash) and in `/api/graph`
+  (a `pae-tool` channel node plus one node per adapter, edged
+  `adapter → pae-tool`).
+- **Graph view** — new `pae` / `pae-adapter` node kinds with the coupler color,
+  halo, layout band and legend entry.
+- **Fixes** — the `channels` route existed in the router but had no nav button,
+  making 模型通道 unreachable; it now has one. The `--accent` / `--accent-2` /
+  `--purple` tokens referenced by the overview were undefined and are now
+  declared.
+- **Front-end tests** (`web/test/`, `npm run test:console`, 16 cases) —
+  `pae-catalog.test.mjs` covers the pure helpers and the template catalog;
+  `bridge-pae.test.mjs` drives a real `OrbitRuntimeHost` through register →
+  invoke → negotiate → unregister. Pure logic lives in DOM-free `lib.js` so it
+  is assertable in Node without a browser.
+
 ### Tests
 - `test/pae_adapter.test.ts` (22 cases): registration validation, dynamic-pact
   derivation, fidelity-negotiation rejection, order-independent `configHash`,

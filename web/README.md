@@ -12,6 +12,7 @@
 | 通道 | 血脉之源（祖源层） | 基因绿 `#3cf2a8` |
 | 插件 | 神经节（突触脉冲） | 神经紫 `#b78bff` |
 | 沙箱 | 细胞体（培养舱） | 等离子青 `#39e6ff` |
+| 异构适配器 | 接驳器（异体接驳端口） | 接驳橙 `#ff9d4d` |
 | 依赖边 | 血缘血脉线（弧形贝塞尔 + 粒子流动） | 父子色相渐变 |
 | 故障 | 病变沿血缘反向扩散 | 猩红 `#ff5c7a` |
 | 预算 | ATP 能量条 | 流动青紫渐变 |
@@ -36,8 +37,9 @@
 | **沙箱对话** | 创建 Agent 沙箱、逐轮对话、循环预算进度、预算耗尽隔离、轮次重置 / 释放 |
 | **追踪日志** | 追加式全链路事件流、按沙箱 / 事件类型过滤、自动刷新、JSON 导出 |
 | **回放台** | 录制 → 零模型调用回放 → 字节一致检查 + digest chain 银行式对账，一键演示 |
-| **影响域图** | 力导向依赖图（插件 / 沙箱 / 通道）、点击节点高亮故障影响域（反向可达闭包）、隔离定理检查 |
+| **影响域图** | 力导向依赖图（插件 / 沙箱 / 通道 / 适配器）、点击节点高亮故障影响域（反向可达闭包）、隔离定理检查 |
 | **成本路由** | 通道成本画像、预算 / 延迟约束下的最便宜通道路由模拟 |
+| **异构适配** | PAE 适配器工作台：模板化注册外来工具 → 动态 Pact 推导 → 保真度协商 → 经网关调用，全程可观测 |
 
 ## 快速开始
 
@@ -58,7 +60,8 @@ node web/bridge-server.mjs
 ```
 ┌──────────────────────────── 浏览器 SPA（web/public/）────────────────────────────┐
 │  index.html · styles.css · app.js（hash 路由） · api.js（fetch 封装）               │
-│  views/  overview · plugins · boxes · trace · replay · graph · routing            │
+│  lib.js（纯函数工具 + PAE 模板目录，可被 Node 单测直接 import）                     │
+│  views/  overview · plugins · boxes · trace · replay · graph · routing · pae       │
 └──────────────────────────────────────┬────────────────────────────────────────────┘
                                        │ HTTP /api/*（JSON）
 ┌──────────────────────────────────────▼────────────────────────────────────────────┐
@@ -72,6 +75,7 @@ node web/bridge-server.mjs
 │  dist/src/  OrbitRuntimeHost · ChannelHub · PluginPactVerifier · TripProtector     │
 │            TraceJournal · SandboxPool · ImpactDomainGraph · CostRouter            │
 │            RecordJournal · ReplayEngine                                            │
+│            PaeAdapterRegistry · PaeChannel · JsPaeAdapter                          │
 └────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -92,6 +96,8 @@ node web/bridge-server.mjs
 4. **回放台** → 一键录制回放，观察 ~300ms → ~1ms 的加速比与 digest 对账
 5. **影响域图** → 点击 `llm-access` 通道，查看依赖它的插件与沙箱全部高亮
 6. **成本路由** → 把预算拉到 0.5，观察"预算买不起任何通道"
+7. **异构适配** → 用 `hash` / `reverse` 模板注册一个适配器，调用它并观察 `route: pae`；
+   再把保真度改成 `lossy` 但不填说明，看注册被诚实拒绝
 
 ## API 速览
 
@@ -111,13 +117,51 @@ GET  /api/graph/isolation?node=     节点影响域（反向可达闭包）
 POST /api/graph/check               隔离定理检查（a, b 是否互不影响）
 GET  /api/routing/profiles          通道成本画像
 POST /api/routing/simulate          预算路由模拟
+GET  /api/pae                       PAE 适配器清单 + 工具面 + 配置哈希
+POST /api/pae                       注册适配器（模板化工具规格）
+POST /api/pae/invoke                经网关调用外来工具（返回路由决策 / 耗时 / 结果）
+POST /api/pae/negotiate             保真度协商（工具是否达到所需保真度）
+DELETE /api/pae/:id                 注销适配器并撤销其动态 Pact
 ```
+
+## 异构适配工作台（Adapter Studio）
+
+`#pae` 视图把内核 W15 的 **PAE（Plugin Adaptation Engine）** 完整暴露成可操作的界面。
+它不是又一个表单页——它把"外来运行时如何被内核收编"这条链路拆成四步，每一步都可见：
+
+```
+① 选模板 → ② 注册适配器（动态 Pact）→ ③ 协商保真度 → ④ 经网关调用
+   ↓              ↓                        ↓                ↓
+工具规格        能力并集 + channel 依赖     full/reduced/lossy   capabilityInvoke
+                                          诚实降级说明        → 落入 RecordJournal
+```
+
+**内置工具模板（12 个）**：`echo` `reverse` `upper` `lower` `length` `hash` `base64`
+`json` `add` `now` `random` `uuid`。模板只描述**描述符**（能力 / 确定性 / 保真度），
+真实 handler 由 bridge server 注入，且随机与时钟一律走 `SeededRng` / 注入式 clock——
+界面上看起来是 `random` 和 `now`，底下依然是确定性可重放的。
+
+**三条内核约束在界面上的对应**
+
+| 内核铁律 | 界面表现 |
+|---|---|
+| 适配器不直连内核，整体发布为 `PaeChannel` | 调用结果里显示 `route: pae`，说明走了网关而非直连 |
+| 不引入非确定性 | 模板声明 `determinism`（deterministic / io-bound / stochastic），随机类工具由注入源供数 |
+| 保真度降级必须诚实 | 选 `reduced` / `lossy` 时 `fidelityNote` 变为必填，缺失则注册被拒 |
+
+**配置哈希**：适配器列表实时显示 `configHash`（顺序无关的 SHA-256 前 16 位）。
+它是运行指纹的一部分——改动适配面后旧轨迹重放会报配置漂移，而不是莫名的 digest 不匹配。
+
+**影响域图联动**：注册适配器后，图中会出现 `pae-tool` 接驳通道节点与每个适配器节点，
+边方向 `adapter → pae-tool`，与原生通道共享同一套血缘布局与故障扩散逻辑。
 
 ## 已知边界（内核 API 限制的折射）
 
 - **图节点无动态移除**：`ImpactDomainGraph` 未暴露单节点删除 API，释放沙箱后该节点
   保留至主机重启（界面已提示）。
 - **单插件删除**：同上原因，插件区提供"重置"而非逐个删除。
+- **适配器可逐个注销**：PAE 注册表持有自己的索引，注销适配器会同步撤销其动态 Pact
+  并从通道上摘掉工具方法，因此不受上面两条限制。
 - 详见 Eno 架构评审报告中的 P1 建议。
 
 ## 目录结构
@@ -126,13 +170,28 @@ POST /api/routing/simulate          预算路由模拟
 web/
 ├── bridge-server.mjs     # 零依赖 REST bridge + 静态服务（node:http）
 ├── README.md
+├── test/                 # 前端单元测试（node:test，零依赖）
+│   ├── pae-catalog.test.mjs    # 纯函数：转义 / 保真度秩 / 模板目录 / 描述符推导
+│   └── bridge-pae.test.mjs     # 集成：真实 host 上的注册 → 调用 → 协商 → 注销
 └── public/
     ├── index.html        # SPA 入口（深色工程控制台主题）
     ├── styles.css        # 设计令牌 + 组件样式
     ├── app.js            # hash 路由 + 布局 + 主机状态轮询
     ├── api.js            # fetch 封装
-    └── views/            # 7 个视图模块（ES Modules，零构建）
+    ├── lib.js            # 纯函数工具 + PAE 模板目录（DOM-free，可单测）
+    └── views/            # 8 个视图模块（ES Modules，零构建）
 ```
+
+## 测试
+
+```bash
+npm run test:console     # 前端单元测试（16 例）
+npm test                 # 内核全量测试（176 例）
+```
+
+测试策略与内核一致：**零第三方断言库**，直接使用 Node 内置 `node:test` + `node:assert`。
+`lib.js` 刻意做成 DOM-free 纯模块，让模板目录与保真度规则能在 Node 中被直接断言，
+避免把业务规则锁死在浏览器里。
 
 ## 模型通道页
 

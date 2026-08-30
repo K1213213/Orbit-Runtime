@@ -17,7 +17,13 @@ export enum ChannelKind {
    * Cordis) are published as tools on this single channel so every
    * heterogeneous call travels the gateway → hub path and lands in the journal.
    */
-  PAE_TOOL = "pae-tool"
+  PAE_TOOL = "pae-tool",
+  /**
+   * W19: the isolation-domain surface. Units hosted in L2 child-process domains
+   * (graph-driven allocation) are published here; every call is an IO_BOUND
+   * gateway transaction like any other cross-process call.
+   */
+  DOMAIN_TOOL = "domain-tool"
 }
 
 /** Determinism level declared by a channel (the replay contract). */

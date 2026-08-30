@@ -67,6 +67,15 @@ export class ImpactDomainGraph {
     return this.dependencies.get(id)?.size ?? 0;
   }
 
+  /**
+   * All node ids, sorted. The graph's structure is what the physical layer
+   * consumes (VISION 2.3 graph-driven domain allocation), so the node set is
+   * public read-only state, not a leak of internals.
+   */
+  public nodes(): string[] {
+    return [...this.dependencies.keys()].sort();
+  }
+
   public hasNode(id: string): boolean {
     return this.dependencies.has(id);
   }

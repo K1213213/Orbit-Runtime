@@ -145,6 +145,43 @@ special-casing.
   `InMemoryCordisTransport`, `ChildProcessCordisTransport`, `encodeFrame`,
   `decodeFrame`, `parseCordisToolList`, `normaliseCordisToolResult`.
 
+### W19 — Graph-driven isolation domains (VISION 2.3 double isolation)
+- **`allocate.ts` — pure graph → plan.** `impactClosureSizes` computes every
+  node's failure impact (reverse-reachability closure on the impact graph).
+  `allocateDomains` turns the graph into a domain plan: a node whose impact
+  closure exceeds `maxImpactClosure` is **escalated** to its own L2 domain
+  (`iso:<unit>`), the rest are packed into deterministic `shared:<n>` chunks of
+  at most `maxDomainSize`. Independence is what makes co-location safe — nodes
+  with no path between them cannot affect each other, so sharing a process adds
+  no *logical* blast; the threshold is the accepted *process-level* blast
+  contract. The plan is a partition, deterministic, and auto-escalates as the
+  graph grows.
+- **`protocol.ts` / `transport.ts` — L2 host wire format, pure + injected.**
+  `units/list` surface parsing (malformed hosts are a hard error, duplicate
+  unit ids rejected, tool names deduplicated globally as `unitId:tool`) and
+  `units/call` result pass-through. `IDomainTransport` + in-memory
+  implementation + `ChildProcessDomainTransport` (spawn `node`, framing,
+  correlation, deadlines, dead-host in-flight failure, stderr tail).
+- **`hostShim.ts` — the built-in pure-unit host.** A source string spawned via
+  `node -e` by the default transport factory; serves pure units (`echo`, `calc`)
+  selected by the `ORBIT_DOMAIN_UNITS` env var. The kernel never ships code into
+  the child — a real deployment swaps this for a bootstrap script that loads its
+  own plugins and announces them via the same protocol.
+- **`IsolationDomain` / `IsolationDomainManager`** — the physical layer: setup
+  handshake + unit discovery, `invokeUnit` routing, and a **sync that is a
+  diff, not a rebuild** — unchanged domains keep their child processes, removed
+  domains are awaited before release. `teardownAll` releases everything.
+- **`DomainChannel`** — the gateway surface, the same shape as `PaeChannel`:
+  every unit tool is installed as a method named `${unitId}:${tool}` (unit ids
+  are globally unique because the plan is a partition), so a domain call travels
+  `capabilityInvoke(DOMAIN_TOOL) → hub → channel → manager → host process` and
+  lands in the journal as an `IO_BOUND` inject call. Replay needs neither the
+  domain nor its child process.
+- Public API: `allocateDomains`, `impactClosureSizes`, `IsolationDomain`,
+  `IsolationDomainManager`, `DomainChannel`, `InMemoryDomainTransport`,
+  `ChildProcessDomainTransport`, `DOMAIN_HOST_SHIM`, `DOMAIN_HOST_VERSION`,
+  the protocol functions, and `ChannelKind.DOMAIN_TOOL`.
+
 ### Console
 - **Adapter Studio** (`web/public/views/pae.js`) — the PAE surface becomes
   operable: pick a tool template, register the adapter, negotiate fidelity, then

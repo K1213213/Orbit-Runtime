@@ -131,6 +131,47 @@ export type {
   CordisToolDefinition,
   NormalisedCordisResult
 } from "./pae/adapters/cordis/protocol";
+// W19: isolation domains — graph-driven L2 subprocess allocation (VISION 2.3).
+export {
+  allocateDomains,
+  impactClosureSizes
+} from "./sandbox/domains/allocate";
+export type {
+  AllocateOptions,
+  DomainIsolationLevel,
+  IsolationDomainPlan,
+  IsolationDomainSpec
+} from "./sandbox/domains/allocate";
+export { IsolationDomain } from "./sandbox/domains/IsolationDomain";
+export type { DomainHostInfo, DomainInvokeCtx, IsolationDomainConfig } from "./sandbox/domains/IsolationDomain";
+export { IsolationDomainManager } from "./sandbox/domains/IsolationDomainManager";
+export type { DomainTransportFactory, IsolationDomainManagerOptions } from "./sandbox/domains/IsolationDomainManager";
+export { DomainChannel } from "./sandbox/domains/DomainChannel";
+export { InMemoryDomainTransport, ChildProcessDomainTransport, unwrapDomainResponse } from "./sandbox/domains/transport";
+export type {
+  IDomainTransport,
+  DomainRequestHandler,
+  ChildProcessDomainTransportConfig
+} from "./sandbox/domains/transport";
+export {
+  DOMAIN_PROTOCOL_VERSION,
+  decodeDomainFrame,
+  encodeDomainFrame,
+  isDomainResponse,
+  normaliseDomainResult,
+  parseUnitList,
+  domainRemoteErrorOf
+} from "./sandbox/domains/protocol";
+export type {
+  DomainErrorObject,
+  DomainRequest,
+  DomainResponse,
+  DomainToolDefinition,
+  DomainUnitDefinition,
+  NormalisedDomainResult
+} from "./sandbox/domains/protocol";
+export { DOMAIN_HOST_SHIM, DOMAIN_HOST_VERSION } from "./sandbox/domains/hostShim";
+export { DomainRemoteError, DomainUnitMissingError } from "./sandbox/domains/errors";
 export {
   PaeAdapterRejectError,
   PaeToolMissingError,

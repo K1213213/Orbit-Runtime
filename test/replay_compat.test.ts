@@ -22,6 +22,11 @@ import { InMemoryHttpTransport } from "../src/pae/adapters/openapi/transport";
 import { CordisPaeAdapter } from "../src/pae/adapters/cordis/CordisPaeAdapter";
 import { InMemoryCordisTransport } from "../src/pae/adapters/cordis/transport";
 import { CORDIS_PROTOCOL_VERSION } from "../src/pae/adapters/cordis/protocol";
+import { DomainChannel } from "../src/sandbox/domains/DomainChannel";
+import { IsolationDomainManager } from "../src/sandbox/domains/IsolationDomainManager";
+import { InMemoryDomainTransport } from "../src/sandbox/domains/transport";
+import { DOMAIN_PROTOCOL_VERSION } from "../src/sandbox/domains/protocol";
+import { ImpactDomainGraph } from "../src/graph/impact_domain";
 import { digestInputs } from "../src/utils/digest";
 import { ChannelKind, ChannelCallCtx, ReplayMode } from "../src/types/orbitDomain";
 
@@ -840,5 +845,101 @@ test("replay_compat Cordis: a trace replays after its host is gone", async () =>
     {}
   );
   assert.deepEqual(replayed, live, "replay needs the journal, never the foreign host");
+  await hub.teardown();
+});
+
+// ---------------------------------------------------------------------------
+// Isolation domain surface (W19) — merge gate for graph-driven L2 domains
+// ---------------------------------------------------------------------------
+
+test("replay_compat domain: replay serves the host's output without re-entering the process", async () => {
+  let hostCalls = 0;
+  const graph = new ImpactDomainGraph();
+  graph.addNode("echo");
+  const manager = new IsolationDomainManager({
+    transportFactory: () =>
+      new InMemoryDomainTransport((method: string, params: unknown) => {
+        if (method === "initialize") {
+          return { protocolVersion: DOMAIN_PROTOCOL_VERSION, hostInfo: { name: "compat-domain", version: "1.0.0" } };
+        }
+        if (method === "units/list") {
+          return { units: [{ id: "echo", tools: [{ name: "sum" }] }] };
+        }
+        if (method === "units/call") {
+          hostCalls += 1;
+          const p = params as { arguments: { numbers: number[] } };
+          return p.arguments.numbers.reduce((a, b) => a + b, 0);
+        }
+        throw new Error(`unexpected method ${method}`);
+      }),
+    defaultTimeoutMs: 10_000
+  });
+  await manager.syncDomains(graph, makeCtx("record"));
+
+  const hub = new ChannelHub();
+  hub.registerBuiltInChannel(ChannelKind.DOMAIN_TOOL, new DomainChannel(manager));
+  await hub.setupAllBuiltInChannels(makeCtx("record"));
+
+  const { live, replayed, reconcileDigestChain } = await recordThenReplay(hub, async (mode) =>
+    hub.fireChannelCall<number>(ChannelKind.DOMAIN_TOOL, makeCtx(mode), "echo:sum", { numbers: [1, 2, 3] })
+  );
+
+  assert.equal(live, 6);
+  assert.equal(replayed, live);
+  assert.equal(JSON.stringify(replayed), JSON.stringify(live), "byte-identical across a process boundary");
+  assert.equal(hostCalls, 1, "the host is entered exactly once, during recording");
+  assert.ok(reconcileDigestChain);
+  await hub.teardown();
+  await manager.teardownAll();
+});
+
+test("replay_compat domain: a trace replays after the domain is gone", async () => {
+  const graph = new ImpactDomainGraph();
+  graph.addNode("echo");
+  const manager = new IsolationDomainManager({
+    transportFactory: () =>
+      new InMemoryDomainTransport((method: string) => {
+        if (method === "initialize") {
+          return { protocolVersion: DOMAIN_PROTOCOL_VERSION, hostInfo: { name: "domain", version: "1.0.0" } };
+        }
+        if (method === "units/list") {
+          return { units: [{ id: "echo", tools: [{ name: "sum" }] }] };
+        }
+        return 42;
+      }),
+    defaultTimeoutMs: 10_000
+  });
+  await manager.syncDomains(graph, makeCtx("record"));
+
+  const channel = new DomainChannel(manager);
+  const hub = new ChannelHub();
+  hub.registerBuiltInChannel(ChannelKind.DOMAIN_TOOL, channel);
+  await hub.setupAllBuiltInChannels(makeCtx("record"));
+
+  const recordJournal = new RecordJournal();
+  hub.attachRecordJournal(recordJournal);
+  const live = await hub.fireChannelCall<number>(
+    ChannelKind.DOMAIN_TOOL,
+    makeCtx("record"),
+    "echo:sum",
+    { numbers: [1, 2] }
+  );
+  assert.equal(live, 42);
+
+  /*
+   * The domain host is shut down and every domain torn down — as it would be on
+   * a machine without the process. Replaying must depend on the journal alone.
+   */
+  await manager.teardownAll();
+  channel.syncTools();
+
+  hub.attachReplayEngine(new ReplayEngine(recordJournal));
+  const replayed = await hub.fireChannelCall<number>(
+    ChannelKind.DOMAIN_TOOL,
+    makeCtx("replay"),
+    "echo:sum",
+    { numbers: [1, 2] }
+  );
+  assert.equal(replayed, live, "replay needs the journal, never the domain host");
   await hub.teardown();
 });

@@ -26,13 +26,21 @@ import {
 const ALL_PATHS = [
   "overview",
   "boxes",
-  "trace",
+  "tasks",
+  "workflow",
+  "knowledge",
+  "rag",
+  "templates",
   "plugins",
   "channels",
   "pae",
-  "graph",
+  "trace",
+  "billing",
+  "routing",
   "replay",
-  "routing"
+  "graph",
+  "settings",
+  "profile"
 ];
 
 function makeState(overrides = {}) {

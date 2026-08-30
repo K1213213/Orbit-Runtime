@@ -228,33 +228,44 @@ export function describePaeTool(templateId, name, overrides = {}) {
 /* 信息架构 · 分组导航模型                                              */
 /* ------------------------------------------------------------------ */
 /**
- * 九个能力面不是九个并列页面，而是三种用户意图：
+ * 能力面按用户意图分组（菜单命名保留一套克制的阵法隐喻，页面内部一律
+ * 标准工程风格——这是设计铁律，隐喻只到菜单为止）：
  *
- *   运行时 —— 我要看/驱动正在跑的东西
- *   构件   —— 我要接入某种能力
+ *   运行时 —— 我要看/驱动正在跑的东西（实例 / 任务 / 编排）
+ *   知识   —— 我要沉淀并调用私有语料
+ *   构件   —— 我要接入某种能力（模板 / 插件 / 模型 / 外来运行时）
  *   治理   —— 我要证明/复现/控制成本
- *
- * 平铺导航把这三者混在一起，用户只能靠图标猜。分组后每组有明确意图，
- * 命令面板也按同一模型索引，两处信息架构不会走偏。
+ *   系统   —— 账号与平台配置
  */
 export const NAV_GROUPS = [
   {
     id: "runtime",
     label: "运行时",
-    desc: "观察并驱动正在运行的 Agent",
+    desc: "观察并驱动正在运行的智能体与任务",
     items: [
-      { path: "overview", title: "总览", icon: "◈", keywords: "overview home 首页 总览 工作台 dashboard" },
-      { path: "boxes", title: "沙箱对话", icon: "▣", keywords: "box sandbox agent 沙箱 对话 执行" },
-      { path: "trace", title: "追踪日志", icon: "≡", keywords: "trace log event 追踪 日志 事件 审计" }
+      { path: "overview", title: "灵域总览", icon: "◈", keywords: "overview home 首页 总览 大盘 dashboard 指标" },
+      { path: "boxes", title: "金丹实例", icon: "▣", keywords: "box sandbox agent instance 沙箱 实例 对话 执行 金丹" },
+      { path: "tasks", title: "阵法任务", icon: "⧉", keywords: "task job 任务 阵法 运行 记录" },
+      { path: "workflow", title: "阵法编排", icon: "❋", keywords: "workflow dag canvas 编排 工作流 画布 阵纹 节点" }
+    ]
+  },
+  {
+    id: "knowledge",
+    label: "知识",
+    desc: "沉淀私有语料并在推演中调用",
+    items: [
+      { path: "knowledge", title: "经卷库", icon: "❑", keywords: "knowledge kb 知识库 文档 切片 索引 经卷" },
+      { path: "rag", title: "灵域推演", icon: "✵", keywords: "rag retrieve 检索 推演 问答 溯源 补搜" }
     ]
   },
   {
     id: "artifacts",
     label: "构件",
-    desc: "接入外部能力与外来运行时",
+    desc: "接入模板、插件、模型与外来运行时",
     items: [
-      { path: "plugins", title: "插件注册", icon: "◱", keywords: "plugin pact 插件 协议 注册 清单" },
-      { path: "channels", title: "模型通道", icon: "⊡", keywords: "channel llm model provider 模型 通道 deepseek" },
+      { path: "templates", title: "灵仆模板", icon: "◱", keywords: "template persona 模板 人设 灵仆 版本" },
+      { path: "plugins", title: "符箓市场", icon: "◇", keywords: "plugin market pact 插件 市场 符箓 卸载" },
+      { path: "channels", title: "模型适配", icon: "⊡", keywords: "channel llm model provider 模型 通道 适配 deepseek" },
       { path: "pae", title: "异构适配", icon: "❖", keywords: "pae adapter mcp openapi 异构 适配 外来 接驳" }
     ]
   },
@@ -263,9 +274,20 @@ export const NAV_GROUPS = [
     label: "治理",
     desc: "证明隔离、复现执行、控制成本",
     items: [
-      { path: "graph", title: "影响域图", icon: "✧", keywords: "graph isolation dependency 影响域 依赖 隔离 血缘" },
+      { path: "trace", title: "事件溯源", icon: "≡", keywords: "trace audit event 审计 溯源 追踪 日志 事件" },
+      { path: "billing", title: "灵能账单", icon: "⌾", keywords: "billing token cost 账单 灵能 消耗 余额 排行" },
+      { path: "routing", title: "成本路由", icon: "⌁", keywords: "routing cost budget 成本 路由 预算 模拟" },
       { path: "replay", title: "回放台", icon: "↻", keywords: "replay deterministic 回放 重放 对账 digest" },
-      { path: "routing", title: "成本路由", icon: "⌁", keywords: "routing cost budget 成本 路由 预算 token" }
+      { path: "graph", title: "影响域图", icon: "✧", keywords: "graph isolation dependency 影响域 依赖 隔离 血缘" }
+    ]
+  },
+  {
+    id: "system",
+    label: "系统",
+    desc: "账号与平台配置",
+    items: [
+      { path: "settings", title: "系统设置", icon: "⚙", keywords: "settings 外观 安全 权限 动效 设置 密码" },
+      { path: "profile", title: "个人中心", icon: "☺", keywords: "profile me account 个人 中心 账号 会话" }
     ]
   }
 ];
@@ -514,3 +536,158 @@ export function suggestNextSteps(state, limit = 4) {
 
   return steps.slice(0, limit);
 }
+
+/* ------------------------------------------------------------------ */
+/* 任务状态体系                                                         */
+/* ------------------------------------------------------------------ */
+/**
+ * 阵法任务的六态状态机。状态是数据不是样式——桥接只写状态名，
+ * 展示语义（徽章 tone / 中文标签）在这里统一裁决。
+ */
+export const TASK_STATUS = {
+  queued: { label: "排队", tone: "neutral", desc: "已入队，等待执行槽位" },
+  running: { label: "推演中", tone: "violet", desc: "正在执行主流程" },
+  iterating: { label: "迭代中", tone: "warn", desc: "评估不足，触发补搜/回流" },
+  done: { label: "已完成", tone: "ok", desc: "全部步骤成功结束" },
+  failed: { label: "异常中断", tone: "err", desc: "某步骤抛错，任务中止" },
+  aborted: { label: "手动终止", tone: "neutral", desc: "操作者主动终止" }
+};
+
+export const TASK_STATUS_IDS = Object.keys(TASK_STATUS);
+
+export function taskStatusMeta(status) {
+  return TASK_STATUS[status] ?? { label: status, tone: "neutral", desc: "" };
+}
+
+/** 任务大类：来源决定详情页跳转与图标。 */
+export const TASK_KINDS = {
+  agent: { label: "实例轮次", icon: "▣", route: "boxes" },
+  workflow: { label: "阵法编排", icon: "❋", route: "workflow" },
+  rag: { label: "灵域推演", icon: "✵", route: "rag" }
+};
+
+export function taskKindMeta(kind) {
+  return TASK_KINDS[kind] ?? { label: kind, icon: "⧉", route: "tasks" };
+}
+
+/* ------------------------------------------------------------------ */
+/* 灵能账单推导                                                         */
+/* ------------------------------------------------------------------ */
+/**
+ * 由账本（ledger：每次能力调用的 {ts, task, box, channel, units, reason}）
+ * 推导账单视图需要的全部聚合。
+ *
+ * 纯函数：视图与桥接（导出报告）共用同一口径，数字对不上时只有一份
+ * 实现可查。单位是「灵能单位」——内核成本路由的 costPerCall 计量。
+ */
+export function deriveBilling(ledger, opts = {}) {
+  const entries = Array.isArray(ledger) ? ledger : [];
+  const balance = Number(opts.balance ?? 0);
+
+  const total = entries.reduce((a, e) => a + (Number(e.units) || 0), 0);
+  const today = dayKey(Date.now());
+  const todaySpend = entries.filter((e) => dayKey(e.ts) === today).reduce((a, e) => a + e.units, 0);
+
+  const byBox = new Map();
+  const byTask = new Map();
+  const byDay = new Map();
+  for (const e of entries) {
+    if (e.box) byBox.set(e.box, (byBox.get(e.box) ?? 0) + e.units);
+    if (e.task) byTask.set(e.task, (byTask.get(e.task) ?? 0) + e.units);
+    const d = dayKey(e.ts);
+    byDay.set(d, (byDay.get(d) ?? 0) + e.units);
+  }
+  const rank = (m) => [...m.entries()].sort((a, b) => b[1] - a[1]).map(([id, units]) => ({ id, units }));
+
+  /* 7 日趋势：日期连续补零，图不因空窗日断线 */
+  const trend = [];
+  for (let i = 6; i >= 0; i--) {
+    const d = dayKey(Date.now() - i * 86400_000);
+    trend.push({ day: d.slice(5), units: byDay.get(d) ?? 0 });
+  }
+
+  const yesterday = entries.filter((e) => dayKey(e.ts) === dayKey(Date.now() - 86400_000)).reduce((a, e) => a + e.units, 0);
+  const delta = todaySpend - yesterday;
+
+  return {
+    balance,
+    total,
+    todaySpend,
+    yesterdaySpend: yesterday,
+    delta,
+    deltaPct: yesterday > 0 ? Number((((todaySpend - yesterday) / yesterday) * 100).toFixed(1)) : null,
+    lowBalance: balance < (opts.lowThreshold ?? 100),
+    trend,
+    topBoxes: rank(byBox).slice(0, 5),
+    topTasks: rank(byTask).slice(0, 5),
+    entries: entries.slice(-200).reverse()
+  };
+}
+
+function dayKey(ts) {
+  const d = new Date(ts);
+  const p = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+
+/* ------------------------------------------------------------------ */
+/* 通知推导                                                             */
+/* ------------------------------------------------------------------ */
+/**
+ * 从平台事件推导消息中心的通知列表。
+ * 输入是最近的 { ts, kind, level, title, detail, route } 事件流；
+ * 输出按时间降序、带未读计数的通知。level → 色点 tone。
+ */
+export function deriveNotifications(events, opts = {}) {
+  const limit = Number(opts.limit ?? 30);
+  const seen = new Set(opts.readIds ?? []);
+  const list = (Array.isArray(events) ? events : [])
+    .slice(-limit)
+    .reverse()
+    .map((e, i) => ({
+      id: e.id ?? `nt-${e.ts}-${i}`,
+      level: e.level ?? "ok",
+      title: e.title ?? String(e.kind ?? "事件"),
+      detail: e.detail ?? "",
+      route: e.route ?? null,
+      ts: e.ts,
+      read: seen.has(e.id ?? `nt-${e.ts}-${i}`)
+    }));
+  return { list, unread: list.filter((n) => !n.read).length };
+}
+
+/* ------------------------------------------------------------------ */
+/* 指标卡趋势                                                           */
+/* ------------------------------------------------------------------ */
+/**
+ * 大盘指标卡的环比箭头：与上一窗口比较，输出展示用增量描述。
+ * 没有历史数据时返回 null（界面显示"—"，不假装环比为零）。
+ */
+export function trendOf(current, previous) {
+  if (!Number.isFinite(previous) || previous <= 0) return current > 0 ? { dir: "up", delta: current, pct: null } : null;
+  const delta = current - previous;
+  return {
+    dir: delta >= 0 ? "up" : "down",
+    delta,
+    pct: Number(((delta / previous) * 100).toFixed(1))
+  };
+}
+
+/* ------------------------------------------------------------------ */
+/* 权限模型                                                             */
+/* ------------------------------------------------------------------ */
+/**
+ * 角色权限矩阵：admin / operator / viewer。
+ * can() 是唯一裁决入口——403 页面与按钮禁用态都问它，不各写一套。
+ */
+export const ROLE_MATRIX = {
+  admin: { audit: true, billing: true, settings: true, workflow: true, host: true, market: true },
+  operator: { audit: true, billing: false, settings: false, workflow: true, host: true, market: true },
+  viewer: { audit: false, billing: false, settings: false, workflow: false, host: false, market: false }
+};
+
+export function can(role, action) {
+  return Boolean(ROLE_MATRIX[role]?.[action]);
+}
+
+export const ROLE_LABEL = { admin: "管理员", operator: "操作员", viewer: "观察者" };

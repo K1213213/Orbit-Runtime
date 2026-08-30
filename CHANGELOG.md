@@ -157,6 +157,59 @@ special-casing.
 - Full console suite (`npm run test:console`): **49 cases** green. Kernel and
   console suites are independent; a change on either side runs both.
 
+### Console Platformization — 2026-08-30 (W16+, continued)
+
+The web console stops being a passive viewer and becomes a platform: accounts,
+knowledge, retrieval, orchestration and governance all live behind the bridge
+and share one DOM-free source of truth with the browser.
+
+- **Account & access layer** — `scrypt` password hashing with per-user salt,
+  seeded administrator (`admin / orbit-admin`, first account is always admin so
+  self-registration can never mint another), bearer-token sessions, password
+  change with audit. Role matrix (`admin | operator | viewer`) is the single
+  `can(role, action)`裁决入口; 403 surfaces and button-disabled states both ask
+  it. Bridge routes: `POST /api/auth/{register,login,logout,password}`,
+  `GET /api/auth/me`.
+- **Knowledge base** (`web/public/kb.js`, zero deps) — paragraph-aware chunking
+  (paragraphs never split, sentence-level fallback, overlap only inside a
+  paragraph), a deterministic lexical BM25 index (no vector service, fully
+  replayable), and query→chunk highlight ranges for two-way grounding. Chinese
+  stop-words are stored as single characters because `tokenize` splits CJK into
+  single chars — multi-char stop-words would otherwise never match. Bridge
+  routes: `GET/POST/DELETE /api/kb`, `POST /api/kb/:id/docs`,
+  `POST /api/kb/:id/search`, `GET /api/kb/:id`, `GET /api/kb/:id/docs/:doc`.
+- **Agentic RAG pipeline** — an eight-step run (`RAG_STEPS`: parse → retrieve →
+  assess → refine → rerank → synthesize → ground → audit) with a sufficiency
+  gate (`assessSufficiency`) that triggers at most `maxRefines` deterministic
+  query rewrites (high-frequency terms from the top hit), then synthesizes
+  through the kernel's `llm-access` channel and grounds the answer with citations
+  carrying highlight ranges. Bridge: `GET/POST /api/rag`, `GET /api/rag/:id`.
+- **Workflow DAG editor** (`workflow.js`) — a canvas to compose start / agent /
+  tool / branch / end nodes with flow and loop edges. Graph rules are pure
+  functions: `validateWorkflow` (unique start, required end, no dangling/self
+  edges, no flow-cycle — loop edges are exempt, orphan/under-branched warnings),
+  `topoOrder` (stable Kahn sort using original node order), `evalBranch`
+  (deterministic substring match). Bridge: `GET/POST /api/workflows`,
+  `POST /api/workflows/:id/run`, `GET /api/workflow-runs/:id`.
+- **Platform views & pure logic** — 13 view modules (`login, dashboard,
+  instances, tasks, workflow, knowledge, rag, templates, market, audit, billing,
+  settings, profile`) plus the pre-existing `channels/pae/routing/replay/graph`;
+  all "what the user sees next" logic (navigation, command palette ranking,
+  health derivation, next-step suggestions, billing aggregation, notification
+  derivation, task-status vocabulary, role matrix) lives in DOM-free
+  `web/public/lib.js` so it is assertable in Node. Fixed a dead-code bug: the
+  multi-character CJK stop-word list could never match after `tokenize`.
+- **Governance & observability** — billing aggregation (`deriveBilling`: balance,
+  total, 7-day trend, per-box/per-task ranking, low-balance flag), audit trail
+  export (`GET /api/audit/export` md/json), notification center
+  (`deriveNotifications`), and a `GET /api/dashboard` roll-up.
+- **Tests** — console suite grew **49 → 80** (`web/test/kb.test.mjs` for the KB /
+  RAG / workflow pure logic, `web/test/console-platform.test.mjs` for billing /
+  notifications / trends / roles / task vocabulary); an HTTP end-to-end smoke
+  exercises login → KB create → upload → search → RAG → workflow save/run →
+  billing → audit → notifications → dashboard with a 401 probe on a bad token.
+  Full kernel suite unchanged at **205** cases green, strict compile zero errors.
+
 ## [0.2.0] — 2026-08-29 · Gateway determinism boundary (v0.2.0)
 
 The unified gateway (`capabilityInvoke`) is now a complete, faithful determinism

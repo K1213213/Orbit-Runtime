@@ -2,7 +2,7 @@
  * 插件注册视图：pact 表单 + 注册清单 + 通道覆盖演示。
  */
 import { api } from "../api.js";
-import { el, esc, badge, toast, empty, loading } from "../app.js";
+import { el, esc, badge, toast, empty } from "../app.js";
 
 const ALL_CAPS = [
   { key: "channel:read", label: "channel:read · 读通道" },
@@ -14,7 +14,7 @@ const ALL_CHANNELS = [
   { key: "mem-kv-store", label: "mem-kv-store" }
 ];
 
-export async function renderPlugins(root) {
+export async function renderMarket(root) {
   const wrap = el("div", "");
 
   /* ---- 注册表单 ---- */
@@ -29,22 +29,22 @@ export async function renderPlugins(root) {
 
   const capsWrap = el("div");
   ALL_CAPS.forEach((c) => {
-    const row = el("label", "check-row", `<input type="checkbox" value="${c.key}" checked /> ${c.label}`);
+    const row = el("label", "row", `<input type="checkbox" value="${c.key}" checked /> ${c.label}`);
     capsWrap.append(row);
   });
 
   const depsWrap = el("div");
   ALL_CHANNELS.forEach((c) => {
-    const row = el("label", "check-row", `<input type="checkbox" value="${c.key}" /> ${c.label}`);
+    const row = el("label", "row", `<input type="checkbox" value="${c.key}" /> ${c.label}`);
     depsWrap.append(row);
   });
 
   body.append(
     field("插件 ID *", idF),
     field("显示名称 *", nameF),
-    el("div", "form-row", [field("版本 edition *", edF), field("要求主机最低版本 *", minEdF)]),
+    el("div", "grid cols-2", [field("版本 edition *", edF), field("要求主机最低版本 *", minEdF)]),
     el("div", "", [label("声明能力 allowCapabilities *"), capsWrap]),
-    el("div", "mt12", [
+    el("div", "mt8", [
       label("通道依赖 declareChannelDeps"),
       depsWrap,
       el("div", "hint", "若勾选依赖但未勾选对应能力，pact 校验会拒绝注册（能力闭包检查）。")
@@ -99,8 +99,8 @@ export async function renderPlugins(root) {
         <td class="mono">${esc(p.id)}</td>
         <td>${esc(p.displayName)}</td>
         <td class="mono">${esc(p.edition)} → ${esc(p.requireHostMinEdition)}</td>
-        <td>${(p.allowCapabilities ?? []).map((c) => badge(c, c.includes("write") ? "violet" : "accent")).join(" ") || badge("—", "neutral")}</td>
-        <td>${(p.declareChannelDeps ?? []).map((d) => badge(d, "purple")).join(" ") || badge("—", "neutral")}</td>
+        <td>${(p.allowCapabilities ?? []).map((c) => badge(c, c.includes("write") ? "violet" : "ok")).join(" ") || badge("—", "neutral")}</td>
+        <td>${(p.declareChannelDeps ?? []).map((d) => badge(d, "gold")).join(" ") || badge("—", "neutral")}</td>
       </tr>`);
     tblBody.innerHTML = rows;
   }
@@ -176,7 +176,7 @@ export async function renderPlugins(root) {
   }
 
   root.append(wrap);
-  return { dispose() {}, refresh: () => renderPlugins(root) };
+  return { dispose() {}, refresh: () => renderMarket(root) };
 }
 
 /* ---- 表单小部件 ---- */
@@ -185,7 +185,7 @@ function label(text) {
 }
 
 function input(type, value, placeholder) {
-  const i = el("input");
+  const i = el("input", "input");
   i.type = type;
   i.value = value;
   if (placeholder) i.placeholder = placeholder;

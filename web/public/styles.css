@@ -812,7 +812,7 @@ textarea.input { resize: vertical; min-height: 90px; line-height: 1.55; }
   border-right: 1px solid var(--stroke);
   overflow: hidden;
 }
-.auth-hero .hero-orb { width: 52px; height: 52px; color: var(--brand-1); margin-bottom: 26px; }
+.auth-hero .hero-orb { width: 52px; height: 52px; color: var(--brand-1); display: block; }
 .auth-hero h1 {
   font-size: 32px;
   line-height: 1.3;
@@ -923,6 +923,85 @@ textarea.input { resize: vertical; min-height: 90px; line-height: 1.55; }
   0%, 100% { transform: translateY(0); opacity: 0; }
   30% { opacity: 0.85; }
   70% { opacity: 0.35; }
+}
+
+/* ---- 登录左侧炫效增强：极光 + 星座能量网 + 雷达扫描环 + 标题流光 ----
+   全部 CSS 驱动、坐标/延迟确定性；动效开关与 prefers-reduced-motion 全局关闭。 */
+
+/* 极光背景：三团模糊色块缓慢漂移（mix-blend 叠加，垫在内容之下） */
+.hero-aurora { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+.hero-aurora .aurora-blob {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(56px);
+  opacity: 0.5;
+  mix-blend-mode: screen;
+  will-change: transform;
+}
+.hero-aurora .a1 {
+  width: 420px; height: 420px; left: -100px; top: -130px;
+  background: radial-gradient(circle, rgba(99, 102, 241, 0.5), transparent 66%);
+  animation: aurora-drift-1 26s ease-in-out infinite alternate;
+}
+.hero-aurora .a2 {
+  width: 360px; height: 360px; right: -90px; bottom: -70px;
+  background: radial-gradient(circle, rgba(56, 189, 248, 0.42), transparent 66%);
+  animation: aurora-drift-2 32s ease-in-out infinite alternate;
+}
+.hero-aurora .a3 {
+  width: 300px; height: 300px; left: 34%; top: 48%;
+  background: radial-gradient(circle, rgba(167, 139, 250, 0.34), transparent 66%);
+  animation: aurora-drift-3 38s ease-in-out infinite alternate;
+}
+@keyframes aurora-drift-1 { to { transform: translate(74px, 48px) scale(1.18); } }
+@keyframes aurora-drift-2 { to { transform: translate(-58px, -42px) scale(1.12); } }
+@keyframes aurora-drift-3 { to { transform: translate(42px, -36px) scale(1.22) rotate(24deg); } }
+
+/* 星座能量网：血脉连线能量流动 + 节点呼吸脉冲 */
+.hero-constellation {
+  position: absolute; inset: 0;
+  width: 100%; height: 100%;
+  pointer-events: none;
+}
+.hero-constellation .cl-line {
+  stroke: rgba(99, 102, 241, 0.22);
+  stroke-width: 0.42;
+  stroke-dasharray: 3 2;
+  animation: cl-flow 6s linear infinite;
+}
+.hero-constellation .cl-line:nth-child(2n) { stroke: rgba(56, 189, 248, 0.18); animation-duration: 8s; }
+@keyframes cl-flow { to { stroke-dashoffset: -60; } }
+.hero-constellation .cl-node {
+  fill: rgba(167, 139, 250, 0.55);
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: cl-node-pulse 3.6s ease-in-out infinite;
+}
+@keyframes cl-node-pulse {
+  0%, 100% { transform: scale(1); opacity: 0.45; }
+  50% { transform: scale(2.1); opacity: 1; }
+}
+
+/* 雷达扫描环：轨道球背后的旋转锥形光弧（环状遮罩） */
+.hero-orb-wrap { position: relative; width: max-content; margin-bottom: 26px; }
+.hero-radar {
+  position: absolute;
+  inset: -58px;
+  border-radius: 50%;
+  background: conic-gradient(from 0deg, transparent 0deg, rgba(60, 242, 168, 0.30) 62deg, transparent 96deg);
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 30px), #000 calc(100% - 30px));
+  mask: radial-gradient(farthest-side, transparent calc(100% - 30px), #000 calc(100% - 30px));
+  opacity: 0.85;
+  animation: hero-orb-spin 5.5s linear infinite;
+}
+/* 标题流光：渐变字沿背景位移动态游走 */
+.auth-hero h1 {
+  background-size: 200% auto;
+  animation: hero-title-shimmer 7s ease-in-out infinite;
+}
+@keyframes hero-title-shimmer {
+  0%, 100% { background-position: 0% center; }
+  50% { background-position: 100% center; }
 }
 
 /* 右侧登录卡 */

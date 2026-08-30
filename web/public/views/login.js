@@ -17,6 +17,16 @@ const PARTICLES = [
   [61, 22, 300], [74, 68, 200], [88, 34, 340], [95, 12, 160]
 ];
 
+/* 星座能量网：节点坐标（viewBox 0 0 100 100）与连线（节点索引对），写死保证确定性。 */
+const CONSTELLATION = [
+  [8, 18], [22, 12], [28, 30], [42, 20], [54, 34], [66, 22],
+  [80, 30], [92, 14], [72, 48], [46, 50], [30, 58], [12, 44]
+];
+const CONSTELLATION_EDGES = [
+  [0, 1], [1, 2], [2, 3], [3, 4], [4, 5], [5, 6], [6, 7],
+  [3, 8], [8, 9], [9, 10], [10, 11], [11, 0], [2, 10], [4, 8]
+];
+
 export function renderLogin(root, onAuthed) {
   let mode = "login";
 
@@ -24,7 +34,14 @@ export function renderLogin(root, onAuthed) {
 
   /* ---- 左：品牌叙事 ---- */
   const hero = el("div", "auth-hero");
-  hero.append(orbSvg());
+  /* 极光背景（模糊色块缓慢漂移）——最先追加，垫在所有内容之下。 */
+  hero.append(heroAurora());
+  /* 星座能量网：确定性节点 + 血脉连线，能量点沿连线流动。 */
+  hero.append(constellationSvg());
+  /* 雷达扫描环：绕轨道球旋转的锥形光弧（环状遮罩）。 */
+  const orbWrap = el("div", "hero-orb-wrap");
+  orbWrap.append(el("div", "hero-radar"), orbSvg());
+  hero.append(orbWrap);
   hero.append(el("h1", "", "Orbit Agent Runtime"));
   hero.append(el("p", "lead", "把不可复现的 agent bug，变成可以逐字节对账的证据链。控制台是内核能力面的操作界面——这里看到的每一个数字都来自真实内核状态，没有一处是演示用的假数据。"));
   const tags = el("div", "hero-tags");
@@ -242,6 +259,42 @@ function field(label, type, value) {
       else { err.hidden = true; root.classList.remove("invalid"); }
     }
   };
+}
+
+function heroAurora() {
+  const wrap = el("div", "hero-aurora");
+  /* 三团模糊色块：位置/尺寸写死，漂移由 CSS 动画驱动（确定性）。 */
+  wrap.append(el("i", "aurora-blob a1"));
+  wrap.append(el("i", "aurora-blob a2"));
+  wrap.append(el("i", "aurora-blob a3"));
+  return wrap;
+}
+
+function constellationSvg() {
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("class", "hero-constellation");
+  svg.setAttribute("viewBox", "0 0 100 100");
+  svg.setAttribute("preserveAspectRatio", "none");
+  for (const [a, b] of CONSTELLATION_EDGES) {
+    const [x1, y1] = CONSTELLATION[a];
+    const [x2, y2] = CONSTELLATION[b];
+    const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+    line.setAttribute("class", "cl-line");
+    line.setAttribute("x1", String(x1)); line.setAttribute("y1", String(y1));
+    line.setAttribute("x2", String(x2)); line.setAttribute("y2", String(y2));
+    svg.append(line);
+  }
+  for (let i = 0; i < CONSTELLATION.length; i += 1) {
+    const [x, y] = CONSTELLATION[i];
+    const dot = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+    dot.setAttribute("class", "cl-node");
+    dot.setAttribute("cx", String(x)); dot.setAttribute("cy", String(y));
+    dot.setAttribute("r", "1.1");
+    /* 脉冲相位由索引推导（确定性），非裸随机。 */
+    dot.style.animationDelay = `${(i * 0.9) % 4}s`;
+    svg.append(dot);
+  }
+  return svg;
 }
 
 function orbSvg() {

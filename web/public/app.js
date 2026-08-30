@@ -152,7 +152,23 @@ function markActive(path) {
   }
 }
 
-async function navigate() {
+/*
+ * Navigation must be serialized. Two navigations can overlap in real life:
+ * boot() sets location.hash (which fires an async hashchange -> navigate)
+ * and then awaits navigate() itself. Without the chain, the second call's
+ * replaceChildren() lands while the first render() is still suspended at an
+ * await; when the first render resumes it appends on top, leaving the page
+ * with two copies of every card. Chaining forces each render to finish
+ * before the next one clears and redraws the container.
+ */
+let navChain = Promise.resolve();
+function navigate() {
+  const run = navChain.then(doNavigate, doNavigate);
+  navChain = run.then(() => {}, () => {});
+  return run;
+}
+
+async function doNavigate() {
   const path = currentPath();
   const route = routes.find((r) => r.path === path) ?? routes[0];
   currentRoute = route;
@@ -164,7 +180,8 @@ async function navigate() {
   }
   currentView = null;
 
-  viewEl.replaceChildren(loading());
+  const loadingNode = loading();
+  viewEl.replaceChildren(loadingNode);
   try {
     currentView = await route.render(viewEl);
   } catch (err) {
@@ -172,6 +189,15 @@ async function navigate() {
     viewEl.replaceChildren(
       el("div", "alert err", `<span>✕</span><span class="msg">视图渲染失败：${esc(err.message ?? String(err))}</span>`)
     );
+  } finally {
+    /*
+     * Drop the placeholder unconditionally. Views *append* to the container
+     * rather than clearing it, so without this the spinner stays parked above
+     * the rendered page for the rest of the session. It must be a `finally`:
+     * a view that throws leaves the placeholder behind too, and that is
+     * precisely when a stuck spinner is most confusing.
+     */
+    loadingNode.remove();
   }
   if (currentView && currentView.afterMount) currentView.afterMount();
 }
@@ -279,7 +305,11 @@ const PALETTE_ITEMS = [
   ...NAV_ITEMS.map((i) => ({
     id: `nav-${i.path}`,
     title: i.title,
-    subtitle: i.groupLabel,
+    /*
+     * No subtitle: the group is already shown in its own column, and repeating
+     * it turned every row into "回放台 治理 … 治理". A subtitle earns its place
+     * only when it adds something the title and group do not.
+     */
     group: i.groupLabel,
     keywords: i.keywords,
     icon: i.icon,

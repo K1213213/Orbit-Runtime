@@ -32,6 +32,7 @@
 | **v0.1.0** | W1–W6 | **开源发布**：真能力 + CLI + npm | 就绪清单 14/14 勾满；陌生开发者按 README 10 分钟跑通 record→replay |
 | **v0.2.0** | W7–W14 | **网关确定性边界**：capabilityInvoke + 决策记录 | 开启压缩/限流/熔断状态下的 record→replay 逐字节一致（replay_compat 全绿） |
 | **v0.3.0** | W15–W26 | **生态接入**：PAE 适配器 + 抽包 Monorepo | MCP 插件经网关接入且四重校验不降级；monorepo workspace 全链路绿（npm workspaces；pnpm 迁移延后） |
+| **v0.4.0** | W27 | **日志持久化**：审计日志与录制窗口的崩溃安全 WAL | 进程重启后审计轨迹与录制窗口存活；跨进程录制窗口重放逐字节一致；崩溃截断日志可恢复并自愈 |
 
 版本号策略：宪章前语义化版本不承诺稳定 API（pre-alpha），v0.x.minor = 波次，patch = 修复。
 
@@ -74,6 +75,19 @@
 | **W24–W26 ✅** | npm workspaces（pnpm 迁移延后）+ 各包独立 version（0.3.0）+ admin-console 包 + v0.3.0 发布（tag v0.3.0） | UPGRADE B.3 |
 
 **波次 3 门禁**：抽包期间 `src/index.ts` 公共 API 不变 · 每抽一包全量回归通过才继续 · PAE 通道治理不降级（保真度标注完整）。
+
+### 波次 4 · v0.4.0 日志持久化（W27）
+
+v0.3.0 收口时，文档记录的最后一个架构空洞是**轨迹/录制日志无磁盘持久化**——一个以重放
+与审计为核心的内核，日志随进程退出蒸发，架构不闭合。W27 关闭该缺口。
+
+| 阶段 | 内容 | 依据 |
+|---|---|---|
+| **W27 ✅** | 崩溃安全 WAL 子层（一行一条 JSON，末行截断容忍 / 内部非法行硬拒）+ `PersistedTraceJournal` / `PersistedRecordJournal` + 宿主 `traceJournalPath` / `recordJournalPath` / `auditRetention` 接线 + 自愈压缩与有界留存 | 路线图空洞（见下方进度日志） |
+
+**波次 4 门禁**：持久化按路径选择性开启，不传路径与 v0.3.x 行为逐字节一致 · 恢复保留
+`entryUid`/`occurredAt`/`orderIndex` 故恢复条目逐字节一致 · `replay_compat` 补 WAL 门禁
+（跨进程窗口重放一致 · 崩溃截断日志重放存活前缀 · 耐久化不扰动录制字节）。
 
 ---
 
@@ -134,3 +148,4 @@
 | 2026-08-31 | **W20 落地（域间事务化调用 + 图驱动域分配进宿主状态）**：`src/sandbox/domains/transaction.ts`——跨域调用的**原子事务账本**，`beginTransaction`（决策：单元归属/隔离级）→ `markExecuted`（跨界）→ `settleTransaction`（结算/失败），事务 id `dtx:<seq>` 确定性（重放得到同一 id 流）；`reconcileTransactions` 按 (源域→目标域) 分组对账，可从记录单独检出两类失败形状：**孤儿**（跨界未结算 = 事务边界泄漏）与**拒绝**（执行前被拒，本身非错误但成片出现说明 plan 与图失配）。`IsolationDomainManager.invokeUnit` 事务化：被拒的跳转**记为 rejected 而非丢弃**；延迟经注入时钟度量（`Date.now` 不进记录）；新增 `txnLedger/reconcile/ledgerHash/clearLedger`。宿主侧：图变更（registerPlugin/spawnAgentBox/unregisterPaeToolAdapter）置 `domainsStale()`，`allocateIsolationDomains()` 同步（diff 化，重跑零churn）并在**首次分配时才注册** `DOMAIN_TOOL` 通道；`RunVersionFingerprint.domainPlanHash` **缺省时省略**（沿用 W16 PAE 先例，未分配域的宿主指纹逐字节不变），`host.runFingerprint()` 转公开便于漂移诊断；`shutdownHost` 先 `releaseIsolationDomains()` 释放子进程。单测 20 例（domain_transaction：事务生命周期/拒绝/失败/对账孤儿/幂等哈希/宿主置脏与幂等分配/指纹兼容两次/关闭释放）+ replay_compat 门禁 2 例（跨域跳转 record→replay 逐字节一致且**重放不重入域（账本不新增）**、改输入为 call drift、释放全部域后仍可重放），全量 290 测试绿（内核 268→290），前端 89 不变，strict 编译零错误。**坑**：① 网关 replay 读的是自身挂载的 journal（非 ReplayEngine 的），测试里换 journal 会导致 "call #0 missing"；② 注入时钟冻结时延迟恒为 0，测延迟必须用递增时钟 |
 | 2026-08-31 | **W21–W23 落地（三段式抽包 Monorepo）**：内核自 `src/` 单树重构为 npm workspaces + TypeScript Project References 四包——`@orbit/infra-common`（领域契约/纯工具/异常：`types`·`utils`·`core`）、`@orbit/core-hub`（通道/网关/replay/trace/pact/safeguard/routing）、`@orbit/sandbox-runtime`（沙箱/影响域图/隔离域）、`@orbit/pae-engine`（PAE 适配器族 JS/MCP/OpenAPI/Cordis）；宿主留在根 `src/`（`core/orbitRuntimeHost.ts` + `index.ts` 门面，公共 API 不变）。依赖分层无环：`infra-common → core-hub → {sandbox-runtime, pae-engine} → host`。流程：`git mv` 迁移模块 + 各包桶文件 `index.ts` 导出 + 跨包导入改写为 `@orbit/*` 限定符；各包 `composite:true` + `references` 指依赖，`tsc -b` 自底向上构建；`npm install` 经 `node_modules/@orbit/*` 符号链接接包。`npm run build` 改为 `tsc -b tsconfig.json`，`npm test` 不变。干净从零构建通过（EXIT=0：root 29 + 包 55 个 .js），内核 290 测试绿、前端 89 测试绿、strict 编译零错误，公共 API 与重放契约零回归。波次 3 门禁（抽包期间 `src/index.ts` 公共 API 不变 · 每抽一包全量回归 · PAE 治理不降级）达成 |
 | 2026-08-31 | **W24–W26 落地（v0.3.0 发布）**：各包与根 `package.json` 版本升 0.3.0；`KERNEL_VERSION` 与 `DOMAIN_HOST_VERSION`（派生）同步升 0.3.0；`test/gateway.test.ts` 指纹断言同步。新增 `web/package.json`（`@orbit/admin-console`，private app workspace，含 `start`/`test` 脚本），根 `workspaces` 注册 `web` 并增 `start:web`/`test:web`；bridge 仍按相对路径 `../dist/src/core/orbitRuntimeHost.js` 引入编译内核。pnpm 迁移因运行环境无 pnpm/corepack 而**延后**——npm workspaces 已满足 Monorepo 结构目标，记为后续改进项。CHANGELOG 收敛为单一 `## [0.3.0]` GA 头（含 Release summary / Verification / Migration），W15–W20 与控制台各节降为 `###` 子节；README/README.zh-CN 目录结构与用例数（290/89）同步。干净从零 `tsc -b` 通过（strict 零错误）；内核 290 测试绿、前端 89 测试绿，公共 API 与重放契约零回归；`git tag v0.3.0`。v0.3.0 路线（W15–W26）收口 |
+| 2026-08-31 | **W27 落地（日志持久化，v0.4.0）**：关闭路线图最后一个架构空洞——日志无磁盘持久化。`packages/core-hub/src/persistence/wal.ts` 崩溃安全 JSONL 子层：一次写入只追加**一整行**，故崩溃唯一残留形态是**末行被截断**；恢复据此严格二分——末行解析失败/结构不完整则**丢弃**，内部行非法则**硬拒**（`WalFileInvalidError` 带行号，因为内部行不可能被崩溃截断，静默跳过等于隐藏损坏）。`walAppend`/`walRecover`/`walRecoverSync`/`walReset`/`walCompact`（临时文件+rename 原子重写）/`walLineCount`。`PersistedTraceJournal` 与 `PersistedRecordJournal` 各以内存日志为**唯一真源**、WAL 为 fire-and-forget 镜像（`writeChain` 串行化防交错，`flush()` 关闭时 await）；恢复保留原始 `entryUid`/`occurredAt`/`orderIndex`，故恢复条目**逐字节一致**——跨进程续写的录制窗口 `orderIndex` 顺延而非归零，被进程边界切开的运行仍重放为一条连续序列。宿主接线 `OrbitRuntimeHostOptions{traceJournalPath, recordJournalPath, auditRetention}`：`bootHost` 先恢复再装配通道，`shutdownHost` 先排空在途写入再应用留存，`resumeRecording()` 续开持久窗口、`beginRecording()` 截断旧 WAL 开新窗口、`currentRecordJournal()` 只读暴露、`pruneAuditLog()` 按需裁剪。**三个真实缺陷**：① `loadTraceJournal` 在读取循环内反复 `restoreSnapshot([entry])`，每次替换整链导致只恢复**最后一条**；② **崩溃截断的末行留在磁盘上，本次运行首次追加后它变成「内部行」，而内部非法行是硬故障——即一次崩溃会让此后每次启动都失败**；修复为恢复路径在首次追加前 `healIfNeeded()`（比对物理行数与恢复条目数，不一致才原子重写，健康日志零重写）；③ `bootHost` 在通道装配**之后**才恢复审计日志，装配期产生的条目被恢复快照覆盖丢失，改为恢复先行。有界留存：append-only 日志无上限增长会打满磁盘（磁盘满是宕机），故 `auditRetention` 显式由运维选择，启动与关闭各应用一次；关闭路径顺序为**先 flush 再裁剪**——反了会让被排空的在途写入把文件重新顶过上界。新增测试 3 文件 58 例（`journal_wal` 33 / `trace_journal_persistence` 14 / `host_journal_persistence` 11）+ `replay_compat` 补 3 例 WAL 门禁；全量 348 测试绿（内核 290→348），前端 89 例不变，strict 编译零错误。版本升 0.4.0（`KERNEL_VERSION` + 6 个 package.json + 指纹断言 + README 示例），`docs/architecture.md` 新增 §9 日志持久化。**坑**：测试里断言「沙箱周期会产生 >N 条审计条目」是脆弱耦合（实际不足，应直接写入审计条目）；且失败测试若未 `shutdownHost()`，已 boot 的宿主留下活跃句柄会使 `node --test` 进程永不退出（表现为整个文件挂死而非报错） |

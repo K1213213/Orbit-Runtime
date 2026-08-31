@@ -52,7 +52,21 @@ export class RecordJournal {
     return [...this.records] as GatewayCallRecord[];
   }
 
+  /** Replace the chain with an exact set of entries (used by recovery). */
+  public restoreSnapshot(entries: GatewayCallRecord[]): void {
+    this.records.length = 0;
+    this.records.push(...entries);
+  }
+
   public clear(): void {
     this.records.length = 0;
+  }
+
+  /**
+   * Durability hook. The base journal is in-memory only, so flush is a no-op.
+   * `PersistedRecordJournal` overrides it to await the pending write chain.
+   */
+  public flush(): Promise<void> {
+    return Promise.resolve();
   }
 }

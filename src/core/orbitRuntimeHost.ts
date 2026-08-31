@@ -1,13 +1,13 @@
 import { ChannelHub } from "@orbit/core-hub";
 import { MemoryKvChannel } from "@orbit/core-hub";
 import { LlmMockChannel } from "@orbit/core-hub";
-import { TraceJournal } from "@orbit/core-hub";
+import { TraceJournal, PersistedTraceJournal } from "@orbit/core-hub";
 import { PluginSandboxGuard } from "@orbit/core-hub";
 import { PluginPactVerifier } from "@orbit/core-hub";
 import { SandboxPool } from "@orbit/sandbox-runtime";
 import { ImpactDomainGraph } from "@orbit/sandbox-runtime";
 import { CostRouter } from "@orbit/core-hub";
-import { RecordJournal } from "@orbit/core-hub";
+import { RecordJournal, PersistedRecordJournal } from "@orbit/core-hub";
 import { ReplayEngine } from "@orbit/core-hub";
 import { makeUniqueMark } from "@orbit/infra-common";
 import { KERNEL_VERSION } from "@orbit/infra-common";
@@ -35,6 +35,28 @@ import type { DomainInvokeCtx } from "@orbit/sandbox-runtime";
 import type { DomainReconciliation, DomainTransaction } from "@orbit/sandbox-runtime";
 
 const HOST_DEFAULT_TIMEOUT_MS = 10_000;
+
+/**
+ * Durability options. When a path is supplied the corresponding journal is
+ * mirrored to an append-only write-ahead log on disk and recovered on the next
+ * boot, so a restart does not lose the audit trail or the recorded run. Omitting
+ * a path (the default) keeps the journal purely in-memory — the original
+ * behavior, and what every existing test relies on.
+ */
+export interface OrbitRuntimeHostOptions {
+  /** Durable audit/behavior journal (trace) WAL path. */
+  traceJournalPath?: string;
+  /** Durable recording-window journal WAL path (recovered on boot). */
+  recordJournalPath?: string;
+  /**
+   * Retention bound for the durable audit journal: keep at most this many
+   * newest entries. An append-only audit log that grows without limit
+   * eventually fills the disk, and a full disk is an outage — so the bound is
+   * explicit and operator-chosen rather than an implicit default. Applied at
+   * boot (after recovery) and at shutdown. Omit for unbounded retention.
+   */
+  auditRetention?: number;
+}
 
 /**
  * Top-level assembly: wires every component bottom-up and owns the host
@@ -75,8 +97,29 @@ export class OrbitRuntimeHost {
   private domainChannel: DomainChannel | null = null;
   /** W20: the graph changed since the last allocation (plan needs a re-sync). */
   private domainsStaleFlag = false;
+  /** W27: durable recording-window journal WAL path, if configured. */
+  private readonly recordJournalPath?: string;
+  /** W27: the recording window currently attached to the gateway (for flush). */
+  private activeRecordJournal: RecordJournal | null = null;
+  /**
+   * W27: the same instance as {@link traceJournal}, held at its durable type.
+   * `traceJournal` stays declared as the base class on purpose — call sites must
+   * not depend on durability — so retention/compaction needs its own handle.
+   */
+  private readonly durableTraceJournal: PersistedTraceJournal;
+  /** W27: audit retention bound; undefined means unbounded. */
+  private readonly auditRetention?: number;
 
-  public constructor() {
+  public constructor(opts?: OrbitRuntimeHostOptions) {
+    this.recordJournalPath = opts?.recordJournalPath;
+    if (opts?.auditRetention !== undefined) {
+      if (!Number.isInteger(opts.auditRetention) || opts.auditRetention < 0) {
+        throw new RangeError(
+          `auditRetention expects a non-negative integer, received ${String(opts.auditRetention)}`
+        );
+      }
+      this.auditRetention = opts.auditRetention;
+    }
     this.costRouter = new CostRouter();
     this.tokenBudget = new TokenBudgetEngine();
     this.rateLimiter = new RateLimiter();
@@ -84,7 +127,8 @@ export class OrbitRuntimeHost {
     this.paeRegistry = new PaeAdapterRegistry();
     this.paeChannel = new PaeChannel(this.paeRegistry);
     this.channelHub = new ChannelHub();
-    this.traceJournal = new TraceJournal();
+    this.durableTraceJournal = new PersistedTraceJournal(opts?.traceJournalPath);
+    this.traceJournal = this.durableTraceJournal;
     this.impactGraph = new ImpactDomainGraph();
     this.pluginPactVerifier = new PluginPactVerifier();
     this.pluginSandboxGuard = new PluginSandboxGuard(this.traceJournal, (pluginId) =>
@@ -189,11 +233,48 @@ export class OrbitRuntimeHost {
   }
 
   public async bootHost(): Promise<void> {
+    // W27: recover durable journals *before* anything can append. A missing file
+    // is normal (first boot) and leaves the journal empty; an existing file
+    // replays its entries so the audit trail survives the restart. Recovery
+    // rebuilds the whole chain, so it must precede channel setup — otherwise
+    // setup-time audit entries would be overwritten by the recovered snapshot.
+    await this.traceJournal.load();
+    // Apply the retention bound to whatever the previous run left behind, before
+    // this run starts appending. Compaction also physically removes a tail that
+    // a crash truncated (recovery merely ignores it), so the log is well-formed
+    // again from the first append of the new run.
+    await this.pruneAuditLog();
     await this.channelHub.setupAllBuiltInChannels(this.newHostCtx());
+    if (this.recordJournalPath) {
+      await this.resumeRecording();
+    }
+  }
+
+  /**
+   * W27: enforce the configured audit-retention bound and compact the WAL.
+   *
+   * Called automatically at boot and shutdown; exposed so an operator can prune
+   * a long-running host on demand without a restart.
+   *
+   * @returns the number of audit entries retained.
+   */
+  public async pruneAuditLog(): Promise<number> {
+    if (this.auditRetention === undefined) {
+      return this.traceJournal.entries().length;
+    }
+    return this.durableTraceJournal.retainLast(this.auditRetention);
   }
 
   /** Reverse-order teardown: pool -> pact -> guards -> channels -> journal -> graph. */
   public async shutdownHost(): Promise<void> {
+    // W27: drain any pending WAL writes before tearing components down, so the
+    // last recorded calls/audit entries are not lost on a clean shutdown.
+    await this.activeRecordJournal?.flush();
+    await this.traceJournal.flush();
+    // Bound the log *at rest*: flush first so nothing pending is lost, then
+    // apply retention. Order matters — pruning before the flush would let the
+    // drained writes push the file back over the bound.
+    await this.pruneAuditLog();
     this.sandboxPool.clear();
     this.pluginPactVerifier.clear();
     this.pluginSandboxGuard.releaseAllGuard();
@@ -358,12 +439,53 @@ export class OrbitRuntimeHost {
     return this.paeRegistry.negotiate(toolName, minFidelity, makeUniqueMark());
   }
 
-  /** M2: open a recording window; sandboxes running in "record" mode fill it. */
+  /**
+   * M2: open a recording window; sandboxes running in "record" mode fill it.
+   *
+   * W27: when the host was constructed with `recordJournalPath`, the window is
+   * durable — every recorded call is mirrored to the WAL. Opening a *new* window
+   * truncates that WAL first (a fresh window must not inherit the previous
+   * run's calls); use {@link resumeRecording} to continue a prior window instead.
+   */
   public beginRecording(): RecordJournal {
-    const journal = new RecordJournal();
+    const journal = this.recordJournalPath
+      ? new PersistedRecordJournal(this.recordJournalPath, { truncate: true })
+      : new RecordJournal();
+    this.activeRecordJournal = journal;
     this.channelHub.attachRecordJournal(journal);
     this.gateway.attachJournal(journal);
     return journal;
+  }
+
+  /**
+   * W27: reopen the durable recording window persisted by a previous process.
+   *
+   * Recovers the WAL (crash-safe: a truncated trailing line is dropped) and
+   * re-attaches it, so `orderIndex` continues from the recovered length and the
+   * combined journal replays as one uninterrupted run. Without a configured
+   * `recordJournalPath` this degrades to a plain in-memory window.
+   */
+  public async resumeRecording(): Promise<RecordJournal> {
+    if (!this.recordJournalPath) return this.beginRecording();
+    const journal = await PersistedRecordJournal.recover(this.recordJournalPath);
+    // Heal the file before the resumed window appends to it: a crash-truncated
+    // tail would otherwise sit in the *interior* once the next line lands, and an
+    // invalid interior line is a hard fault. No-op when the log is healthy.
+    await journal.healIfNeeded();
+    this.activeRecordJournal = journal;
+    this.channelHub.attachRecordJournal(journal);
+    this.gateway.attachJournal(journal);
+    return journal;
+  }
+
+  /**
+   * W27: the recording window currently attached to the gateway, or `null` if
+   * none was ever opened. After a boot with `recordJournalPath` configured this
+   * is the journal recovered from the WAL, so callers can inspect or replay a
+   * window persisted by a previous process without reopening it.
+   */
+  public currentRecordJournal(): RecordJournal | null {
+    return this.activeRecordJournal;
   }
 
   /** M2: attach a replay engine over a previously recorded journal. */

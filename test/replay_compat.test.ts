@@ -10,6 +10,7 @@ import { OpenAICompatChannel, LlmChannelFaultError } from "@orbit/core-hub";
 import { RecordJournal } from "@orbit/core-hub";
 import { ReplayEngine } from "@orbit/core-hub";
 import { saveRecordJournal, loadRecordJournal } from "@orbit/core-hub";
+import { PersistedRecordJournal } from "@orbit/core-hub";
 import { SeededRng } from "@orbit/core-hub";
 import { PaeAdapterRegistry } from "@orbit/pae-engine";
 import { PaeChannel } from "@orbit/pae-engine";
@@ -1062,4 +1063,141 @@ test("replay_compat domain txn: a trace replays after every domain is released",
   );
   assert.deepEqual(replayed, live, "replay needs the journal, never the domain host");
   await host.shutdownHost();
+});
+
+// ---------------------------------------------------------------------------
+// Journal durability (W27) — merge gate for the write-ahead log
+// ---------------------------------------------------------------------------
+
+test("replay_compat wal: a run mirrored to the WAL replays byte-identically in a fresh process", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "orbit-compat-wal-"));
+  const walFile = path.join(root, "record.wal.jsonl");
+
+  // "Process 1": record live, mirroring every call to the WAL as it happens.
+  const hub1 = new ChannelHub();
+  hub1.registerBuiltInChannel(ChannelKind.FILE_SYSTEM, new FileChannel({ rootDir: path.join(root, "fs") }));
+  await hub1.setupAllBuiltInChannels(makeCtx("record"));
+  const durable = new PersistedRecordJournal(walFile, { truncate: true });
+  hub1.attachRecordJournal(durable);
+  const liveWrite = await hub1.fireChannelCall<number>(
+    ChannelKind.FILE_SYSTEM,
+    makeCtx("record"),
+    "writeTextFile",
+    "a.txt",
+    "wal-durable"
+  );
+  const liveRead = await hub1.fireChannelCall<string>(
+    ChannelKind.FILE_SYSTEM,
+    makeCtx("record"),
+    "readTextFile",
+    "a.txt"
+  );
+  await durable.flush();
+  await hub1.teardown();
+
+  // "Process 2": recover from the WAL alone. No FileChannel is registered, so
+  // a replay hit is the only way the calls can resolve.
+  const recovered = await PersistedRecordJournal.recover(walFile);
+  assert.deepEqual(recovered.snapshot(), durable.snapshot(), "WAL recovery is byte-identical");
+
+  const hub2 = new ChannelHub();
+  const replayJournal = new RecordJournal();
+  hub2.attachRecordJournal(replayJournal);
+  hub2.attachReplayEngine(new ReplayEngine(recovered));
+  const replayedWrite = await hub2.fireChannelCall<number>(
+    ChannelKind.FILE_SYSTEM,
+    makeCtx("replay"),
+    "writeTextFile",
+    "a.txt",
+    "wal-durable"
+  );
+  const replayedRead = await hub2.fireChannelCall<string>(
+    ChannelKind.FILE_SYSTEM,
+    makeCtx("replay"),
+    "readTextFile",
+    "a.txt"
+  );
+
+  assert.equal(replayedWrite, liveWrite);
+  assert.equal(replayedRead, liveRead);
+  const report = new ReplayEngine(recovered).reconcile(durable.snapshot(), replayJournal.snapshot());
+  assert.equal(report.digestChainConsistent, true);
+  await hub2.teardown();
+  await fs.rm(root, { recursive: true, force: true });
+});
+
+test("replay_compat wal: a crash-truncated WAL replays its surviving prefix byte-identically", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "orbit-compat-wal-crash-"));
+  const walFile = path.join(root, "record.wal.jsonl");
+
+  const hub1 = new ChannelHub();
+  hub1.registerBuiltInChannel(ChannelKind.FILE_SYSTEM, new FileChannel({ rootDir: path.join(root, "fs") }));
+  await hub1.setupAllBuiltInChannels(makeCtx("record"));
+  const durable = new PersistedRecordJournal(walFile, { truncate: true });
+  hub1.attachRecordJournal(durable);
+  const liveWrite = await hub1.fireChannelCall<number>(
+    ChannelKind.FILE_SYSTEM,
+    makeCtx("record"),
+    "writeTextFile",
+    "a.txt",
+    "prefix"
+  );
+  await durable.flush();
+  await hub1.teardown();
+
+  // A crash lands a partial line at the tail; recovery must drop exactly that.
+  await fs.appendFile(walFile, '{"entryUid":"partial","orderIndex":1,"chan', "utf8");
+
+  const recovered = await PersistedRecordJournal.recover(walFile);
+  assert.equal(recovered.size(), 1);
+  assert.deepEqual(recovered.snapshot(), durable.snapshot());
+
+  const hub2 = new ChannelHub();
+  hub2.attachReplayEngine(new ReplayEngine(recovered));
+  const replayedWrite = await hub2.fireChannelCall<number>(
+    ChannelKind.FILE_SYSTEM,
+    makeCtx("replay"),
+    "writeTextFile",
+    "a.txt",
+    "prefix"
+  );
+  assert.equal(replayedWrite, liveWrite, "the surviving prefix still replays verbatim");
+  await hub2.teardown();
+  await fs.rm(root, { recursive: true, force: true });
+});
+
+test("replay_compat wal: durability does not perturb the recorded bytes", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "orbit-compat-wal-parity-"));
+  const walFile = path.join(root, "record.wal.jsonl");
+
+  const script = async (hub: ChannelHub, mode: ReplayMode): Promise<string> => {
+    await hub.fireChannelCall(ChannelKind.FILE_SYSTEM, makeCtx(mode), "writeTextFile", "p.txt", "parity");
+    return hub.fireChannelCall<string>(ChannelKind.FILE_SYSTEM, makeCtx(mode), "readTextFile", "p.txt");
+  };
+
+  // In-memory journal (the historical path).
+  const plainHub = new ChannelHub();
+  plainHub.registerBuiltInChannel(ChannelKind.FILE_SYSTEM, new FileChannel({ rootDir: path.join(root, "plain") }));
+  await plainHub.setupAllBuiltInChannels(makeCtx("record"));
+  const plain = new RecordJournal();
+  plainHub.attachRecordJournal(plain);
+  await script(plainHub, "record");
+  await plainHub.teardown();
+
+  // Durable journal over the same script.
+  const durableHub = new ChannelHub();
+  durableHub.registerBuiltInChannel(ChannelKind.FILE_SYSTEM, new FileChannel({ rootDir: path.join(root, "durable") }));
+  await durableHub.setupAllBuiltInChannels(makeCtx("record"));
+  const durable = new PersistedRecordJournal(walFile, { truncate: true });
+  durableHub.attachRecordJournal(durable);
+  await script(durableHub, "record");
+  await durable.flush();
+  await durableHub.teardown();
+
+  // Everything except the per-entry uid must be identical: durability is a
+  // mirror, never a mutation of what gets recorded.
+  const strip = (journal: RecordJournal): unknown[] =>
+    journal.snapshot().map(({ entryUid: _uid, durationMs: _ms, ...rest }) => rest);
+  assert.deepEqual(strip(durable), strip(plain));
+  await fs.rm(root, { recursive: true, force: true });
 });

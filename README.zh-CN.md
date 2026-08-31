@@ -31,6 +31,7 @@ Orbit Agent Runtime 是一套零第三方依赖的插件化智能体运行时宿
 - **三分漂移分类（W13）** —— 重放失败被区分为明确错误：配置漂移（`RunFingerprintDriftError`，版本/指纹）、决策漂移（`DecisionDriftError`，如契约被撤销）、调用漂移（`ReplayDriftError`，数据/签名）；对账另报 `decisionDriftFields`
 - **`replay_compat` 确定性门禁（W12）** —— 7 类 CI 门禁证明网关边界在压缩/限流/采集/指纹漂移/决策漂移下始终忠实：每个决策被记录、并重放逐字节一致
 - **插件适配引擎 PAE（W15）** —— 外来运行时（进程内 JS，后续 MCP / OpenAPI / Cordis）经适配器映射为内核能力契约，整体发布为单一能力通道；每次外来调用都是一笔网关事务，被记录并可逐字节重放。保真度诚实协商（`full | reduced | lossy`），适配面哈希进运行指纹以支持漂移检测
+- **日志持久化（W27）** —— 审计日志与录制窗口各挂一份崩溃安全的预写日志（WAL），进程重启不再擦除审计轨迹与已录制运行。一行一条 JSON，故崩溃唯一残留形态是「末行被截断」：恢复只丢弃那一行，而任何**内部**非法行按真实故障拒绝。恢复保留原始 id 与顺序，因此条目逐字节一致——被进程边界切开的录制窗口仍重放为一条连续运行
 - **零运行时依赖** —— 纯 TypeScript strict 模式，Node.js ≥ 20 直接运行
 
 ## 架构分层（严格单向依赖，禁止反向与循环）
@@ -88,6 +89,38 @@ host.registerPaeToolAdapter(adapter); // 外来工具面 → 派生 Pact，受�
 //   const out = await ctx.call(ChannelKind.PAE_TOOL, "echo", [{ text: "hi" }]);
 ```
 
+## 日志持久化（W27）
+
+日志此前只存在于内存，进程重启即擦除审计轨迹与已录制运行。现在两类日志各挂一份崩溃安全
+的预写日志——**按路径选择性开启**，不传路径则与此前的纯内存行为逐字节一致。
+
+```ts
+const host = new OrbitRuntimeHost({
+  traceJournalPath: ".orbit/trace.wal.jsonl",   // 审计 / 行为日志
+  recordJournalPath: ".orbit/record.wal.jsonl", // 录制窗口
+  auditRetention: 10_000                        // 只保留最新 N 条
+});
+
+await host.bootHost();      // 先恢复（含自愈），再装配通道
+// ... 运行智能体；上次的窗口被续开，orderIndex 顺延
+await host.shutdownHost();  // 排空在途写入，再应用留存
+```
+
+几处值得知道的设计点：
+
+- **崩溃模型决定了格式。** 一次写入只追加一整行，因此崩溃唯一能留下的是**被截断的末行**。
+  恢复由此严格二分：丢弃那一行；而任何解析失败或结构非法的**内部行**按 `WalFileInvalidError`
+  拒绝并带上行号——内部行不可能被崩溃截断，静默跳过等于隐藏真实损坏。
+- **内存日志是唯一真源。** WAL 是 fire-and-forget 镜像，经写入链串行化以保证行不交错；
+  `shutdownHost` 会 await 该链，正常关闭不丢条目。
+- **恢复逐字节一致。** `entryUid`、`occurredAt`、`orderIndex` 均被保留，故续开的录制窗口
+  索引顺延而非归零——被进程边界切开的运行仍重放为一条序列。
+- **截断的末行在首次追加前被治愈。** 恢复虽容忍它，但那行仍在磁盘上；一旦本次运行追加新行，
+  它就变成**内部**非法行，而那是硬故障。不处理的话，一次崩溃会让此后每次启动都失败。
+  `healIfNeeded()` 从存活前缀原子重写文件，健康日志则零重写。
+- **留存是显式的。** append-only 日志无上限增长终会打满磁盘，而磁盘满是一次宕机，因此
+  `auditRetention` 由运维选择而非隐式默认；`pruneAuditLog()` 供长运行实例按需裁剪。
+
 ## Web 控制台
 
 [Orbit Console](./web/README.md) — 零依赖的 Web 管理控制台，通过 HTTP 驱动真实内核实例：生命周期、通道、插件、沙箱、轨迹、回放台、影响域图与成本路由。
@@ -135,7 +168,7 @@ node bin/orbit.mjs diff trace.jsonl trace.jsonl
 ### 底层 API 与演示
 
 ```bash
-npm test               # 构建 + 运行内核单元测试（node:test）—— 290 用例
+npm test               # 构建 + 运行内核单元测试（node:test）—— 348 用例
 npm run test:console   # 运行控制台前端单测（node:test）—— 89 用例
 npm run demo           # 构建 + 运行演示入口（覆盖全部核心机制）
 npm run demo:replay    # 确定性重放：约 1s 真实运行 → 约 2ms 重放

@@ -36,6 +36,7 @@ Orbit Agent Runtime is a lightweight, dependency-free runtime host for plugin-ba
 - **Plugin Adaptation Engine (W15)** — foreign runtimes (in-process JS, and later MCP / OpenAPI / Cordis) are mapped onto the kernel capability contract through adapters that surface as a single capability channel; every foreign call is a gateway transaction, recorded and replayed byte-identically. Fidelity is negotiated honestly (`full | reduced | lossy`), and the adapter surface is hashed into the run fingerprint for drift detection
 - **Isolation domains (W19)** — the impact graph allocates the physical layer: a unit whose failure closure exceeds the threshold gets its own L2 child process (`iso:<unit>`), the rest share deterministic chunks (`shared:<n>`). The sync is a diff, not a rebuild, and domains are published as one capability channel, so a domain call is recorded and replayed byte-identically
 - **Cross-domain transactions (W20)** — every hop between domains is an atomic gateway transaction: `decision (assignment / isolation) + execution + result + audit`, settled in a ledger that reconciles by (source → target) pair. Orphans (a hop that crossed a boundary and never settled) and refusals are both detectable from the records alone; replay injects the frozen output without re-entering the domain
+- **Durable journals (W27)** — the audit journal and the recording window each mirror to a crash-safe write-ahead log, so a restart does not erase the audit trail or a recorded run. One JSON line per entry means the only artifact a crash can leave is a partial final line: recovery drops exactly that and rejects any invalid *interior* line as a genuine fault. Recovered entries keep their original ids and ordering, so they are byte-identical and a window split across processes replays as one uninterrupted run
 - **Zero runtime dependencies** — pure TypeScript, strict mode, runs on Node.js ≥ 20
 
 ## Architecture
@@ -120,7 +121,7 @@ host.registerPlugin({
   id: "p.worker",
   displayName: "p.worker",
   edition: "1.0.0",
-  requireHostMinEdition: "0.3.0",
+  requireHostMinEdition: "0.4.0",
   allowCapabilities: ["channel:read", "channel:write"],
   declareChannelDeps: [ChannelKind.LLM_ACCESS]
 });
@@ -151,6 +152,48 @@ Three properties worth stating explicitly:
 - **Replay never re-enters a domain.** The frozen output is injected at the
   gateway, so the child process is not touched and no transaction is opened —
   axiom A1 expressed on the ledger.
+
+## Journal durability (W27)
+
+Journals were in-memory only, so a restart erased the audit trail and any
+recorded run. Both now carry a crash-safe write-ahead log — opt-in per path, and
+omitting the paths keeps the previous purely in-memory behavior byte for byte.
+
+```ts
+const host = new OrbitRuntimeHost({
+  traceJournalPath: ".orbit/trace.wal.jsonl",   // audit / behavior journal
+  recordJournalPath: ".orbit/record.wal.jsonl", // recording window
+  auditRetention: 10_000                        // keep the newest N entries
+});
+
+await host.bootHost();      // recover (and heal) first, then wire channels
+// ... run the agent; a previous window is resumed, orderIndex continues
+await host.shutdownHost();  // drain pending writes, then apply retention
+```
+
+Design points worth knowing:
+
+- **The crash model justifies the format.** A write appends one whole line, so
+  the only thing a crash can leave behind is a *partial final line*. Recovery is
+  therefore a strict dichotomy: drop that trailing line, and reject any corrupt
+  or structurally invalid **interior** line as `WalFileInvalidError` with its line
+  number — an interior line cannot have been truncated by a crash, so skipping it
+  silently would hide real corruption.
+- **The in-memory journal stays the source of truth.** The WAL is a
+  fire-and-forget mirror, serialised through a write chain so lines never
+  interleave; `shutdownHost` awaits it, so a clean shutdown loses nothing.
+- **Recovery is byte-identical.** `entryUid`, `occurredAt` and `orderIndex` are
+  preserved, so a resumed recording window continues its index instead of
+  restarting at 0 — a run split across processes replays as one sequence.
+- **A truncated tail is healed before the first append.** Recovery tolerates it,
+  but the line is still on disk: once this run appends, it becomes an *interior*
+  invalid line, which is a hard fault. Left unhandled, one crash would make every
+  later boot fail. `healIfNeeded()` rewrites the file atomically from the
+  surviving prefix, and is a no-op on a healthy log.
+- **Retention is explicit.** An append-only log that grows without limit
+  eventually fills the disk, and a full disk is an outage, so `auditRetention` is
+  an operator choice rather than an implicit default. `pruneAuditLog()` prunes a
+  long-running host on demand.
 
 ## Web console
 
@@ -233,7 +276,7 @@ under ten minutes. Every command accepts `--json` for machine-readable output.
 ### Lower-level API & demos
 
 ```bash
-npm test               # build + run kernel unit tests (node:test) — 290 cases
+npm test               # build + run kernel unit tests (node:test) — 348 cases
 npm run test:console   # web console unit tests (node:test) — 89 cases
 npm run demo           # build + run demo-host.ts (full lifecycle demo)
 npm run demo:replay    # deterministic replay: ~1s real run replayed in ~2ms

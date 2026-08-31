@@ -1,6 +1,7 @@
 /** Public API surface of Orbit Agent Runtime. */
 
 export { OrbitRuntimeHost } from "./core/orbitRuntimeHost";
+export type { OrbitRuntimeHostOptions } from "./core/orbitRuntimeHost";
 export { ChannelHub } from "@orbit/core-hub";
 export type { CapabilityGate } from "@orbit/core-hub";
 export type { IChannelProvider } from "@orbit/core-hub";
@@ -33,6 +34,21 @@ export { ReplayEngine, ReplayDriftError } from "@orbit/core-hub";
 export type { ReconcileReport } from "@orbit/core-hub";
 export { saveRecordJournal, loadRecordJournal, TraceFileInvalidError } from "@orbit/core-hub";
 export type { ChannelRuntimeMeta } from "@orbit/core-hub";
+
+// W27: journal durability — append-only WAL substrate, persisted journals and
+// the explicit checkpoint/export pair for the audit journal.
+export {
+  walAppend,
+  walCompact,
+  walLineCount,
+  walRecover,
+  walRecoverSync,
+  walReset,
+  WalFileInvalidError
+} from "@orbit/core-hub";
+export { PersistedRecordJournal } from "@orbit/core-hub";
+export { PersistedTraceJournal } from "@orbit/core-hub";
+export { saveTraceJournal, loadTraceJournal } from "@orbit/core-hub";
 
 // W7: unified gateway entry (determinism boundary) + its decision types.
 // GatewayDecision / RunVersionFingerprint are re-exported from types/orbitDomain.

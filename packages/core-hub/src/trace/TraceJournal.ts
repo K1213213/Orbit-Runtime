@@ -8,8 +8,10 @@ import type { TraceJournalEntry, TraceMarkId } from "@orbit/infra-common";
 export class TraceJournal {
   private readonly entryList: TraceJournalEntry[] = [];
 
-  public append(raw: Omit<TraceJournalEntry, "entryUid" | "occurredAt">): void {
-    this.entryList.push({ ...raw, entryUid: makeUniqueMark(), occurredAt: Date.now() });
+  public append(raw: Omit<TraceJournalEntry, "entryUid" | "occurredAt">): TraceJournalEntry {
+    const entry: TraceJournalEntry = { ...raw, entryUid: makeUniqueMark(), occurredAt: Date.now() };
+    this.entryList.push(entry);
+    return entry;
   }
 
   public entries(): TraceJournalEntry[] {
@@ -41,7 +43,20 @@ export class TraceJournal {
     this.entryList.push(...snapshot);
   }
 
+  /**
+   * Durability hook. The base journal is in-memory only, so load/flush are
+   * no-ops. `PersistedTraceJournal` overrides them to recover from, and drain
+   * writes to, its append-only WAL.
+   */
+  public load(): Promise<void> {
+    return Promise.resolve();
+  }
+
   public clear(): void {
     this.entryList.length = 0;
+  }
+
+  public flush(): Promise<void> {
+    return Promise.resolve();
   }
 }

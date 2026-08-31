@@ -4,6 +4,65 @@ All notable changes to Orbit Agent Runtime are documented here. This project
 follows a pre-alpha versioning scheme: `v0.x.minor` marks a release wave,
 `patch` marks fixes. Until `v1.0` the public API is not yet stability-promised.
 
+## [0.4.0] — 2026-08-31 · Journal durability (W27)
+
+Closes the last architectural gap carried by the v0.3.0 documentation: journals
+lived only in memory, so a restart erased the audit trail and any recorded run.
+A replay-and-audit kernel whose log evaporates on restart is not a complete
+architecture — this wave gives both journals a crash-safe write-ahead log.
+
+### Added
+- **Crash-safe WAL substrate** (`@orbit/core-hub`, `persistence/wal`): one JSON
+  line per entry. A write appends a single line, so the only artifact a crash can
+  leave is a *partial final line* — recovery drops exactly that, while any corrupt
+  or structurally invalid **interior** line is a genuine fault and is rejected as
+  `WalFileInvalidError` with its line number. `walAppend` / `walRecover` /
+  `walRecoverSync` / `walReset` / `walCompact` / `walLineCount`.
+- **`PersistedTraceJournal`** — the audit/behavior journal mirrored to a WAL.
+  `load()` replays it at boot; `entryUid` and `occurredAt` are preserved verbatim,
+  so recovered entries are byte-identical and never perturb audit ordering.
+- **`PersistedRecordJournal`** — a recording window mirrored to a WAL. A recovered
+  window continues `orderIndex` instead of restarting at 0, so a run split across
+  processes replays as one uninterrupted sequence.
+- **Host durability options** — `new OrbitRuntimeHost({ traceJournalPath,
+  recordJournalPath, auditRetention })`. `bootHost` recovers, `shutdownHost`
+  drains pending writes, `resumeRecording()` reopens a persisted window and
+  `currentRecordJournal()` exposes it. Omitting the paths keeps the previous
+  purely in-memory behavior, byte for byte.
+- **Bounded audit retention** — `auditRetention` keeps the newest N entries and
+  compacts the WAL to match, applied at boot and at shutdown, plus
+  `pruneAuditLog()` for on-demand pruning. An audit log that fills the disk is an
+  outage, so the bound is explicit and operator-chosen rather than implicit.
+- **Self-healing logs** — `walCompact` / `compact()` / `healIfNeeded()` rewrite a
+  log atomically (temp file + rename) from its surviving prefix.
+
+### Fixed
+- `loadTraceJournal` restored only the *last* entry of a saved journal: it called
+  `restoreSnapshot([entry])` inside the read loop, replacing the chain on every
+  iteration instead of accumulating it.
+- A crash-truncated tail was tolerated by recovery but left on disk, so the next
+  run's first append turned it into an **interior** invalid line — which is a hard
+  fault, meaning one crash could make every later boot fail. Recovery now heals
+  the file before the first append (`healIfNeeded`, a no-op on a healthy log).
+- `bootHost` recovered the audit journal *after* channel setup, so audit entries
+  emitted during setup were discarded by the recovered snapshot. Recovery now runs
+  before anything can append.
+
+### Verification
+- Clean `tsc -b` composite build, strict mode, zero errors.
+- Kernel suite: **348 cases** green (290 at v0.3.0 + 58 new).
+- Console suite (`npm run test:console`): **89 cases** green.
+- Charter gate A1: `test/replay_compat.test.ts` extended with WAL cases — a
+  window persisted by one process replays byte-identically in another, a
+  crash-truncated WAL replays its surviving prefix, and durability does not
+  perturb the recorded bytes.
+
+### Migration
+- No public API change and no on-disk trace-format change; durability is opt-in
+  per path. Existing v0.3.x traces replay unchanged.
+- `KERNEL_VERSION` bumped to `0.4.0`; `DOMAIN_HOST_VERSION` derives from it.
+
+
 ## [0.3.0] — 2026-08-31 · v0.3.0 General Availability (W15–W26)
 
 The v0.3.0 wave delivers the ecosystem-access track end to end: the Plugin

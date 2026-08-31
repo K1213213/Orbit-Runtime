@@ -1,0 +1,13 @@
+{
+  "core-hub": [
+    "infra-common"
+  ],
+  "pae-engine": [
+    "core-hub",
+    "infra-common"
+  ],
+  "sandbox-runtime": [
+    "core-hub",
+    "infra-common"
+  ]
+}

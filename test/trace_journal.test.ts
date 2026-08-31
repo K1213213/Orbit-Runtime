@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { TraceJournal } from "../src/trace/TraceJournal";
+import { TraceJournal } from "@orbit/core-hub";
 
 test("append & entries: records carry uid and timestamp", () => {
   const journal = new TraceJournal();

@@ -8,7 +8,7 @@ import {
   isCompressedPayload,
   packSnapshot,
   type CompressedPayload
-} from "../src/gateway/TokenBudgetEngine";
+} from "@orbit/core-hub";
 
 // A tight config so thresholds are easy to assert against.
 const TIGHT: typeof DEFAULT_TOKEN_BUDGET_CONFIG = {

@@ -135,8 +135,8 @@ node bin/orbit.mjs diff trace.jsonl trace.jsonl
 ### 底层 API 与演示
 
 ```bash
-npm test               # 构建 + 运行内核单元测试（node:test）—— 205 用例
-npm run test:console   # 运行控制台前端单测（node:test）—— 49 用例
+npm test               # 构建 + 运行内核单元测试（node:test）—— 290 用例
+npm run test:console   # 运行控制台前端单测（node:test）—— 89 用例
 npm run demo           # 构建 + 运行演示入口（覆盖全部核心机制）
 npm run demo:replay    # 确定性重放：约 1s 真实运行 → 约 2ms 重放
 ```
@@ -202,22 +202,25 @@ export default async function (ctx) {
 [trace] 5 entries: AGENT_SINGLE_CYCLE_EXEC / AGENT_CYCLE_LIMIT_HIT / PLUGIN_UNIT_EXCEPTION ...
 ```
 
-## 目录结构
+## 目录结构（Monorepo）
+
+内核以 npm workspaces + TypeScript Project References 组织为多包仓库，各层可独立
+构建、版本与测试，而 `src/index.ts` 的公共 API 保持不变。
 
 ```
-src/
-├── types/        # 全局领域契约、枚举、接口
-├── utils/        # 版本解析、唯一 ID 生成
-├── core/         # 领域异常体系、顶层宿主组装
-├── channel/      # 能力通道抽象与内置实现（内存KV / LLM模拟）
-├── pact/         # 插件规约校验与注册
-├── safeguard/    # 跳闸保护、插件级故障隔离
-├── trace/        # 轨迹日志本（记录、快照、筛选）
-├── sandbox/      # 智能体沙箱与运行池
-└── index.ts      # 公共 API 出口
-demo-host.ts      # 启动演示入口
-test/             # 单元测试（node:test）
+orbit-agent-runtime/
+├── packages/
+│   ├── infra-common/      # @orbit/infra-common —— 领域契约/纯工具/异常（types·utils·core）
+│   ├── core-hub/          # @orbit/core-hub —— 通道/网关/replay/trace/pact/safeguard/routing
+│   ├── sandbox-runtime/   # @orbit/sandbox-runtime —— 沙箱/影响域图/隔离域
+│   └── pae-engine/        # @orbit/pae-engine —— 插件适配引擎（JS/MCP/OpenAPI/Cordis）
+├── src/                   # 根宿主（core/orbitRuntimeHost.ts + index.ts 门面，公共 API 不变）
+├── test/                  # 内核单元测试（node:test）
+├── demo-host.ts           # 启动演示入口
+└── web/                   # 零依赖管理控制台（bridge + SPA）
 ```
+
+依赖分层无环：`infra-common → core-hub → {sandbox-runtime, pae-engine} → host`。
 
 ## 核心概念
 

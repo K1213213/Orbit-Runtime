@@ -8,8 +8,8 @@
  * Run: npm run demo:replay
  */
 import { OrbitRuntimeHost } from "./src/core/orbitRuntimeHost";
-import { ReplayEngine } from "./src/replay/replay_engine";
-import { AgentBoxConfig } from "./src/types/orbitDomain";
+import { ReplayEngine } from "@orbit/core-hub";
+import { AgentBoxConfig } from "@orbit/infra-common";
 
 const CYCLES = ["tell me a joke", "what is orbit", "explain a capability channel"];
 

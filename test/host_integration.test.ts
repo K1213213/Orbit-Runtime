@@ -1,8 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { OrbitRuntimeHost } from "../src/core/orbitRuntimeHost";
-import { BudgetExhaustedError } from "../src/core/orbitDomainError";
-import { ChannelKind } from "../src/types/orbitDomain";
+import { BudgetExhaustedError } from "@orbit/infra-common";
+import { ChannelKind } from "@orbit/infra-common";
 
 test("host: full lifecycle, plugin register and capability gate", async () => {
   const host = new OrbitRuntimeHost();

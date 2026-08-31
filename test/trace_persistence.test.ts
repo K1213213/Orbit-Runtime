@@ -3,11 +3,11 @@ import assert from "node:assert/strict";
 import { promises as fs } from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { RecordJournal } from "../src/replay/record_journal";
-import { ReplayEngine } from "../src/replay/replay_engine";
-import { saveRecordJournal, loadRecordJournal, TraceFileInvalidError } from "../src/replay/persistence";
-import { digestInputs } from "../src/utils/digest";
-import { ChannelKind } from "../src/types/orbitDomain";
+import { RecordJournal } from "@orbit/core-hub";
+import { ReplayEngine } from "@orbit/core-hub";
+import { saveRecordJournal, loadRecordJournal, TraceFileInvalidError } from "@orbit/core-hub";
+import { digestInputs } from "@orbit/infra-common";
+import { ChannelKind } from "@orbit/infra-common";
 
 async function tempTracePath(name: string): Promise<string> {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), "orbit-trace-"));

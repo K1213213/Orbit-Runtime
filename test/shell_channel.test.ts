@@ -3,9 +3,9 @@ import assert from "node:assert/strict";
 import { promises as fs } from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { ShellChannel } from "../src/channel/providers/ShellChannel";
-import { ChannelCallFaultError } from "../src/core/orbitDomainError";
-import type { ChannelCallCtx } from "../src/types/orbitDomain";
+import { ShellChannel } from "@orbit/core-hub";
+import { ChannelCallFaultError } from "@orbit/infra-common";
+import type { ChannelCallCtx } from "@orbit/infra-common";
 
 const NODE = process.execPath;
 

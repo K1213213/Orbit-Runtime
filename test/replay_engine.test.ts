@@ -1,12 +1,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { SeededRng, FixedClock } from "../src/replay/injectors";
-import { RecordJournal } from "../src/replay/record_journal";
-import { ReplayEngine, ReplayDriftError } from "../src/replay/replay_engine";
-import { digestInputs } from "../src/utils/digest";
-import { ChannelHub } from "../src/channel/ChannelHub";
-import { LlmMockChannel } from "../src/channel/providers/LlmMockChannel";
-import { ChannelKind, ChannelCallCtx } from "../src/types/orbitDomain";
+import { SeededRng, FixedClock } from "@orbit/core-hub";
+import { RecordJournal } from "@orbit/core-hub";
+import { ReplayEngine, ReplayDriftError } from "@orbit/core-hub";
+import { digestInputs } from "@orbit/infra-common";
+import { ChannelHub } from "@orbit/core-hub";
+import { LlmMockChannel } from "@orbit/core-hub";
+import { ChannelKind, ChannelCallCtx } from "@orbit/infra-common";
 
 function makeCtx(overrides: Partial<ChannelCallCtx> = {}): ChannelCallCtx {
   return { traceMarkId: "t-1", maxWaitMs: 5000, ...overrides };

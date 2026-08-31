@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { CostRouter } from "../src/routing/cost_routing";
-import { ChannelKind } from "../src/types/orbitDomain";
+import { CostRouter } from "@orbit/core-hub";
+import { ChannelKind } from "@orbit/infra-common";
 
 test("choose: picks the cheapest fitting channel", () => {
   const router = new CostRouter();

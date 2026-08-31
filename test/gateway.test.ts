@@ -19,7 +19,7 @@ import {
   ReplayDriftError,
   isCompressedPayload
 } from "../src/index";
-import type { GatewayCheckers } from "../src/gateway/types";
+import type { GatewayCheckers } from "@orbit/core-hub";
 
 function makeHost(): OrbitRuntimeHost {
   const host = new OrbitRuntimeHost();

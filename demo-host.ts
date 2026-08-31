@@ -13,8 +13,8 @@
  * Run: npm run demo
  */
 import { OrbitRuntimeHost } from "./src/core/orbitRuntimeHost";
-import { ChannelKind, ChannelCallCtx, AgentBoxConfig, PluginUnitPact } from "./src/types/orbitDomain";
-import { makeUniqueMark } from "./src/utils/versionIdGen";
+import { ChannelKind, ChannelCallCtx, AgentBoxConfig, PluginUnitPact } from "@orbit/infra-common";
+import { makeUniqueMark } from "@orbit/infra-common";
 
 async function main(): Promise<void> {
   console.log("=== Orbit Agent Runtime · demo ===");

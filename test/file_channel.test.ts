@@ -3,9 +3,9 @@ import assert from "node:assert/strict";
 import { promises as fs } from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { FileChannel } from "../src/channel/providers/FileChannel";
-import { ChannelCallFaultError } from "../src/core/orbitDomainError";
-import type { ChannelCallCtx } from "../src/types/orbitDomain";
+import { FileChannel } from "@orbit/core-hub";
+import { ChannelCallFaultError } from "@orbit/infra-common";
+import type { ChannelCallCtx } from "@orbit/infra-common";
 
 function makeCtx(): ChannelCallCtx {
   return { traceMarkId: "t-file", maxWaitMs: 5000 };

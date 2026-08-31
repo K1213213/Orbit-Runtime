@@ -22,14 +22,14 @@ import { extname, join, normalize, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { OrbitRuntimeHost } from "../dist/src/core/orbitRuntimeHost.js";
-import { ChannelKind } from "../dist/src/types/orbitDomain.js";
-import { RecordJournal } from "../dist/src/replay/record_journal.js";
-import { ReplayEngine } from "../dist/src/replay/replay_engine.js";
-import { DeepSeekChannel } from "../dist/src/channel/providers/openai_compat_channel.js";
+import { ChannelKind } from "../packages/infra-common/dist/types/orbitDomain.js";
+import { RecordJournal } from "../packages/core-hub/dist/replay/record_journal.js";
+import { ReplayEngine } from "../packages/core-hub/dist/replay/replay_engine.js";
+import { DeepSeekChannel } from "../packages/core-hub/dist/channel/providers/openai_compat_channel.js";
 import { createHash, randomUUID, scryptSync, timingSafeEqual } from "node:crypto";
 import { AsyncLocalStorage } from "node:async_hooks";
-import { JsPaeAdapter } from "../dist/src/pae/adapters/JsPaeAdapter.js";
-import { SeededRng } from "../dist/src/replay/injectors.js";
+import { JsPaeAdapter } from "../packages/pae-engine/dist/pae/adapters/JsPaeAdapter.js";
+import { SeededRng } from "../packages/core-hub/dist/replay/injectors.js";
 import {
   PAE_TEMPLATES,
   describePaeTool,
@@ -50,9 +50,9 @@ import {
   topoOrder,
   evalBranch
 } from "./public/kb.js";
-import { KERNEL_VERSION } from "../dist/src/utils/versionIdGen.js";
-import { McpPaeAdapter } from "../dist/src/pae/adapters/mcp/McpPaeAdapter.js";
-import { StdioMcpTransport } from "../dist/src/pae/adapters/mcp/transport.js";
+import { KERNEL_VERSION } from "../packages/infra-common/dist/utils/versionIdGen.js";
+import { McpPaeAdapter } from "../packages/pae-engine/dist/pae/adapters/mcp/McpPaeAdapter.js";
+import { StdioMcpTransport } from "../packages/pae-engine/dist/pae/adapters/mcp/transport.js";
 
 const __dirname = fileURLToPath(new URL(".", import.meta.url));
 const PUBLIC_DIR = join(__dirname, "public");

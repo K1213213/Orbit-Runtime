@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { TripProtector } from "../src/safeguard/TripProtector";
-import { TripState } from "../src/types/orbitDomain";
+import { TripProtector } from "@orbit/core-hub";
+import { TripState } from "@orbit/infra-common";
 
 test("连续失败达到阈值触发跳闸并快速拦截", async () => {
   const trip = new TripProtector(2, 10000);

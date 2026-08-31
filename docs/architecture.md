@@ -134,3 +134,21 @@ AgentSandbox ──② fireChannelCall(LLM_ACCESS, ctx)──► ChannelHub
 - 影响域图基于静态声明（`declareChannelDeps` / `channelDeps`）构建，运行时动态依赖暂不自动发现；
 - 成本路由当前是单能力多候选的最小闭环，多模型市场 / 跨通道竞价是自然扩展方向；
 - 真实 LLM 通道（STOCHASTIC）的种子注入契约已就绪，等待第一个真实 provider 落地验证。
+
+## 8. 仓库结构（Monorepo / 抽包）
+
+内核从单一 `src/` 树重构为 npm workspaces + TypeScript Project References 四包，
+公共 API（`src/index.ts`）保持不变，拆分仅在内核内部。
+
+| 包 | 路径 | 职责 | 依赖 |
+|---|---|---|---|
+| `@orbit/infra-common` | `packages/infra-common` | 领域契约 / 纯工具 / 异常体系（`types`·`utils`·`core`） | — |
+| `@orbit/core-hub` | `packages/core-hub` | 通道 / 网关 / replay / trace / pact / safeguard / routing | infra-common |
+| `@orbit/sandbox-runtime` | `packages/sandbox-runtime` | 沙箱 / 影响域图 / 隔离域 | infra-common, core-hub |
+| `@orbit/pae-engine` | `packages/pae-engine` | 插件适配引擎（JS / MCP / OpenAPI / Cordis） | infra-common, core-hub |
+| 宿主（root） | `src/`（`core/orbitRuntimeHost.ts` + `index.ts`） | 组件装配与门面 | 全部包 |
+
+依赖分层无环：`infra-common → core-hub → { sandbox-runtime, pae-engine } → host`。
+各包 `composite: true` 且 `references` 指向依赖，`tsc -b` 自底向上构建；跨包导入一律
+走 `@orbit/*` 限定符，`npm install` 经 `node_modules/@orbit/*` 符号链接接包。抽包期间
+公共 API 与重放契约零回归（290 内核测试 + 89 前端测试全绿）。

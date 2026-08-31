@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { TraceJournal } from "../src/trace/TraceJournal";
-import { PluginSandboxGuard } from "../src/safeguard/PluginSandboxGuard";
+import { TraceJournal } from "@orbit/core-hub";
+import { PluginSandboxGuard } from "@orbit/core-hub";
 
 test("runPluginSafe: failure is isolated, journaled and rethrown", async () => {
   const journal = new TraceJournal();

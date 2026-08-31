@@ -1,9 +1,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { RateLimiter, DEFAULT_RATE_LIMIT_CONFIG } from "../src/gateway/RateLimiter";
-import { BehaviorCollector } from "../src/gateway/BehaviorCollector";
-import type { BehaviorNote } from "../src/types/orbitDomain";
-import type { GatewayCallRecord } from "../src/replay/record_journal";
+import { RateLimiter, DEFAULT_RATE_LIMIT_CONFIG } from "@orbit/core-hub";
+import { BehaviorCollector } from "@orbit/core-hub";
+import type { BehaviorNote } from "@orbit/infra-common";
+import type { GatewayCallRecord } from "@orbit/core-hub";
 
 // ---------------------------------------------------------------------------
 // RateLimiter (W11): pure, deterministic, replay-safe call-count budget

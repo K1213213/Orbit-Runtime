@@ -5,7 +5,7 @@ import {
   OpenAICompatChannel,
   LlmChannelFaultError,
   isRetryableLlmFault
-} from "../src/channel/providers/openai_compat_channel";
+} from "@orbit/core-hub";
 
 interface RecordedCall {
   url: string;

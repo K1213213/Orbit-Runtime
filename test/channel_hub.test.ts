@@ -1,9 +1,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { ChannelHub } from "../src/channel/ChannelHub";
-import { MemoryKvChannel } from "../src/channel/providers/MemoryKvChannel";
-import { LlmMockChannel } from "../src/channel/providers/LlmMockChannel";
-import { ChannelKind, ChannelCallCtx, DeterminismLevel } from "../src/types/orbitDomain";
+import { ChannelHub } from "@orbit/core-hub";
+import { MemoryKvChannel } from "@orbit/core-hub";
+import { LlmMockChannel } from "@orbit/core-hub";
+import { ChannelKind, ChannelCallCtx, DeterminismLevel } from "@orbit/infra-common";
 
 function makeCtx(overrides: Partial<ChannelCallCtx> = {}): ChannelCallCtx {
   return { traceMarkId: "t-1", maxWaitMs: 1000, ...overrides };

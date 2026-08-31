@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { ImpactDomainGraph } from "../src/graph/impact_domain";
+import { ImpactDomainGraph } from "@orbit/sandbox-runtime";
 
 test("closure: failure impact follows reverse edges (who depends on it)", () => {
   const g = new ImpactDomainGraph();

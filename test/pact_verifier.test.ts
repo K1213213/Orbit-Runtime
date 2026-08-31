@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { PluginPactVerifier } from "../src/pact/PluginPactVerifier";
-import { PluginUnitPact } from "../src/types/orbitDomain";
+import { PluginPactVerifier } from "@orbit/core-hub";
+import { PluginUnitPact } from "@orbit/infra-common";
 
 const base: PluginUnitPact = {
   id: "p1",

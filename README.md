@@ -163,6 +163,30 @@ npm run build
 node web/bridge-server.mjs        # http://127.0.0.1:8899
 ```
 
+## Repository layout (monorepo)
+
+The kernel is organised as npm workspaces with TypeScript Project References, so
+each layer builds, versions and tests in isolation while the public API at
+`src/index.ts` stays unchanged.
+
+| Package | Path | Responsibility | Depends on |
+|---|---|---|---|
+| `@orbit/infra-common` | `packages/infra-common` | Domain contracts, pure utils, error types | — |
+| `@orbit/core-hub` | `packages/core-hub` | Channel / gateway / replay / trace / pact / safeguard / routing | infra-common |
+| `@orbit/sandbox-runtime` | `packages/sandbox-runtime` | Agent sandboxes, impact-domain graph, isolation domains | infra-common, core-hub |
+| `@orbit/pae-engine` | `packages/pae-engine` | Plugin Adaptation Engine (JS / MCP / OpenAPI / Cordis) | infra-common, core-hub |
+| root host | `src/` (`core/orbitRuntimeHost.ts`, `index.ts`) | Component assembly & facade | all packages |
+
+Build and test from the repo root — `npm install` wires the `@orbit/*` workspace
+symlinks, then `tsc -b` builds bottom-up:
+
+```bash
+npm install          # dev deps + workspace links
+npm run build        # tsc -b across all packages and the root
+npm test             # build + kernel unit tests (node:test)
+npm run test:console # web console unit tests (node:test)
+```
+
 ## Getting started — the deterministic-replay loop
 
 The headline feature is *reproducibility*: record a real run, replay it with
@@ -204,8 +228,8 @@ under ten minutes. Every command accepts `--json` for machine-readable output.
 ### Lower-level API & demos
 
 ```bash
-npm test               # build + run kernel unit tests (node:test) — 205 cases
-npm run test:console   # web console unit tests (node:test) — 49 cases
+npm test               # build + run kernel unit tests (node:test) — 290 cases
+npm run test:console   # web console unit tests (node:test) — 89 cases
 npm run demo           # build + run demo-host.ts (full lifecycle demo)
 npm run demo:replay    # deterministic replay: ~1s real run replayed in ~2ms
 ```

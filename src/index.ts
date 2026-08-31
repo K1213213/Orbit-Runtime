@@ -1,55 +1,55 @@
 /** Public API surface of Orbit Agent Runtime. */
 
 export { OrbitRuntimeHost } from "./core/orbitRuntimeHost";
-export { ChannelHub } from "./channel/ChannelHub";
-export type { CapabilityGate } from "./channel/ChannelHub";
-export type { IChannelProvider } from "./channel/IChannelProvider";
-export { MemoryKvChannel } from "./channel/providers/MemoryKvChannel";
-export { LlmMockChannel } from "./channel/providers/LlmMockChannel";
-export { OpenAICompatChannel, DeepSeekChannel, LlmChannelFaultError, isRetryableLlmFault } from "./channel/providers/openai_compat_channel";
+export { ChannelHub } from "@orbit/core-hub";
+export type { CapabilityGate } from "@orbit/core-hub";
+export type { IChannelProvider } from "@orbit/core-hub";
+export { MemoryKvChannel } from "@orbit/core-hub";
+export { LlmMockChannel } from "@orbit/core-hub";
+export { OpenAICompatChannel, DeepSeekChannel, LlmChannelFaultError, isRetryableLlmFault } from "@orbit/core-hub";
 export type {
   OpenAICompatChannelConfig,
   DeepSeekChannelConfig,
   ChatMessage,
   ChatRoundOptions,
   LlmFaultKind
-} from "./channel/providers/openai_compat_channel";
-export { FileChannel } from "./channel/providers/FileChannel";
-export type { FileChannelConfig, FileStatInfo } from "./channel/providers/FileChannel";
-export { ShellChannel } from "./channel/providers/ShellChannel";
-export type { ShellChannelConfig, ShellExecResult } from "./channel/providers/ShellChannel";
-export { PluginPactVerifier } from "./pact/PluginPactVerifier";
-export { TripProtector } from "./safeguard/TripProtector";
-export type { TripSnapshot } from "./safeguard/TripProtector";
-export { PluginSandboxGuard } from "./safeguard/PluginSandboxGuard";
-export { TraceJournal } from "./trace/TraceJournal";
-export { AgentSandbox } from "./sandbox/AgentSandbox";
-export { SandboxPool } from "./sandbox/SandboxPool";
+} from "@orbit/core-hub";
+export { FileChannel } from "@orbit/core-hub";
+export type { FileChannelConfig, FileStatInfo } from "@orbit/core-hub";
+export { ShellChannel } from "@orbit/core-hub";
+export type { ShellChannelConfig, ShellExecResult } from "@orbit/core-hub";
+export { PluginPactVerifier } from "@orbit/core-hub";
+export { TripProtector } from "@orbit/core-hub";
+export type { TripSnapshot } from "@orbit/core-hub";
+export { PluginSandboxGuard } from "@orbit/core-hub";
+export { TraceJournal } from "@orbit/core-hub";
+export { AgentSandbox } from "@orbit/sandbox-runtime";
+export { SandboxPool } from "@orbit/sandbox-runtime";
 
-export { SeededRng, FixedClock, SYSTEM_RNG, SYSTEM_CLOCK } from "./replay/injectors";
-export { RecordJournal } from "./replay/record_journal";
-export type { ReplayCallRecord } from "./replay/record_journal";
-export { ReplayEngine, ReplayDriftError } from "./replay/replay_engine";
-export type { ReconcileReport } from "./replay/replay_engine";
-export { saveRecordJournal, loadRecordJournal, TraceFileInvalidError } from "./replay/persistence";
-export type { ChannelRuntimeMeta } from "./replay/determinism";
+export { SeededRng, FixedClock, SYSTEM_RNG, SYSTEM_CLOCK } from "@orbit/core-hub";
+export { RecordJournal } from "@orbit/core-hub";
+export type { ReplayCallRecord } from "@orbit/core-hub";
+export { ReplayEngine, ReplayDriftError } from "@orbit/core-hub";
+export type { ReconcileReport } from "@orbit/core-hub";
+export { saveRecordJournal, loadRecordJournal, TraceFileInvalidError } from "@orbit/core-hub";
+export type { ChannelRuntimeMeta } from "@orbit/core-hub";
 
 // W7: unified gateway entry (determinism boundary) + its decision types.
 // GatewayDecision / RunVersionFingerprint are re-exported from types/orbitDomain.
-export { CapabilityGateway } from "./gateway/CapabilityGateway";
-export type { GatewayInvokeParams } from "./gateway/CapabilityGateway";
-export { RunFingerprintDriftError, DecisionDriftError } from "./gateway/types";
-export type { GatewayCheckers } from "./gateway/types";
-export type { GatewayCallRecord } from "./replay/record_journal";
+export { CapabilityGateway } from "@orbit/core-hub";
+export type { GatewayInvokeParams } from "@orbit/core-hub";
+export { RunFingerprintDriftError, DecisionDriftError } from "@orbit/core-hub";
+export type { GatewayCheckers } from "@orbit/core-hub";
+export type { GatewayCallRecord } from "@orbit/core-hub";
 
 // W8: pure-function token budget + context compressor.
-export { TokenBudgetEngine, DEFAULT_TOKEN_BUDGET_CONFIG, compressPayload, decompressPayload, isCompressedPayload, packSnapshot } from "./gateway/TokenBudgetEngine";
+export { TokenBudgetEngine, DEFAULT_TOKEN_BUDGET_CONFIG, compressPayload, decompressPayload, isCompressedPayload, packSnapshot } from "@orbit/core-hub";
 // W11: pure-function rate limiter + three-mode behavior collector.
-export { RateLimiter, DEFAULT_RATE_LIMIT_CONFIG } from "./gateway/RateLimiter";
-export type { RateLimitConfig } from "./gateway/RateLimiter";
-export { BehaviorCollector } from "./gateway/BehaviorCollector";
-export type { CollectorPhase } from "./gateway/BehaviorCollector";
-// BehaviorNote is exported via `export * from "./types/orbitDomain"` below.
+export { RateLimiter, DEFAULT_RATE_LIMIT_CONFIG } from "@orbit/core-hub";
+export type { RateLimitConfig } from "@orbit/core-hub";
+export { BehaviorCollector } from "@orbit/core-hub";
+export type { CollectorPhase } from "@orbit/core-hub";
+// BehaviorNote is exported via `export * from "@orbit/infra-common"` below.
 export type {
   TokenBudgetConfig,
   CompressionLevel,
@@ -57,28 +57,29 @@ export type {
   CompressResult,
   BudgetDecision,
   CompressedPayload
-} from "./gateway/TokenBudgetEngine";
+} from "@orbit/core-hub";
 
 // W15: PAE — the plugin adaptation engine (foreign runtimes as channels).
-export { PaeAdapterRegistry } from "./pae/PaeAdapterRegistry";
-export type { PaeToolBinding } from "./pae/PaeAdapterRegistry";
-export { PaeChannel } from "./pae/PaeChannel";
-export { JsPaeAdapter } from "./pae/adapters/JsPaeAdapter";
-export type { JsPaeAdapterConfig, JsToolSpec } from "./pae/adapters/JsPaeAdapter";
+export { PaeAdapterRegistry } from "@orbit/pae-engine";
+export type { PaeToolBinding } from "@orbit/pae-engine";
+export { PaeChannel } from "@orbit/pae-engine";
+export { JsPaeAdapter } from "@orbit/pae-engine";
+export type { JsPaeAdapterConfig, JsToolSpec } from "@orbit/pae-engine";
 // W16: MCP — the first adapter family that crosses a process boundary.
-export { McpPaeAdapter, MCP_DEFAULT_FIDELITY_NOTE } from "./pae/adapters/mcp/McpPaeAdapter";
-export type { McpPaeAdapterConfig, McpToolOverride } from "./pae/adapters/mcp/McpPaeAdapter";
-export { InMemoryMcpTransport, StdioMcpTransport, unwrapResponse } from "./pae/adapters/mcp/transport";
-export type { IMcpTransport, McpRequestHandler, StdioMcpTransportConfig } from "./pae/adapters/mcp/transport";
+export { McpPaeAdapter, MCP_DEFAULT_FIDELITY_NOTE } from "@orbit/pae-engine";
+export type { McpPaeAdapterConfig, McpToolOverride } from "@orbit/pae-engine";
+export { InMemoryMcpTransport, StdioMcpTransport, unwrapResponse } from "@orbit/pae-engine";
+export type { IMcpTransport, McpRequestHandler, StdioMcpTransportConfig } from "@orbit/pae-engine";
 export {
   MCP_PROTOCOL_VERSION,
   decodeJsonRpc,
   encodeJsonRpc,
   isJsonRpcResponse,
   isRemoteToolError,
+  jsonRpcRemoteErrorOf,
   normaliseToolResult,
   parseToolList
-} from "./pae/adapters/mcp/protocol";
+} from "@orbit/pae-engine";
 export type {
   JsonRpcErrorObject,
   JsonRpcMessage,
@@ -87,34 +88,34 @@ export type {
   JsonRpcResponse,
   McpToolDefinition,
   NormalisedToolResult
-} from "./pae/adapters/mcp/protocol";
+} from "@orbit/pae-engine";
 // W17: OpenAPI — maps a foreign REST API onto the capability contract.
-export { OpenApiPaeAdapter, OPENAPI_DEFAULT_FIDELITY_NOTE } from "./pae/adapters/openapi/OpenApiPaeAdapter";
-export type { OpenApiPaeAdapterConfig, OpenApiOperationOverride } from "./pae/adapters/openapi/OpenApiPaeAdapter";
-export { InMemoryHttpTransport, FetchHttpTransport } from "./pae/adapters/openapi/transport";
+export { OpenApiPaeAdapter, OPENAPI_DEFAULT_FIDELITY_NOTE } from "@orbit/pae-engine";
+export type { OpenApiPaeAdapterConfig, OpenApiOperationOverride } from "@orbit/pae-engine";
+export { InMemoryHttpTransport, FetchHttpTransport } from "@orbit/pae-engine";
 export type {
   IHttpTransport,
   HttpRequest,
   HttpResponse,
   HttpHandler,
   FetchHttpTransportOptions
-} from "./pae/adapters/openapi/transport";
-export { parseOpenApiDocument, buildHttpRequest, normaliseHttpResponse, isHttpSuccess, bodyTail } from "./pae/adapters/openapi/spec";
+} from "@orbit/pae-engine";
+export { parseOpenApiDocument, buildHttpRequest, normaliseHttpResponse, isHttpSuccess, bodyTail } from "@orbit/pae-engine";
 export type {
   OpenApiOperation,
   OpenApiParameter,
   ParsedOpenApiDocument,
   NormalisedHttpResponse
-} from "./pae/adapters/openapi/spec";
+} from "@orbit/pae-engine";
 // W18: Cordis — a host-defined protocol to an isolated plugin instance (L2).
-export { CordisPaeAdapter, CORDIS_DEFAULT_FIDELITY_NOTE } from "./pae/adapters/cordis/CordisPaeAdapter";
-export type { CordisPaeAdapterConfig, CordisToolOverride } from "./pae/adapters/cordis/CordisPaeAdapter";
-export { InMemoryCordisTransport, ChildProcessCordisTransport, unwrapCordisResponse } from "./pae/adapters/cordis/transport";
+export { CordisPaeAdapter, CORDIS_DEFAULT_FIDELITY_NOTE } from "@orbit/pae-engine";
+export type { CordisPaeAdapterConfig, CordisToolOverride } from "@orbit/pae-engine";
+export { InMemoryCordisTransport, ChildProcessCordisTransport, unwrapCordisResponse } from "@orbit/pae-engine";
 export type {
   ICordisTransport,
   CordisRequestHandler,
   ChildProcessCordisTransportConfig
-} from "./pae/adapters/cordis/transport";
+} from "@orbit/pae-engine";
 export {
   CORDIS_PROTOCOL_VERSION,
   decodeFrame,
@@ -122,37 +123,41 @@ export {
   isCordisResponse,
   normaliseCordisToolResult,
   parseCordisToolList,
-  remoteErrorOf
-} from "./pae/adapters/cordis/protocol";
+  cordisRemoteErrorOf,
+  // Back-compatible alias: `remoteErrorOf` was the Cordis-specific helper
+  // before the protocol families were given qualified names at the package
+  // boundary. Kept so 0.2.x consumers do not break on the rename.
+  cordisRemoteErrorOf as remoteErrorOf
+} from "@orbit/pae-engine";
 export type {
   CordisErrorObject,
   CordisRequest,
   CordisResponse,
   CordisToolDefinition,
   NormalisedCordisResult
-} from "./pae/adapters/cordis/protocol";
+} from "@orbit/pae-engine";
 // W19: isolation domains — graph-driven L2 subprocess allocation (VISION 2.3).
 export {
   allocateDomains,
   impactClosureSizes
-} from "./sandbox/domains/allocate";
+} from "@orbit/sandbox-runtime";
 export type {
   AllocateOptions,
   DomainIsolationLevel,
   IsolationDomainPlan,
   IsolationDomainSpec
-} from "./sandbox/domains/allocate";
-export { IsolationDomain } from "./sandbox/domains/IsolationDomain";
-export type { DomainHostInfo, DomainInvokeCtx, IsolationDomainConfig } from "./sandbox/domains/IsolationDomain";
-export { IsolationDomainManager } from "./sandbox/domains/IsolationDomainManager";
-export type { DomainTransportFactory, IsolationDomainManagerOptions } from "./sandbox/domains/IsolationDomainManager";
-export { DomainChannel } from "./sandbox/domains/DomainChannel";
-export { InMemoryDomainTransport, ChildProcessDomainTransport, unwrapDomainResponse } from "./sandbox/domains/transport";
+} from "@orbit/sandbox-runtime";
+export { IsolationDomain } from "@orbit/sandbox-runtime";
+export type { DomainHostInfo, DomainInvokeCtx, IsolationDomainConfig } from "@orbit/sandbox-runtime";
+export { IsolationDomainManager } from "@orbit/sandbox-runtime";
+export type { DomainTransportFactory, IsolationDomainManagerOptions } from "@orbit/sandbox-runtime";
+export { DomainChannel } from "@orbit/sandbox-runtime";
+export { InMemoryDomainTransport, ChildProcessDomainTransport, unwrapDomainResponse } from "@orbit/sandbox-runtime";
 export type {
   IDomainTransport,
   DomainRequestHandler,
   ChildProcessDomainTransportConfig
-} from "./sandbox/domains/transport";
+} from "@orbit/sandbox-runtime";
 export {
   DOMAIN_PROTOCOL_VERSION,
   decodeDomainFrame,
@@ -161,7 +166,7 @@ export {
   normaliseDomainResult,
   parseUnitList,
   domainRemoteErrorOf
-} from "./sandbox/domains/protocol";
+} from "@orbit/sandbox-runtime";
 export type {
   DomainErrorObject,
   DomainRequest,
@@ -169,9 +174,9 @@ export type {
   DomainToolDefinition,
   DomainUnitDefinition,
   NormalisedDomainResult
-} from "./sandbox/domains/protocol";
-export { DOMAIN_HOST_SHIM, DOMAIN_HOST_VERSION } from "./sandbox/domains/hostShim";
-export { DomainRemoteError, DomainUnitMissingError } from "./sandbox/domains/errors";
+} from "@orbit/sandbox-runtime";
+export { DOMAIN_HOST_SHIM, DOMAIN_HOST_VERSION } from "@orbit/sandbox-runtime";
+export { DomainRemoteError, DomainUnitMissingError } from "@orbit/sandbox-runtime";
 // W20: cross-domain transactions — decision + execution + result + audit.
 export {
   beginTransaction,
@@ -181,7 +186,7 @@ export {
   settleTransaction,
   ledgerHash as domainLedgerHash,
   stableHash
-} from "./sandbox/domains/transaction";
+} from "@orbit/sandbox-runtime";
 export type {
   BeginTransactionInput,
   DomainPairBalance,
@@ -190,14 +195,14 @@ export type {
   DomainTxnDecision,
   DomainTxnState,
   SettlementOutcome
-} from "./sandbox/domains/transaction";
+} from "@orbit/sandbox-runtime";
 export {
   PaeAdapterRejectError,
   PaeToolMissingError,
   PaeFidelityRejectError,
   PaeRemoteError,
   FIDELITY_RANK
-} from "./pae/types";
+} from "@orbit/pae-engine";
 export type {
   IPaeAdapter,
   PaeAdapterKind,
@@ -206,14 +211,14 @@ export type {
   PaeInvokeCtx,
   PaeIsolationLevel,
   PaeToolDescriptor
-} from "./pae/types";
+} from "@orbit/pae-engine";
 
-export { ImpactDomainGraph } from "./graph/impact_domain";
-export { CostRouter } from "./routing/cost_routing";
-export type { ChannelCostMeta } from "./routing/cost_routing";
+export { ImpactDomainGraph } from "@orbit/sandbox-runtime";
+export { CostRouter } from "@orbit/core-hub";
+export type { ChannelCostMeta } from "@orbit/core-hub";
 
-export { digestInputs } from "./utils/digest";
+export { digestInputs } from "@orbit/infra-common";
 
-export * from "./types/orbitDomain";
-export * from "./core/orbitDomainError";
-export * from "./utils/versionIdGen";
+export * from "@orbit/infra-common";
+export * from "@orbit/infra-common";
+export * from "@orbit/infra-common";

@@ -32,7 +32,7 @@ Orbit Agent Runtime is a lightweight, dependency-free runtime host for plugin-ba
 - **Payload-aware storage compression (W9)** — large recorded outputs are transparently `deflate`-compressed at rest via `packSnapshot` (zero external deps), while the consumer always receives the original value and replay reproduces it byte-for-byte; the `compression` decision (`level` / `applied` / `bytesSaved`) is recorded for audit
 - **Rate limiting + behavior collector (W11)** — `RateLimiter` is a pure-function (no `Math.random`/`Date.now`) call-count budget; the `rateLimited` decision is recorded and replayed verbatim (the limiter is bypassed on replay). `BehaviorCollector` captures a structured `BehaviorNote` in three modes — `record` (persisted on the trace), `live` (proposal, not persisted), `replay` (bypass)
 - **Three-way drift classification (W13)** — replay failures are reported as distinct errors: config drift (`RunFingerprintDriftError`, version/fingerprint), decision drift (`DecisionDriftError`, e.g. a revoked pact), and call drift (`ReplayDriftError`, data/signature). Reconciliation also reports `decisionDriftFields`
-- **`replay_compat` determinism gate (W12)** — a 7-case CI gate proves the gateway boundary stays faithful under compression / rate-limit / collector / fingerprint-drift / decision-drift: every decision is recorded and replayed byte-identically
+- **`replay_compat` determinism gate (W12)** — a 27-case CI gate proves the gateway boundary stays faithful under compression / rate-limit / collector / fingerprint-drift / decision-drift / PAE adapters / durable WAL windows: every decision is recorded and replayed byte-identically
 - **Plugin Adaptation Engine (W15)** — foreign runtimes (in-process JS, and later MCP / OpenAPI / Cordis) are mapped onto the kernel capability contract through adapters that surface as a single capability channel; every foreign call is a gateway transaction, recorded and replayed byte-identically. Fidelity is negotiated honestly (`full | reduced | lossy`), and the adapter surface is hashed into the run fingerprint for drift detection
 - **Isolation domains (W19)** — the impact graph allocates the physical layer: a unit whose failure closure exceeds the threshold gets its own L2 child process (`iso:<unit>`), the rest share deterministic chunks (`shared:<n>`). The sync is a diff, not a rebuild, and domains are published as one capability channel, so a domain call is recorded and replayed byte-identically
 - **Cross-domain transactions (W20)** — every hop between domains is an atomic gateway transaction: `decision (assignment / isolation) + execution + result + audit`, settled in a ledger that reconciles by (source → target) pair. Orphans (a hop that crossed a boundary and never settled) and refusals are both detectable from the records alone; replay injects the frozen output without re-entering the domain
@@ -42,18 +42,14 @@ Orbit Agent Runtime is a lightweight, dependency-free runtime host for plugin-ba
 ## Architecture
 
 ```
-types (domain contracts)
-   ↓
-utils (version parsing / ID generation)
-   ↓
-core (domain errors)
-   ↓
-channel (capability channel layer)   pact (plugin pact layer)
-safeguard (trip protection layer)    trace (trace journal layer)
-   ↓
-sandbox (agent sandbox layer)
-   ↓
-runtime_host (top-level host)
+@orbit/infra-common      domain contracts · version parsing · domain errors
+        ↓
+@orbit/core-hub          channel · gateway (capabilityInvoke) · replay · trace
+        ↓
+@orbit/sandbox-runtime   sandbox · impact graph · isolation domains
+@orbit/pae-engine        plugin adaptation engine (JS / MCP / OpenAPI / Cordis)
+        ↓
+host (src/)              assembly & facade (OrbitRuntimeHost)
 ```
 
 📐 Detailed diagrams & design rationale: [docs/architecture.md](./docs/architecture.md) · [architecture.svg](./docs/architecture.svg)
@@ -338,7 +334,7 @@ Env overrides: `ORBIT_LLM_BASE_URL` / `ORBIT_LLM_API_KEY` / `ORBIT_LLM_MODEL`,
 > providers, credentials or tools. See [docs/guide.md](./docs/guide.md) to
 > write your own replayable channel.
 
-## Repository layout
+## Admin console workspace
 
 The kernel is split into npm workspaces — see
 [Repository layout (monorepo)](#repository-layout-monorepo) above for the package

@@ -143,7 +143,7 @@ export function buildIndex(chunks) {
 
 /**
  * BM25 检索。返回按分数降序的前 k 条 [{ chunkIndex, score }]。
- * k1/bm25 采用常见默认 (1.2, 0.75)；分数只由语料与查询决定。
+ * k1/b 采用常见默认 (1.2, 0.75)；分数只由语料与查询决定。
  */
 export function searchIndex(index, query, k = 5) {
   if (!index || index.total === 0) return [];

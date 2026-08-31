@@ -3,8 +3,9 @@ import type { GatewayCallRecord } from "../replay/record_journal";
 
 /**
  * Behavior collector (W11) — captures a structured `BehaviorNote` for each
- * governed call. Three modes, exactly mirroring the governance profiles in
- * VISION §3.1:
+ * governed call. Three modes (note: these are the collector's record/live/replay
+ * trinity, not the governance profiles of VISION §3.1, which are a separate
+ * design goal):
  *
  * - **record** — the call is being journaled; the note is attached to the
  *   `GatewayCallRecord` (persisted with the trace) for audit / replay.

@@ -55,7 +55,14 @@
 
 核心原则：**底线强制（权限 / 熔断 / 审计永不动摇），增强可选（Schema / 压缩 / 保真度可协商）**。
 
-### 3.1 四档治理模式
+### 3.1 四档治理模式（设计目标）
+
+> **状态标注（v0.4.0）**：下表是**治理档位的设计目标与演进方向**，尚未落地为可切换的
+> profile 选择器。当前内核实现的是**统一默认档**：限流恒为
+> `maxCallsPerWindow:100 / windowSizeCalls:100`（`core-hub/gateway/RateLimiter.ts`），
+> 熔断阈值恒为 `max(2, 5 - outDegree)`（`orbitRuntimeHost.ts`），压缩始终开启；
+> "旁路"仅发生在 replay 模式（record/live 正常执行）。落地 profile 选择器时，
+> 以下参数与"Replay 旁路"语义即为目标值。
 
 | 维度 | Sandbox（开发） | Standard（默认） | Strict（合规） | Replay（调试/审计） |
 |---|---|---|---|---|

@@ -45,7 +45,7 @@ test("channel hub: a throwing teardown does not strand the channels behind it", 
   const hub = new ChannelHub();
   hub.registerBuiltInChannel(ChannelKind.MEM_KV_STORE, mk("kv", true));
   hub.registerBuiltInChannel(ChannelKind.LLM_ACCESS, mk("llm", false));
-  hub.registerPluginExtChannel(ChannelKind.FILE_STORE, mk("file", false));
+  hub.registerPluginExtChannel(ChannelKind.FILE_SYSTEM, mk("file", false));
 
   // Does not reject: a failed release is contained, not propagated.
   await hub.teardown();
@@ -53,7 +53,7 @@ test("channel hub: a throwing teardown does not strand the channels behind it", 
   assert.deepEqual(released, ["kv", "llm", "file"], "every channel was released");
   // clear() ran despite the failure, so nothing is left registered.
   assert.equal(hub.getEffectiveChannel(ChannelKind.LLM_ACCESS), undefined);
-  assert.equal(hub.getEffectiveChannel(ChannelKind.FILE_STORE), undefined);
+  assert.equal(hub.getEffectiveChannel(ChannelKind.FILE_SYSTEM), undefined);
   assert.deepEqual(hub.listCallContexts(), []);
 });
 
@@ -70,7 +70,7 @@ test("channel hub: teardown still releases everything when the last channel thro
 
   const hub = new ChannelHub();
   hub.registerBuiltInChannel(ChannelKind.MEM_KV_STORE, mk("kv", false));
-  hub.registerPluginExtChannel(ChannelKind.FILE_STORE, mk("file", true));
+  hub.registerPluginExtChannel(ChannelKind.FILE_SYSTEM, mk("file", true));
 
   await hub.teardown();
   assert.deepEqual(released, ["kv", "file"]);
@@ -94,7 +94,7 @@ function fakeAdapter(adapterId: string, toolName: string, onTeardown: () => Prom
     description: "teardown fixture"
   };
   return {
-    meta: { adapterId, kind: "mcp", sourceEdition: "1.0.0", isolation: "subprocess" },
+    meta: { adapterId, kind: "mcp", sourceEdition: "1.0.0", isolation: "L2" },
     describe: () => [tool],
     invoke: async (): Promise<unknown> => null,
     teardown: onTeardown
@@ -157,9 +157,9 @@ function pidIsGone(pid: number): boolean {
   }
 }
 
-async function waitFor(predicate: () => boolean, timeoutMs = 5000): Promise<void> {
+async function waitFor(predicate: () => boolean | Promise<boolean>, timeoutMs = 5000): Promise<void> {
   const deadline = Date.now() + timeoutMs;
-  while (!predicate()) {
+  while (!(await predicate())) {
     if (Date.now() > deadline) throw new Error("timed out waiting for the child to be reaped");
     await new Promise((resolve) => setTimeout(resolve, 10));
   }
@@ -185,7 +185,7 @@ test("domain transport: close() reaps a child that exits when stdin closes", asy
     args: ["-e", hostScript(pidFile, true)]
   });
   await transport.start();
-  await waitFor(() => fs.access(pidFile).then(() => true, () => false));
+  await waitFor(async () => (await fs.access(pidFile).then(() => true, () => false)));
 
   const pid = Number(await fs.readFile(pidFile, "utf8"));
   assert.ok(pid > 0, "the host published its pid");
@@ -207,7 +207,7 @@ test("domain transport: close() kills a child that ignores stdin instead of hang
     args: ["-e", hostScript(pidFile, false)]
   });
   await transport.start();
-  await waitFor(() => fs.access(pidFile).then(() => true, () => false));
+  await waitFor(async () => (await fs.access(pidFile).then(() => true, () => false)));
   const pid = Number(await fs.readFile(pidFile, "utf8"));
 
   await transport.close();
@@ -225,7 +225,7 @@ test("cordis transport: close() reaps a child that exits when stdin closes", asy
     args: ["-e", hostScript(pidFile, true)]
   });
   await transport.start();
-  await waitFor(() => fs.access(pidFile).then(() => true, () => false));
+  await waitFor(async () => (await fs.access(pidFile).then(() => true, () => false)));
 
   const pid = Number(await fs.readFile(pidFile, "utf8"));
   assert.equal(pidIsGone(pid), false, "the host is running before close()");
@@ -244,7 +244,7 @@ test("cordis transport: close() kills a child that ignores stdin instead of hang
     args: ["-e", hostScript(pidFile, false)]
   });
   await transport.start();
-  await waitFor(() => fs.access(pidFile).then(() => true, () => false));
+  await waitFor(async () => (await fs.access(pidFile).then(() => true, () => false)));
   const pid = Number(await fs.readFile(pidFile, "utf8"));
 
   await transport.close();

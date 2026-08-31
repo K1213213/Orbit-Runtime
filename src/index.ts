@@ -122,7 +122,7 @@ export type {
   HttpHandler,
   FetchHttpTransportOptions
 } from "@orbit/pae-engine";
-export { parseOpenApiDocument, buildHttpRequest, normaliseHttpResponse, isHttpSuccess, bodyTail } from "@orbit/pae-engine";
+export { parseOpenApiDocument, resolveDocumentBaseUrl, buildHttpRequest, normaliseHttpResponse, isHttpSuccess, bodyTail } from "@orbit/pae-engine";
 export type {
   OpenApiOperation,
   OpenApiParameter,
@@ -206,7 +206,7 @@ export {
   newTxnId,
   reconcileTransactions,
   settleTransaction,
-  ledgerHash as domainLedgerHash,
+  ledgerHash,
   stableHash
 } from "@orbit/sandbox-runtime";
 export type {

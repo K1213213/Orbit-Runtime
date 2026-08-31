@@ -17,6 +17,8 @@
  *    server's own registry. This is documented in the P1 findings.
  */
 import http from "node:http";
+import { isIP } from "node:net";
+import dns from "node:dns";
 import { readFile } from "node:fs/promises";
 import { extname, join, normalize, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -181,19 +183,108 @@ function fail(res, error, status = 400) {
 function readBody(req) {
   return new Promise((resolve, reject) => {
     let raw = "";
+    let rejected = false;
+    const rejectOnce = (err) => {
+      if (rejected) return;
+      rejected = true;
+      reject(err);
+    };
     req.on("data", (chunk) => {
+      if (rejected) return;
       raw += chunk;
-      if (raw.length > 1_000_000) reject(new Error("payload too large"));
+      if (raw.length > 1_000_000) {
+        // Over-limit: stop feeding the buffer AND stop the stream. Rejecting
+        // alone only fails the promise — the caller then returns 400, but the
+        // socket keeps draining chunks into `raw` until the body ends, so a
+        // 1 GB upload still pins memory. pausing lets the client hang instead.
+        req.pause();
+        rejectOnce(new Error("payload too large"));
+      }
     });
     req.on("end", () => {
       try {
         resolve(raw ? JSON.parse(raw) : {});
       } catch {
-        reject(new Error("invalid JSON body"));
+        rejectOnce(new Error("invalid JSON body"));
       }
     });
-    req.on("error", reject);
+    req.on("error", rejectOnce);
   });
+}
+
+/**
+ * Reject a caller-supplied HTTP endpoint that points back at the host's own
+ * network. The console is bound to loopback and every logged-in session can
+ * reach the channel routes, so without this gate a viewer (or a drive-by
+ * request from any local process) could aim the DeepSeek adapter at cloud
+ * metadata, an internal service or the console itself — an SSRF with the
+ * response returned verbatim through RAG/agent rounds.
+ *
+ * Literal addresses are checked by range; hostnames are resolved once via the
+ * system resolver and the first returned address is checked the same way. DNS
+ * rebinding is out of scope for a loopback-bound developer tool, but the
+ * common case — a literal 127.0.0.1, 10.x, 192.168.x, 169.254.x or ::1 — is
+ * closed at the boundary.
+ */
+function assertSafeHttpUrl(value) {
+  let url;
+  try {
+    url = new URL(value);
+  } catch {
+    const err = new Error("baseUrl 不是合法 URL");
+    err.status = 400;
+    throw err;
+  }
+  if (url.protocol !== "http:" && url.protocol !== "https:") {
+    const err = new Error(`baseUrl 仅支持 http/https，收到 ${url.protocol}`);
+    err.status = 400;
+    throw err;
+  }
+  const host = url.hostname.replace(/^\[|\]$/g, "");
+  const blocked = (ip) => isBlockedAddress(ip);
+  if (isIP(host) !== 0 && blocked(host)) throw unsafeUrlError(value);
+  if (isIP(host) === 0) {
+    // Hostname: resolve once and check the address the client would actually
+    // connect to. Resolver failures are not fatal — an unreachable host is the
+    // caller's problem, not a security hole.
+    try {
+      const { address } = dns.lookupSync(host);
+      if (isBlockedAddress(address)) throw unsafeUrlError(value);
+    } catch (err) {
+      if (err && err.unsafeUrl) throw err;
+    }
+  }
+}
+
+function unsafeUrlError(value) {
+  const err = new Error(`baseUrl 不允许指向内网/环回/链路本地地址：${value}`);
+  err.status = 400;
+  err.unsafeUrl = true;
+  return err;
+}
+
+function isBlockedAddress(ip) {
+  const family = isIP(ip);
+  if (family === 4) {
+    const [a, b] = ip.split(".").map(Number);
+    if (a === 0 || a === 10 || a === 127) return true; // 0/8, 10/8, loopback
+    if (a === 100 && b >= 64 && b <= 127) return true; // 100.64/10 CGNAT
+    if (a === 169 && b === 254) return true; // link-local
+    if (a === 172 && b >= 16 && b <= 31) return true; // 172.16/12
+    if (a === 192 && b === 168) return true; // 192.168/16
+    if (a >= 224) return true; // multicast + reserved
+    return false;
+  }
+  if (family === 6) {
+    const lower = ip.toLowerCase();
+    if (lower === "::" || lower === "::1") return true; // unspecified, loopback
+    if (lower.startsWith("::ffff:")) return isBlockedAddress(lower.slice(7)); // v4-mapped
+    if (lower.startsWith("fe8") || lower.startsWith("fe9") || lower.startsWith("fea") || lower.startsWith("feb")) return true; // fe80/10 link-local
+    if (lower.startsWith("fc") || lower.startsWith("fd")) return true; // fc00/7 ULA
+    if (lower.startsWith("ff")) return true; // multicast
+    return false;
+  }
+  return false; // not an IP literal
 }
 
 /* ------------------------------------------------------------------ */
@@ -270,6 +361,64 @@ function openSession(account) {
   const token = randomUUID().replace(/-/g, "") + randomUUID().replace(/-/g, "");
   sessions.set(token, { account, token, createdAt: Date.now() });
   return token;
+}
+
+/* ---- login rate limiting ---- */
+
+/**
+ * Brute-force gate for the password login. The seed admin (admin/orbit-admin)
+ * is printed in the startup banner, so the login route is an open guessing
+ * surface — without a counter a remote caller can hammer it until the (short)
+ * default password falls. Lockout is keyed by (source ip, account), 5 failures
+ * buys 30 seconds, and a successful login clears the counter. The map is
+ * trimmed on every check so it cannot grow without bound.
+ */
+const LOGIN_MAX_ATTEMPTS = 5;
+const LOGIN_LOCK_MS = 30_000;
+const loginFailures = new Map(); // `${ip}\u0000${account}` -> { count, lockedUntil }
+
+function loginKey(ip, account) {
+  return `${ip}\u0000${account}`;
+}
+
+function isLoginLocked(ip, account) {
+  const now = Date.now();
+  const entry = loginFailures.get(loginKey(ip, account));
+  if (!entry) return false;
+  if (entry.lockedUntil > now) return true;
+  // Only a lockout that has actually elapsed is dropped; lockedUntil === 0
+  // means "never locked" and must survive so the failure counter accumulates.
+  if (entry.lockedUntil > 0 && entry.lockedUntil <= now) {
+    loginFailures.delete(loginKey(ip, account));
+  }
+  return false;
+}
+
+function recordLoginFailure(ip, account) {
+  const key = loginKey(ip, account);
+  const now = Date.now();
+  const entry = loginFailures.get(key);
+  // A prior lockout that has actually elapsed (lockedUntil > 0 and in the
+  // past) is discarded; lockedUntil === 0 means "never locked", not "expired".
+  let next = entry;
+  if (entry && entry.lockedUntil > 0 && entry.lockedUntil <= now) next = undefined;
+  if (!next) next = { count: 0, lockedUntil: 0 };
+  next.count += 1;
+  if (next.count >= LOGIN_MAX_ATTEMPTS) {
+    next.count = 0;
+    next.lockedUntil = now + LOGIN_LOCK_MS;
+  }
+  loginFailures.set(key, next);
+  // Opportunistic trim so the map never grows with dead entries.
+  if (loginFailures.size > 1024) {
+    for (const [k, v] of loginFailures) {
+      if (v.lockedUntil <= now) loginFailures.delete(k);
+    }
+  }
+}
+
+function clearLoginFailures(ip, account) {
+  loginFailures.delete(loginKey(ip, account));
 }
 
 /* ---- audit trail ---- */
@@ -765,7 +914,11 @@ const api = {
     const model = body?.model ?? "deepseek-chat";
     // baseUrl optional: defaults to DeepSeek, but any OpenAI-compatible
     // endpoint works (OpenAI, Qwen, Kimi, GLM, Ollama, vLLM, ...).
+    // The console is bound to loopback and any logged-in session (a viewer
+    // included) can reach this route, so a caller-supplied endpoint must not
+    // point at the host's own network — see assertSafeHttpUrl below.
     const baseUrl = body?.baseUrl || undefined;
+    if (baseUrl !== undefined) assertSafeHttpUrl(baseUrl);
     host.channelHub.registerPluginExtChannel(
       ChannelKind.LLM_ACCESS,
       new DeepSeekChannel({ apiKey, model, temperature: body?.temperature, baseUrl })
@@ -1105,9 +1258,12 @@ const api = {
    *
    * Security note: the console is a local, developer-operated tool bound to
    * loopback, and letting the operator name the server they want to connect to
-   * is the entire point of MCP. `shell` defaults to false so the command is
-   * executed directly; enabling it (needed for `npx` on Windows) is an explicit
-   * opt-in by the person already at the keyboard.
+   * is the entire point of MCP. `shell` is **rejected on the wire**: with
+   * `spawn(command, args, { shell: true })` the caller controls a shell
+   * command line, so an unauthenticated peer (or any viewer session) could run
+   * arbitrary commands on the host. An MCP server that needs `npx` is started
+   * with its full path (`node /path/to/npm-cli.js ...`) instead of a shell
+   * string — the kernel's StdioMcpTransport spawns executables directly.
    */
   async registerMcp(body) {
     await ensureRunning();
@@ -1115,6 +1271,11 @@ const api = {
     const command = body?.command;
     if (!adapterId) throw new Error("adapterId required");
     if (!command) throw new Error("command required — 启动 MCP 服务器的可执行文件");
+    if (body?.shell === true) {
+      const err = new Error("shell 已被禁用：请提供可执行文件路径而非 shell 命令串（npx 类场景请用 node + npm-cli.js 全路径）");
+      err.status = 400;
+      throw err;
+    }
 
     const args = Array.isArray(body?.args) ? body.args.map(String) : [];
     const timeoutMs = Number(body?.timeoutMs) || 15000;
@@ -1122,7 +1283,6 @@ const api = {
     const transport = new StdioMcpTransport({
       command: String(command),
       args,
-      shell: body?.shell === true,
       ...(body?.cwd ? { cwd: String(body.cwd) } : {})
     });
 
@@ -1250,12 +1410,22 @@ const api = {
     return { user: publicUser(user), token };
   },
 
-  async authLogin(body) {
-    const u = users.get(body?.account);
-    if (!u || !verifyPassword(u, body?.password ?? "")) {
-      audit("auth.login", String(body?.account ?? "?"), "登录失败（账号或密码错误）", "err");
-      throw new Error("账号或密码错误");
+  async authLogin(body, ip = "?") {
+    const account = String(body?.account ?? "");
+    if (isLoginLocked(ip, account)) {
+      const err = new Error("登录尝试过于频繁，请 30 秒后再试");
+      err.status = 429;
+      throw err;
     }
+    const u = users.get(account);
+    if (!u || !verifyPassword(u, body?.password ?? "")) {
+      audit("auth.login", account, "登录失败（账号或密码错误）", "err");
+      recordLoginFailure(ip, account);
+      const err = new Error("账号或密码错误");
+      err.status = 401;
+      throw err;
+    }
+    clearLoginFailures(ip, account);
     const token = openSession(u.account);
     audit("auth.login", u.account, "登录成功");
     return { user: publicUser(u), token };
@@ -2147,11 +2317,33 @@ const server = http.createServer(async (req, res) => {
         return session;
       };
 
+      /**
+       * Server-side role gate. The SPA renders buttons and 403 pages from the
+       * front-end ROLE_MATRIX, but the wire never enforced it: a viewer session
+       * could delete plugins, shut the host down or register MCP servers. Every
+       * mutating route goes through this gate, so role decisions are made at
+       * the HTTP boundary, not in the view layer.
+       *
+       * `viewer` is read-only; `operator` covers day-to-day operations; `admin`
+       * adds account management. Rank is an explicit ordering of the three
+       * roles, kept in sync with ROLE_MATRIX in public/lib.js.
+       */
+      const ROLE_RANK = { viewer: 0, operator: 1, admin: 2 };
+      const needRole = (minRole = "operator") => {
+        const s = needSession();
+        if (ROLE_RANK[s.role] < ROLE_RANK[minRole]) {
+          const err = new Error(`权限不足：该操作需要 ${minRole} 及以上角色`);
+          err.status = 403;
+          throw err;
+        }
+        return s;
+      };
+
       const dispatch = async () => {
         /* ---- auth ---- */
         if (seg[0] === "auth") {
           if (method === "POST" && seg[1] === "register") return api.authRegister(await readBody(req));
-          if (method === "POST" && seg[1] === "login") return api.authLogin(await readBody(req));
+          if (method === "POST" && seg[1] === "login") return api.authLogin(await readBody(req), String(req.socket.remoteAddress ?? "?"));
           if (method === "GET" && seg[1] === "me" && seg.length === 2) return api.authMe(needSession());
           if (method === "POST" && seg[1] === "logout" && seg.length === 2) return api.authLogout(needSession());
           if (method === "POST" && seg[1] === "password" && seg.length === 2) return api.authPassword(needSession(), await readBody(req));
@@ -2161,92 +2353,92 @@ const server = http.createServer(async (req, res) => {
         /* ---- state & lifecycle ---- */
         if (method === "GET" && seg[0] === "health") return api.health();
         if (method === "GET" && seg[0] === "state") return api.state();
-        if (method === "POST" && seg[0] === "host" && seg[1] === "boot") return api.boot();
-        if (method === "POST" && seg[0] === "host" && seg[1] === "shutdown") return api.shutdown();
+        if (method === "POST" && seg[0] === "host" && seg[1] === "boot") { needRole(); return api.boot(); }
+        if (method === "POST" && seg[0] === "host" && seg[1] === "shutdown") { needRole(); return api.shutdown(); }
 
         /* ---- channels ---- */
         if (method === "GET" && seg[0] === "channels" && seg.length === 1) return api.channels();
-        if (method === "POST" && seg[0] === "channels" && seg[1] === "plugin" && seg[2] === "remove")
-          return api.removePluginChannel(await readBody(req));
-        if (method === "POST" && seg[0] === "channels" && seg[1] === "plugin" && seg.length === 2)
-          return api.registerPluginChannel(await readBody(req));
-        if (method === "POST" && seg[0] === "channels" && seg[1] === "deepseek" && seg[2] === "remove")
-          return api.removeDeepSeekChannel();
-        if (method === "POST" && seg[0] === "channels" && seg[1] === "deepseek" && seg.length === 2)
-          return api.registerDeepSeekChannel(await readBody(req));
+        if (method === "POST" && seg[0] === "channels" && seg[1] === "plugin" && seg[2] === "remove") {
+          needRole(); return api.removePluginChannel(await readBody(req)); }
+        if (method === "POST" && seg[0] === "channels" && seg[1] === "plugin" && seg.length === 2) {
+          needRole(); return api.registerPluginChannel(await readBody(req)); }
+        if (method === "POST" && seg[0] === "channels" && seg[1] === "deepseek" && seg[2] === "remove") {
+          needRole(); return api.removeDeepSeekChannel(); }
+        if (method === "POST" && seg[0] === "channels" && seg[1] === "deepseek" && seg.length === 2) {
+          needRole(); return api.registerDeepSeekChannel(await readBody(req)); }
 
         /* ---- plugins ---- */
         if (method === "GET" && seg[0] === "plugins" && seg.length === 1) return api.plugins();
-        if (method === "POST" && seg[0] === "plugins" && seg.length === 1) return api.registerPlugin(await readBody(req));
-        if (method === "DELETE" && seg[0] === "plugins" && seg.length === 1) return api.resetPlugins();
+        if (method === "POST" && seg[0] === "plugins" && seg.length === 1) { needRole(); return api.registerPlugin(await readBody(req)); }
+        if (method === "DELETE" && seg[0] === "plugins" && seg.length === 1) { needRole(); return api.resetPlugins(); }
 
         /* ---- sandboxes ---- */
         if (method === "GET" && seg[0] === "boxes" && seg.length === 1) return api.boxes();
-        if (method === "POST" && seg[0] === "boxes" && seg.length === 1) return api.spawnBox(await readBody(req));
-        if (method === "POST" && seg[0] === "boxes" && seg[1] && seg[2] === "run")
-          return api.runBox(decodeURIComponent(seg[1]), await readBody(req));
-        if (method === "POST" && seg[0] === "boxes" && seg[1] && seg[2] === "reset")
-          return api.resetBox(decodeURIComponent(seg[1]));
-        if (method === "DELETE" && seg[0] === "boxes" && seg[1])
-          return api.removeBox(decodeURIComponent(seg[1]));
+        if (method === "POST" && seg[0] === "boxes" && seg.length === 1) { needRole(); return api.spawnBox(await readBody(req)); }
+        if (method === "POST" && seg[0] === "boxes" && seg[1] && seg[2] === "run") {
+          needRole(); return api.runBox(decodeURIComponent(seg[1]), await readBody(req)); }
+        if (method === "POST" && seg[0] === "boxes" && seg[1] && seg[2] === "reset") {
+          needRole(); return api.resetBox(decodeURIComponent(seg[1])); }
+        if (method === "DELETE" && seg[0] === "boxes" && seg[1]) {
+          needRole(); return api.removeBox(decodeURIComponent(seg[1])); }
 
         /* ---- trace / replay / graph / routing ---- */
         if (method === "GET" && seg[0] === "trace") return api.trace(query);
-        if (method === "POST" && seg[0] === "replay" && seg[1] === "demo") return api.replayDemo();
+        if (method === "POST" && seg[0] === "replay" && seg[1] === "demo") { needRole(); return api.replayDemo(); }
         if (method === "GET" && seg[0] === "graph" && seg.length === 1) return api.graph();
         if (method === "GET" && seg[0] === "graph" && seg[1] === "isolation")
           return api.isolation(decodeURIComponent(query.node ?? ""));
-        if (method === "POST" && seg[0] === "graph" && seg[1] === "check") return api.checkIsolation(await readBody(req));
+        if (method === "POST" && seg[0] === "graph" && seg[1] === "check") { needRole(); return api.checkIsolation(await readBody(req)); }
         if (method === "GET" && seg[0] === "routing" && seg[1] === "profiles") return api.routingProfiles();
         if (method === "POST" && seg[0] === "routing" && seg[1] === "simulate") return api.simulateRoute(await readBody(req));
 
         /* ---- PAE ---- */
         if (method === "GET" && seg[0] === "pae" && seg.length === 1) return api.pae();
-        if (method === "POST" && seg[0] === "pae" && seg.length === 1) return api.registerPae(await readBody(req));
-        if (method === "POST" && seg[0] === "pae" && seg[1] === "invoke" && seg.length === 2) return api.invokePae(await readBody(req));
-        if (method === "POST" && seg[0] === "pae" && seg[1] === "negotiate" && seg.length === 2) return api.negotiatePae(await readBody(req));
-        if (method === "DELETE" && seg[0] === "pae" && seg[1]) return api.removePae(decodeURIComponent(seg[1]));
+        if (method === "POST" && seg[0] === "pae" && seg.length === 1) { needRole(); return api.registerPae(await readBody(req)); }
+        if (method === "POST" && seg[0] === "pae" && seg[1] === "invoke" && seg.length === 2) { needRole(); return api.invokePae(await readBody(req)); }
+        if (method === "POST" && seg[0] === "pae" && seg[1] === "negotiate" && seg.length === 2) { needRole(); return api.negotiatePae(await readBody(req)); }
+        if (method === "DELETE" && seg[0] === "pae" && seg[1]) { needRole(); return api.removePae(decodeURIComponent(seg[1])); }
 
         /* ---- tasks ---- */
         if (method === "GET" && seg[0] === "tasks" && seg.length === 1) return api.tasks(query);
         if (method === "GET" && seg[0] === "tasks" && seg[1] && seg.length === 2) return api.task(decodeURIComponent(seg[1]));
-        if (method === "POST" && seg[0] === "tasks" && seg[1] && seg[2] === "abort")
-          return api.abortTask(decodeURIComponent(seg[1]));
+        if (method === "POST" && seg[0] === "tasks" && seg[1] && seg[2] === "abort") {
+          needRole(); return api.abortTask(decodeURIComponent(seg[1])); }
 
         /* ---- templates ---- */
         if (method === "GET" && seg[0] === "templates" && seg.length === 1) return api.templates();
-        if (method === "POST" && seg[0] === "templates" && seg.length === 1) return api.saveTemplate(await readBody(req));
+        if (method === "POST" && seg[0] === "templates" && seg.length === 1) { needRole(); return api.saveTemplate(await readBody(req)); }
         if (method === "GET" && seg[0] === "templates" && seg[1] && seg[2] === "versions")
           return api.templateVersions(decodeURIComponent(seg[1]));
-        if (method === "POST" && seg[0] === "templates" && seg[1] && seg[2] === "rollback")
-          return api.rollbackTemplate(decodeURIComponent(seg[1]), await readBody(req));
-        if (method === "DELETE" && seg[0] === "templates" && seg[1])
-          return api.removeTemplate(decodeURIComponent(seg[1]));
+        if (method === "POST" && seg[0] === "templates" && seg[1] && seg[2] === "rollback") {
+          needRole(); return api.rollbackTemplate(decodeURIComponent(seg[1]), await readBody(req)); }
+        if (method === "DELETE" && seg[0] === "templates" && seg[1]) {
+          needRole(); return api.removeTemplate(decodeURIComponent(seg[1])); }
 
         /* ---- knowledge bases ---- */
         if (method === "GET" && seg[0] === "kb" && seg.length === 1) return api.kbList();
-        if (method === "POST" && seg[0] === "kb" && seg.length === 1) return api.kbCreate(await readBody(req));
-        if (method === "DELETE" && seg[0] === "kb" && seg[1]) return api.kbRemove(decodeURIComponent(seg[1]));
-        if (method === "POST" && seg[0] === "kb" && seg[1] && seg[2] === "docs")
-          return api.kbUpload(decodeURIComponent(seg[1]), await readBody(req));
+        if (method === "POST" && seg[0] === "kb" && seg.length === 1) { needRole(); return api.kbCreate(await readBody(req)); }
+        if (method === "DELETE" && seg[0] === "kb" && seg[1]) { needRole(); return api.kbRemove(decodeURIComponent(seg[1])); }
+        if (method === "POST" && seg[0] === "kb" && seg[1] && seg[2] === "docs") {
+          needRole(); return api.kbUpload(decodeURIComponent(seg[1]), await readBody(req)); }
         if (method === "GET" && seg[0] === "kb" && seg[1] && seg[2] === "docs" && seg[3])
           return api.kbDoc(decodeURIComponent(seg[1]), decodeURIComponent(seg[3]));
-        if (method === "POST" && seg[0] === "kb" && seg[1] && seg[2] === "search")
-          return api.kbSearch(decodeURIComponent(seg[1]), await readBody(req));
+        if (method === "POST" && seg[0] === "kb" && seg[1] && seg[2] === "search") {
+          needRole(); return api.kbSearch(decodeURIComponent(seg[1]), await readBody(req)); }
         if (method === "GET" && seg[0] === "kb" && seg[1] && seg.length === 2)
           return api.kbDetail(decodeURIComponent(seg[1]));
 
         /* ---- RAG ---- */
         if (method === "GET" && seg[0] === "rag" && seg.length === 1) return api.ragRuns(query.kb);
-        if (method === "POST" && seg[0] === "rag" && seg.length === 1) return api.ragRun(await readBody(req));
+        if (method === "POST" && seg[0] === "rag" && seg.length === 1) { needRole(); return api.ragRun(await readBody(req)); }
         if (method === "GET" && seg[0] === "rag" && seg[1]) return api.ragDetail(decodeURIComponent(seg[1]));
 
         /* ---- workflows ---- */
         if (method === "GET" && seg[0] === "workflows" && seg.length === 1) return api.workflows();
-        if (method === "POST" && seg[0] === "workflows" && seg.length === 1) return api.workflowSave(await readBody(req));
-        if (method === "DELETE" && seg[0] === "workflows" && seg[1]) return api.workflowRemove(decodeURIComponent(seg[1]));
-        if (method === "POST" && seg[0] === "workflows" && seg[1] && seg[2] === "run")
-          return api.workflowRun(decodeURIComponent(seg[1]), await readBody(req));
+        if (method === "POST" && seg[0] === "workflows" && seg.length === 1) { needRole(); return api.workflowSave(await readBody(req)); }
+        if (method === "DELETE" && seg[0] === "workflows" && seg[1]) { needRole(); return api.workflowRemove(decodeURIComponent(seg[1])); }
+        if (method === "POST" && seg[0] === "workflows" && seg[1] && seg[2] === "run") {
+          needRole(); return api.workflowRun(decodeURIComponent(seg[1]), await readBody(req)); }
         if (method === "GET" && seg[0] === "workflows" && seg[1] && seg.length === 2)
           return api.workflowGet(decodeURIComponent(seg[1]));
         if (method === "GET" && seg[0] === "workflow-runs" && seg[1])
@@ -2254,12 +2446,12 @@ const server = http.createServer(async (req, res) => {
 
         /* ---- billing / audit / notifications / dashboard ---- */
         if (method === "GET" && seg[0] === "billing") return api.billing();
-        if (method === "GET" && seg[0] === "audit" && seg[1] === "export")
-          return api.auditExport(String(query.format ?? "md"), query);
+        if (method === "GET" && seg[0] === "audit" && seg[1] === "export") {
+          needRole(); return api.auditExport(String(query.format ?? "md"), query); }
         if (method === "GET" && seg[0] === "audit" && seg.length === 1) return api.auditEvents(query);
         if (method === "GET" && seg[0] === "notifications" && seg.length === 1) return api.notifications(needSession());
-        if (method === "POST" && seg[0] === "notifications" && seg[1] === "read")
-          return api.notificationsRead(needSession(), await readBody(req));
+        if (method === "POST" && seg[0] === "notifications" && seg[1] === "read") {
+          needRole(); return api.notificationsRead(needSession(), await readBody(req)); }
         if (method === "GET" && seg[0] === "dashboard") return api.dashboard();
 
         notFound();
@@ -2276,7 +2468,7 @@ const server = http.createServer(async (req, res) => {
     res.end("method not allowed");
   } catch (err) {
     const msg = String(err?.message ?? err);
-    const userError = /not found|required|lacks|too low|reached|failed|already|unsupported|invalid|已存在|不存在|需要|至少|不正确|为空|未通过|上限|无法|不能|非.*合法/.test(msg);
+    const userError = /not found|required|lacks|too low|reached|failed|already|unsupported|invalid|missing|已存在|不存在|需要|至少|不正确|为空|未通过|上限|无法|不能|非.*合法/.test(msg);
     const status = err?.status ?? (userError ? 400 : 500);
     fail(res, msg, status);
   }

@@ -1,6 +1,6 @@
 {
   "name": "orbit-agent-runtime",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Deterministic · Provable · Governable — a plugin-based agent runtime kernel with hot plugin registration, provable fault isolation, full-chain traceability and sandboxed execution.",
   "keywords": [
     "agent",
@@ -26,7 +26,8 @@
     "CHANGELOG.md"
   ],
   "workspaces": [
-    "packages/*"
+    "packages/*",
+    "web"
   ],
   "scripts": {
     "build": "tsc -b tsconfig.json",
@@ -34,6 +35,8 @@
     "clean": "node -e \"fs.rmSync('dist',{recursive:true,force:true})\" && node -e \"for (const p of ['infra-common','core-hub','sandbox-runtime','pae-engine']) fs.rmSync('packages/'+p+'/dist',{recursive:true,force:true})\"",
     "test": "npm run build && node --test \"dist/test/*.test.js\"",
     "test:console": "node --test web/test/*.test.mjs",
+    "start:web": "node web/bridge-server.mjs",
+    "test:web": "node --test web/test/*.test.mjs",
     "demo": "npm run build && node dist/demo-host.js",
     "demo:replay": "npm run build && node dist/demo-replay.js",
     "demo:deepseek": "npm run build && node dist/demo-deepseek.js",

@@ -1,0 +1,14 @@
+{
+  "name": "@orbit/admin-console",
+  "version": "0.3.0",
+  "private": true,
+  "description": "Web admin console for Orbit Agent Runtime — drives a live kernel instance through the bridge server.",
+  "type": "module",
+  "scripts": {
+    "start": "node bridge-server.mjs",
+    "test": "node --test test/*.test.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

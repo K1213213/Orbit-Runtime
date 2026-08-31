@@ -4,26 +4,41 @@ All notable changes to Orbit Agent Runtime are documented here. This project
 follows a pre-alpha versioning scheme: `v0.x.minor` marks a release wave,
 `patch` marks fixes. Until `v1.0` the public API is not yet stability-promised.
 
-## [0.3.0] — 2026-08-31 · Monorepo package extraction (W21–W23)
+## [0.3.0] — 2026-08-31 · v0.3.0 General Availability (W15–W26)
 
-The single `src/` tree is now a TypeScript Project-References monorepo. The
-public API (`src/index.ts`) is unchanged; the split is internal only.
+The v0.3.0 wave delivers the ecosystem-access track end to end: the Plugin
+Adaptation Engine (foreign runtimes surfaced as governed capability channels),
+graph-driven isolation domains with transactional cross-domain calls, the
+TypeScript Project-References monorepo split, and the admin-console packaging.
+The public API (`src/index.ts`) is unchanged across the split.
 
-### Changed
-- Repo restructured into npm workspaces: `@orbit/infra-common`,
-  `@orbit/core-hub`, `@orbit/sandbox-runtime`, `@orbit/pae-engine`, plus the
-  root host in `src/`. Cross-package imports use the `@orbit/*` specifier.
-- `npm run build` now runs `tsc -b` across all packages; each package has its own
-  `tsconfig.json` (`composite: true`) with `references` to its dependencies.
-- `npm install` links the workspaces via `node_modules/@orbit/*` symlinks.
+### Release summary
+- **Plugin Adaptation Engine (W15–W18):** JS / MCP / OpenAPI / Cordis adapters,
+  each a capability channel governed by the gateway (W15–W18 detail below).
+- **Isolation domains (W19–W20):** graph-driven L2 domain allocation, an atomic
+  cross-domain transaction ledger with orphan/refusal reconciliation, and the
+  plan held as host state with diff-based sync.
+- **Monorepo extraction (W21–W23):** the single `src/` tree split into npm
+  workspaces (`@orbit/infra-common`, `@orbit/core-hub`, `@orbit/sandbox-runtime`,
+  `@orbit/pae-engine`) plus the root host; `tsc -b` composite build.
+- **Admin console packaged (W24–W26):** `web/` is now `@orbit/admin-console`
+  (a private app workspace) with `start`/`test` scripts; the bridge imports the
+  compiled kernel from `dist/`.
+
+### Verification (v0.3.0 GA)
+- Clean from-scratch `tsc -b` build, strict mode, zero errors.
+- Kernel suite (`node --test dist/test/*.test.js`): **290 cases** green.
+- Console suite (`npm run test:console`): **89 cases** green.
+- No public API change, no replay-contract regression vs v0.2.x.
 
 ### Migration
-- Same commands as before: `npm install`, `npm run build`, `npm test`,
-  `npm run test:console`. No public API change, no replay-contract regression.
-- Clean from-scratch build passes (290 kernel tests + 89 console tests,
-  strict compile zero errors).
+- Commands unchanged: `npm install`, `npm run build`, `npm test`,
+  `npm run test:console`, `npm run start:web`.
+- `KERNEL_VERSION` bumped to `0.3.0`; `DOMAIN_HOST_VERSION` derives from it.
+- pnpm migration (a roadmap refinement) is deferred — npm workspaces already
+  satisfy the structural goal; see DEV_PLAN W24–W26.
 
-## [0.3.0] — 2026-08-29 · Plugin Adaptation Engine (W15)
+### W15 — Plugin Adaptation Engine (PAE)
 
 First wave of the v0.3.0 ecosystem track: foreign runtimes are mapped onto the
 kernel's capability contract through the Plugin Adaptation Engine (PAE), so the

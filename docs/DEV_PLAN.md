@@ -31,7 +31,7 @@
 |---|---|---|---|
 | **v0.1.0** | W1–W6 | **开源发布**：真能力 + CLI + npm | 就绪清单 14/14 勾满；陌生开发者按 README 10 分钟跑通 record→replay |
 | **v0.2.0** | W7–W14 | **网关确定性边界**：capabilityInvoke + 决策记录 | 开启压缩/限流/熔断状态下的 record→replay 逐字节一致（replay_compat 全绿） |
-| **v0.3.0** | W15–W26 | **生态接入**：PAE 适配器 + 抽包 Monorepo | MCP 插件经网关接入且四重校验不降级；pnpm workspace 全链路绿 |
+| **v0.3.0** | W15–W26 | **生态接入**：PAE 适配器 + 抽包 Monorepo | MCP 插件经网关接入且四重校验不降级；monorepo workspace 全链路绿（npm workspaces；pnpm 迁移延后） |
 
 版本号策略：宪章前语义化版本不承诺稳定 API（pre-alpha），v0.x.minor = 波次，patch = 修复。
 
@@ -70,8 +70,8 @@
 |---|---|---|
 | **W15 ✅ / W16 ✅ / W17 ✅ / W18 ✅** | **W15 完成（2026-08-29）**：PAE 契约层 + 注册表 + PaeChannel + JsPaeAdapter；外来 JS 运行时经网关代理、四重校验、replay 零重入；适配面配置哈希进指纹。**W16 完成（2026-08-30）**：MCP 适配器（JSON-RPC 2.0 协议层 / stdio + memory 双传输 / McpPaeAdapter，L2 跨进程、握手后才发现工具面、默认 reduced 保真度且必带说明）；宿主新增 `connectPaeToolAdapter`（先握手后注册）与 `releasePaeToolAdapter`（注销并等待释放）；修复 `registry.unregister` 不调用 `teardown` 导致 MCP 子进程泄漏。**W17 完成（2026-08-30）**：OpenAPI 适配器（纯函数 spec 映射 / 注入式 HTTP 传输 / OpenApiPaeAdapter，L2、无实时握手、构造期即失败、默认 reduced 保真度且必带说明；详见进度日志）。**W18 完成（2026-08-30）**：Cordis 隔离实例适配器（宿主自定义协议纯函数层 / 注入式传输含子进程实现 / CordisPaeAdapter，L2、握手后动态发现、默认 reduced 保真度且必带说明；PAE 难度梯 W15–W18 闭环；详见进度日志）。**W19 完成（2026-08-30）**：隔离域物理层（见下一行） | UPGRADE §C.3 |
 | **W19 ✅ / W20 ✅** | **W20 完成（2026-08-31）**：见下方进度日志。域间事务化调用（原子事务账本 + 对账）+ 图驱动分配进宿主状态（图变更置脏/条件性指纹/关闭释放）。W21 起三段式抽包 | VISION 升级三 |
-| W21–W23 | 三段式抽包：Project References 划界 → 自底向上抽（infra-common → core-hub → sandbox-runtime → pae-engine），每包全量回归 | UPGRADE B.1–B.2 |
-| W24–W26 | pnpm workspace + 各包独立 version/test + admin-console 包 + v0.3.0 发布 | UPGRADE B.3 |
+| **W21–W23 ✅** | 三段式抽包：Project References 划界 → 自底向上抽（infra-common → core-hub → sandbox-runtime → pae-engine），每包全量回归 | UPGRADE B.1–B.2 |
+| **W24–W26 ✅** | npm workspaces（pnpm 迁移延后）+ 各包独立 version（0.3.0）+ admin-console 包 + v0.3.0 发布（tag v0.3.0） | UPGRADE B.3 |
 
 **波次 3 门禁**：抽包期间 `src/index.ts` 公共 API 不变 · 每抽一包全量回归通过才继续 · PAE 通道治理不降级（保真度标注完整）。
 
@@ -102,7 +102,7 @@
 
 ## 5. 度量（每周站会看的数字）
 
-- **质量**：测试数（**内核基线 205** · **前端基线 49**，均只增不减）· strict 编译错误（0）· replay_compat 用例数
+- **质量**：测试数（**内核基线 290** · **前端基线 89**，均只增不减）· strict 编译错误（0）· replay_compat 用例数
 - **进度**：就绪清单勾选数（W6 目标 14/14）· 波次退出标准达成状态
 - **产品（W6 起）**：npm 周下载 · GitHub star · 首次 record→replay 成功率（目标 >70%）
 
@@ -133,3 +133,4 @@
 
 | 2026-08-31 | **W20 落地（域间事务化调用 + 图驱动域分配进宿主状态）**：`src/sandbox/domains/transaction.ts`——跨域调用的**原子事务账本**，`beginTransaction`（决策：单元归属/隔离级）→ `markExecuted`（跨界）→ `settleTransaction`（结算/失败），事务 id `dtx:<seq>` 确定性（重放得到同一 id 流）；`reconcileTransactions` 按 (源域→目标域) 分组对账，可从记录单独检出两类失败形状：**孤儿**（跨界未结算 = 事务边界泄漏）与**拒绝**（执行前被拒，本身非错误但成片出现说明 plan 与图失配）。`IsolationDomainManager.invokeUnit` 事务化：被拒的跳转**记为 rejected 而非丢弃**；延迟经注入时钟度量（`Date.now` 不进记录）；新增 `txnLedger/reconcile/ledgerHash/clearLedger`。宿主侧：图变更（registerPlugin/spawnAgentBox/unregisterPaeToolAdapter）置 `domainsStale()`，`allocateIsolationDomains()` 同步（diff 化，重跑零churn）并在**首次分配时才注册** `DOMAIN_TOOL` 通道；`RunVersionFingerprint.domainPlanHash` **缺省时省略**（沿用 W16 PAE 先例，未分配域的宿主指纹逐字节不变），`host.runFingerprint()` 转公开便于漂移诊断；`shutdownHost` 先 `releaseIsolationDomains()` 释放子进程。单测 20 例（domain_transaction：事务生命周期/拒绝/失败/对账孤儿/幂等哈希/宿主置脏与幂等分配/指纹兼容两次/关闭释放）+ replay_compat 门禁 2 例（跨域跳转 record→replay 逐字节一致且**重放不重入域（账本不新增）**、改输入为 call drift、释放全部域后仍可重放），全量 290 测试绿（内核 268→290），前端 89 不变，strict 编译零错误。**坑**：① 网关 replay 读的是自身挂载的 journal（非 ReplayEngine 的），测试里换 journal 会导致 "call #0 missing"；② 注入时钟冻结时延迟恒为 0，测延迟必须用递增时钟 |
 | 2026-08-31 | **W21–W23 落地（三段式抽包 Monorepo）**：内核自 `src/` 单树重构为 npm workspaces + TypeScript Project References 四包——`@orbit/infra-common`（领域契约/纯工具/异常：`types`·`utils`·`core`）、`@orbit/core-hub`（通道/网关/replay/trace/pact/safeguard/routing）、`@orbit/sandbox-runtime`（沙箱/影响域图/隔离域）、`@orbit/pae-engine`（PAE 适配器族 JS/MCP/OpenAPI/Cordis）；宿主留在根 `src/`（`core/orbitRuntimeHost.ts` + `index.ts` 门面，公共 API 不变）。依赖分层无环：`infra-common → core-hub → {sandbox-runtime, pae-engine} → host`。流程：`git mv` 迁移模块 + 各包桶文件 `index.ts` 导出 + 跨包导入改写为 `@orbit/*` 限定符；各包 `composite:true` + `references` 指依赖，`tsc -b` 自底向上构建；`npm install` 经 `node_modules/@orbit/*` 符号链接接包。`npm run build` 改为 `tsc -b tsconfig.json`，`npm test` 不变。干净从零构建通过（EXIT=0：root 29 + 包 55 个 .js），内核 290 测试绿、前端 89 测试绿、strict 编译零错误，公共 API 与重放契约零回归。波次 3 门禁（抽包期间 `src/index.ts` 公共 API 不变 · 每抽一包全量回归 · PAE 治理不降级）达成 |
+| 2026-08-31 | **W24–W26 落地（v0.3.0 发布）**：各包与根 `package.json` 版本升 0.3.0；`KERNEL_VERSION` 与 `DOMAIN_HOST_VERSION`（派生）同步升 0.3.0；`test/gateway.test.ts` 指纹断言同步。新增 `web/package.json`（`@orbit/admin-console`，private app workspace，含 `start`/`test` 脚本），根 `workspaces` 注册 `web` 并增 `start:web`/`test:web`；bridge 仍按相对路径 `../dist/src/core/orbitRuntimeHost.js` 引入编译内核。pnpm 迁移因运行环境无 pnpm/corepack 而**延后**——npm workspaces 已满足 Monorepo 结构目标，记为后续改进项。CHANGELOG 收敛为单一 `## [0.3.0]` GA 头（含 Release summary / Verification / Migration），W15–W20 与控制台各节降为 `###` 子节；README/README.zh-CN 目录结构与用例数（290/89）同步。干净从零 `tsc -b` 通过（strict 零错误）；内核 290 测试绿、前端 89 测试绿，公共 API 与重放契约零回归；`git tag v0.3.0`。v0.3.0 路线（W15–W26）收口 |

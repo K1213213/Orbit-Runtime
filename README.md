@@ -120,7 +120,7 @@ host.registerPlugin({
   id: "p.worker",
   displayName: "p.worker",
   edition: "1.0.0",
-  requireHostMinEdition: "0.2.0",
+  requireHostMinEdition: "0.3.0",
   allowCapabilities: ["channel:read", "channel:write"],
   declareChannelDeps: [ChannelKind.LLM_ACCESS]
 });
@@ -176,6 +176,7 @@ each layer builds, versions and tests in isolation while the public API at
 | `@orbit/sandbox-runtime` | `packages/sandbox-runtime` | Agent sandboxes, impact-domain graph, isolation domains | infra-common, core-hub |
 | `@orbit/pae-engine` | `packages/pae-engine` | Plugin Adaptation Engine (JS / MCP / OpenAPI / Cordis) | infra-common, core-hub |
 | root host | `src/` (`core/orbitRuntimeHost.ts`, `index.ts`) | Component assembly & facade | all packages |
+| `@orbit/admin-console` *(app)* | `web/` | Web admin console — drives a live kernel via the bridge server | root host (`dist/`) |
 
 Build and test from the repo root — `npm install` wires the `@orbit/*` workspace
 symlinks, then `tsc -b` builds bottom-up:
@@ -186,6 +187,10 @@ npm run build        # tsc -b across all packages and the root
 npm test             # build + kernel unit tests (node:test)
 npm run test:console # web console unit tests (node:test)
 ```
+
+> **Package manager:** the monorepo currently uses **npm workspaces**; the
+> roadmap's pnpm migration is deferred (this runtime has no `pnpm`/`corepack`),
+> but the package layout is identical and the switch is a drop-in later.
 
 ## Getting started — the deterministic-replay loop
 
@@ -292,19 +297,10 @@ Env overrides: `ORBIT_LLM_BASE_URL` / `ORBIT_LLM_API_KEY` / `ORBIT_LLM_MODEL`,
 
 ## Repository layout
 
-```
-src/
-├── types/        # global domain contracts, enums, interfaces
-├── utils/        # version parsing, ID generation
-├── core/         # domain errors, runtime host (top-level assembly)
-├── channel/      # capability channel abstraction + built-in providers
-├── pact/         # plugin pact verification & registration
-├── safeguard/    # trip protection, per-plugin fault isolation
-├── trace/        # trace journal (records, snapshots, filters)
-└── sandbox/      # agent sandbox + sandbox pool
-demo-host.ts      # startup demonstration entry
-test/             # unit tests (node:test)
-```
+The kernel is split into npm workspaces — see
+[Repository layout (monorepo)](#repository-layout-monorepo) above for the package
+map. The web admin console lives at `web/` as the private `@orbit/admin-console`
+app workspace, run with `npm run start:web`.
 
 ## Core concepts
 

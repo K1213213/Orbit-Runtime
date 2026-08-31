@@ -147,6 +147,7 @@ AgentSandbox ──② fireChannelCall(LLM_ACCESS, ctx)──► ChannelHub
 | `@orbit/sandbox-runtime` | `packages/sandbox-runtime` | 沙箱 / 影响域图 / 隔离域 | infra-common, core-hub |
 | `@orbit/pae-engine` | `packages/pae-engine` | 插件适配引擎（JS / MCP / OpenAPI / Cordis） | infra-common, core-hub |
 | 宿主（root） | `src/`（`core/orbitRuntimeHost.ts` + `index.ts`） | 组件装配与门面 | 全部包 |
+| `@orbit/admin-console` *(app)* | `web/` | Web 管理控制台（经 bridge 驱动真实内核实例） | 宿主（`dist/`） |
 
 依赖分层无环：`infra-common → core-hub → { sandbox-runtime, pae-engine } → host`。
 各包 `composite: true` 且 `references` 指向依赖，`tsc -b` 自底向上构建；跨包导入一律

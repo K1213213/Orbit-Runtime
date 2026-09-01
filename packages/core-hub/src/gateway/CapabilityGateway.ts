@@ -299,6 +299,18 @@ export class CapabilityGateway {
         traceMarkId
       );
     }
+    // W29: the governance tier is part of the configuration. Absent on both
+    // sides means "both are the default tier" — compatible; a value on one
+    // side only (or differing values) is a genuine tier change.
+    const recordedGov = fp.governanceProfileHash ?? "";
+    const currentGov = cur.governanceProfileHash ?? "";
+    if (recordedGov !== currentGov) {
+      throw new RunFingerprintDriftError(
+        "governanceProfileHash",
+        `governance tier drift: recorded ${recordedGov || "standard"} vs current ${currentGov || "standard"}`,
+        traceMarkId
+      );
+    }
     const a = JSON.stringify(Object.entries(fp.pactVersions).sort());
     const b = JSON.stringify(Object.entries(cur.pactVersions).sort());
     if (a !== b) {

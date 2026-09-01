@@ -214,3 +214,44 @@ await host.shutdownHost();      // 排空在途写入 → 应用留存 → 逐�
 
 不传路径即退化为纯内存——与 v0.3.x 行为逐字节一致，持久化按路径**选择性开启**，磁盘轨迹
 格式未变，旧轨迹照常重放。
+
+## 10. 治理档位（W29，VISION §3.1 落地）
+
+治理强度可切换，能力面永不砍——这是 VISION 公理，也是本轮实现的裁决原则。
+
+### 10.1 契约与解析
+
+`GovernanceProfile`（`infra-common/types/governance.ts`）把 VISION §3.1 的四档收敛为
+纯配置对象，`resolveGovernanceProfile(name)` 解析，`governanceProfileHash()` 给指纹。
+
+| 档位 | 压缩 | 限流（窗口计数） | 熔断 | PAE 准入 | 轨迹 |
+|---|---|---|---|---|---|
+| `sandbox` | off | 1000 | 5 次 / 冷却 30s | 全部 | 内存 |
+| `standard`（默认） | normal | 100 | 5 次 / 冷却 10s | 全部 | 可选落盘 |
+| `strict` | aggressive（阈值减半） | 60 | 3 次 / 冷却 5s（下限 1） | 关闭 | **强制落盘** |
+
+`standard` 是 v0.5.x 数字的**逐字一致**（有测试断言）——默认宿主行为不因本机制而变。
+
+### 10.2 注入与确定性
+
+- 限流：`RateLimiter` 是**纯调用计数预算**（无墙钟窗口），profile 只改数量，机制不动——
+  重放确定性是机制属性，档位只是参数。
+- 熔断：`tripThresholdForProfile` 以 profile 阈值为基准，按插件依赖出度软化
+  （strict 下限 1，其余 2）。
+- 压缩：`tokenBudgetConfigForProfile` 映射到 `TokenBudgetEngine`（off/normal/aggressive）。
+- PAE 准入：`assertPaeKindAdmitted` 在注册/连接**之前**检查；strict 关闭外部运行时，
+  connect 路径在握手前拒绝（不 spawn 子进程）。
+- 轨迹：strict 构造期强制 `traceJournalPath`，缺省即抛错。
+
+### 10.3 指纹与配置漂移
+
+非默认档把 `governanceProfileHash` 写入运行指纹；`verifyFingerprint` 对比（双方缺省 =
+兼容，同 `paeAdaptersHash` 模式）。因此**跨档重放报 `RunFingerprintDriftError`**（配置
+漂移），与 tokenConfigHash 同一契约。`standard` 档省略字段，默认宿主指纹与旧版逐字节一致。
+
+### 10.4 与 VISION 原始表的偏差（工程裁决）
+
+- **standard 的 PAE 准入为全部**而非原始表的 "MCP+JS"：治理公理"为治理不砍功能"优先，
+  且 OpenAPI/Cordis 是已发布能力（初始按表实现反而破坏了 cordis/openapi 既有测试）。
+- **限流数字的语义**："1000/min" 落地为"每窗口 1000 次"（纯计数窗口，保证可重放）。
+- 信任推定 / Schema 校验 / 轨迹签名仍属演进面（隔离域分配与哈希链审计），未成为档位字段。

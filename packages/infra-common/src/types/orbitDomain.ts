@@ -84,6 +84,15 @@ export interface RunVersionFingerprint {
    * physical layer existed, so old traces stay replayable.
    */
   domainPlanHash?: string;
+  /**
+   * W29: hash of the resolved governance tier (VISION §3.1). Optional for the
+   * same reason as the other hash fields: a `standard` host — the default —
+   * keeps the exact pre-W29 fingerprint, and only a non-default tier
+   * (`sandbox` / `strict`) becomes a config-drift surface. Present means "this
+   * trace was recorded under a tier whose governance numbers must be identical
+   * on replay".
+   */
+  governanceProfileHash?: string;
 }
 
 /**

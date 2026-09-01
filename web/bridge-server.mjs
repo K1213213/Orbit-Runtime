@@ -821,6 +821,17 @@ const api = {
         adapters: host.paeRegistry.listAdapters().length,
         tools: host.paeRegistry.listTools().length,
         configHash: host.paeRegistry.isEmpty() ? null : host.paeRegistry.configHash()
+      },
+      governance: {
+        profile: host.currentGovernanceProfile.name,
+        compression: host.currentGovernanceProfile.compression,
+        limiter: { ...host.currentGovernanceProfile.limiter },
+        trip: { ...host.currentGovernanceProfile.trip },
+        paeAdmission:
+          host.currentGovernanceProfile.paeAdmission === "all"
+            ? "all"
+            : [...host.currentGovernanceProfile.paeAdmission],
+        traceDurability: host.currentGovernanceProfile.traceDurability
       }
     };
   },

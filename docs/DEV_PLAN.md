@@ -33,6 +33,8 @@
 | **v0.2.0** | W7–W14 | **网关确定性边界**：capabilityInvoke + 决策记录 | 开启压缩/限流/熔断状态下的 record→replay 逐字节一致（replay_compat 全绿） |
 | **v0.3.0** | W15–W26 | **生态接入**：PAE 适配器 + 抽包 Monorepo | MCP 插件经网关接入且四重校验不降级；monorepo workspace 全链路绿（npm workspaces；pnpm 迁移延后） |
 | **v0.4.0** | W27 | **日志持久化**：审计日志与录制窗口的崩溃安全 WAL | 进程重启后审计轨迹与录制窗口存活；跨进程录制窗口重放逐字节一致；崩溃截断日志可恢复并自愈 |
+| **v0.5.0** | W28 | **工程硬化与发布准备**：examples + benchmarks + CI 覆盖闭合 | 每个示例独立跑通且失败非零退出；每套基准可独立运行；CI 覆盖内核+控制台+示例+基准 |
+| **v0.6.0** | W29 | **四档治理模式落地**：VISION §3.1 从设计目标变为可切换配置 | profile 契约 + 宿主选项 + 机制注入（限流/熔断/压缩/PAE 准入/轨迹持久化）+ 跨档重放报配置漂移；standard 与旧行为逐字一致 |
 
 版本号策略：宪章前语义化版本不承诺稳定 API（pre-alpha），v0.x.minor = 波次，patch = 修复。
 
@@ -102,6 +104,18 @@ v0.3.0 收口时，文档记录的最后一个架构空洞是**轨迹/录制日�
 且汇总脚本零错误 · CI 覆盖内核 + 控制台 + 示例 + 基准 · 干净从零 `tsc -b` 零错误 ·
 全量内核与前端回归只增不减。
 
+### 波次 6 · v0.6.0 四档治理模式落地（W29）
+
+VISION §3.1 四档治理模式——最后一个"文档写了但没实现"的架构面——落地为可切换配置。
+
+| 阶段 | 内容 | 依据 |
+|---|---|---|
+| **W29 ✅** | `GovernanceProfile` 契约（sandbox/standard/strict + `resolveGovernanceProfile` + `governanceProfileHash`）+ 宿主 `governanceProfile` 选项与 `currentGovernanceProfile` 访问器 + 机制注入（RateLimiter/TripProtector/TokenBudgetEngine）+ PAE 准入门（strict 关闭）+ strict 强制持久化轨迹 + 非默认档进指纹（跨档重放报配置漂移）+ 控制台设置页展示 | VISION §3.1（见下方进度日志） |
+
+**波次 6 门禁**：`standard` 解析为 v0.5.x 数字**逐字一致**（测试断言）· 非默认档指纹省略原则
+（standard 不出现字段）· 跨档重放 `RunFingerprintDriftError` 进 replay_compat 合并门禁 ·
+strict 缺 `traceJournalPath` 构造期抛错 · 全量回归只增不减。
+
 ---
 
 ## 3. 贯穿性工作流（非周任务，持续）
@@ -163,3 +177,4 @@ v0.3.0 收口时，文档记录的最后一个架构空洞是**轨迹/录制日�
 | 2026-08-31 | **W24–W26 落地（v0.3.0 发布）**：各包与根 `package.json` 版本升 0.3.0；`KERNEL_VERSION` 与 `DOMAIN_HOST_VERSION`（派生）同步升 0.3.0；`test/gateway.test.ts` 指纹断言同步。新增 `web/package.json`（`@orbit/admin-console`，private app workspace，含 `start`/`test` 脚本），根 `workspaces` 注册 `web` 并增 `start:web`/`test:web`；bridge 仍按相对路径 `../dist/src/core/orbitRuntimeHost.js` 引入编译内核。pnpm 迁移因运行环境无 pnpm/corepack 而**延后**——npm workspaces 已满足 Monorepo 结构目标，记为后续改进项。CHANGELOG 收敛为单一 `## [0.3.0]` GA 头（含 Release summary / Verification / Migration），W15–W20 与控制台各节降为 `###` 子节；README/README.zh-CN 目录结构与用例数（290/89）同步。干净从零 `tsc -b` 通过（strict 零错误）；内核 290 测试绿、前端 89 测试绿，公共 API 与重放契约零回归；`git tag v0.3.0`。v0.3.0 路线（W15–W26）收口 |
 | 2026-08-31 | **W27 落地（日志持久化，v0.4.0）**：关闭路线图最后一个架构空洞——日志无磁盘持久化。`packages/core-hub/src/persistence/wal.ts` 崩溃安全 JSONL 子层：一次写入只追加**一整行**，故崩溃唯一残留形态是**末行被截断**；恢复据此严格二分——末行解析失败/结构不完整则**丢弃**，内部行非法则**硬拒**（`WalFileInvalidError` 带行号，因为内部行不可能被崩溃截断，静默跳过等于隐藏损坏）。`walAppend`/`walRecover`/`walRecoverSync`/`walReset`/`walCompact`（临时文件+rename 原子重写）/`walLineCount`。`PersistedTraceJournal` 与 `PersistedRecordJournal` 各以内存日志为**唯一真源**、WAL 为 fire-and-forget 镜像（`writeChain` 串行化防交错，`flush()` 关闭时 await）；恢复保留原始 `entryUid`/`occurredAt`/`orderIndex`，故恢复条目**逐字节一致**——跨进程续写的录制窗口 `orderIndex` 顺延而非归零，被进程边界切开的运行仍重放为一条连续序列。宿主接线 `OrbitRuntimeHostOptions{traceJournalPath, recordJournalPath, auditRetention}`：`bootHost` 先恢复再装配通道，`shutdownHost` 先排空在途写入再应用留存，`resumeRecording()` 续开持久窗口、`beginRecording()` 截断旧 WAL 开新窗口、`currentRecordJournal()` 只读暴露、`pruneAuditLog()` 按需裁剪。**三个真实缺陷**：① `loadTraceJournal` 在读取循环内反复 `restoreSnapshot([entry])`，每次替换整链导致只恢复**最后一条**；② **崩溃截断的末行留在磁盘上，本次运行首次追加后它变成「内部行」，而内部非法行是硬故障——即一次崩溃会让此后每次启动都失败**；修复为恢复路径在首次追加前 `healIfNeeded()`（比对物理行数与恢复条目数，不一致才原子重写，健康日志零重写）；③ `bootHost` 在通道装配**之后**才恢复审计日志，装配期产生的条目被恢复快照覆盖丢失，改为恢复先行。有界留存：append-only 日志无上限增长会打满磁盘（磁盘满是宕机），故 `auditRetention` 显式由运维选择，启动与关闭各应用一次；关闭路径顺序为**先 flush 再裁剪**——反了会让被排空的在途写入把文件重新顶过上界。新增测试 3 文件 58 例（`journal_wal` 33 / `trace_journal_persistence` 14 / `host_journal_persistence` 11）+ `replay_compat` 补 3 例 WAL 门禁；全量 348 测试绿（内核 290→348），前端 89 例不变，strict 编译零错误。版本升 0.4.0（`KERNEL_VERSION` + 6 个 package.json + 指纹断言 + README 示例），`docs/architecture.md` 新增 §9 日志持久化。**坑**：测试里断言「沙箱周期会产生 >N 条审计条目」是脆弱耦合（实际不足，应直接写入审计条目）；且失败测试若未 `shutdownHost()`，已 boot 的宿主留下活跃句柄会使 `node --test` 进程永不退出（表现为整个文件挂死而非报错） |
 | 2026-09-01 | **W28 落地（工程硬化，v0.5.0）**：M5/M6 产品硬化轨道收口。**examples/** 4 个可运行示例（全部带断言、失败退出非零、可当 CI smoke）：`custom-channel.mjs`（实现 IChannelProvider → 注册 → record/replay 逐字节一致 + 篡改输入触发 ReplayDriftError）、`js-pae-plugin.mjs`（JsPaeAdapter L0，外来 JS 函数经网关治理，SeededRng 确定性骰子，适配面哈希进指纹）、`mcp-adapter.mjs`（真实 stdio 子进程，initialize→tools/list 握手后注册，record 后关子进程仍可逐字节重放——注入冻结输出不重入子进程）、`cli-record-replay.mjs`（驱动 bin/orbit.mjs 的 record→replay→diff 三命令，temp 目录自清理）。**benchmarks/** 4 套 + 汇总：gateway（capabilityInvoke 全链路含 journal，实测 ~12µs/call / 82k calls/s）、replay（journal 快路径 ~3.8µs / 261k calls/s）、wal（持久化 append+flush ~685µs/条）、pae（L0 in-process ~38µs vs L2 stdio-child ~176µs，跨进程因子 4.6×）；对照 VISION 性能预算。**CI 补闭合**：`.github/workflows/ci.yml` 增 `npm run test:console`（前端 97 例此前完全没进 CI——真实缺口）+ 4 示例 smoke + 4 基准 smoke（N 缩档跑）。**发布准备**：package.json `files` 补 examples/benchmarks/README.zh-CN.md，新增 `example:*`/`benchmark` scripts，`prepublishOnly` 补 `npm run test:console`。版本升 0.5.0（KERNEL_VERSION + 6 package.json + 指纹断言 + README 示例），CHANGELOG `[0.5.0]`。全量回归：内核 381（前轮审计后基线）+ 前端 97，干净从零 `tsc -b` 零错误。**坑**：示例里直接 `hub.attachRecordJournal` 不记录网关调用（gateway 有独立 journal，须走 `host.beginRecording`/`attachReplayEngine`）；`ReplayMode` 是纯类型无运行时值（示例用字符串字面量） |
+| 2026-09-01 | **W29 落地（四档治理模式，v0.6.0）**：VISION §3.1 从"设计目标"变为"已落地"。`infra-common/types/governance.ts`：`GovernanceProfile` 契约（sandbox/standard/strict）+ `resolveGovernanceProfile`（缺省/未知 → standard）+ `governanceProfileHash`（FNV-1a，进指纹）。宿主 `governanceProfile` 选项 + `currentGovernanceProfile` 只读访问器；`strict` 构造缺 `traceJournalPath` 抛错（合规档必须有耐久审计轨迹）。机制注入：`tokenBudgetConfigForProfile`（off/normal/aggressive，aggressive 阈值减半）、`tripThresholdForProfile`（按依赖出度软化，strict 下限 1 / 其余 2）、RateLimiter 取 profile 数字；PAE 准入门 `assertPaeKindAdmitted` 在 register/connect 前检查（connect 在握手**之前**，拒绝对端不 spawn 子进程）；`RunVersionFingerprint.governanceProfileHash` 可选字段 + `CapabilityGateway.verifyFingerprint` 对比（双方缺省=兼容，同 paeAdaptersHash 模式）——**standard 档省略字段，默认宿主指纹与 v0.5.x 逐字节一致**。**落地裁决**：standard 的 paeAdmission 用 "all" 而非 VISION 原始表的 "MCP+JS"——治理公理"为治理不砍功能"优先，且 OpenAPI/Cordis 是已发布能力；偏差记录进 VISION §3.1"与原始表的偏差"。**控制台**：settings.js 主机面板新增治理档位只读展示，bridge `state()` 增 governance 字段；css-coverage 门禁抓到新增 `.col` class 未定义 → styles.css 补上。测试 +16：`governance_profile.test.ts` 14 例 + `replay_compat` 2 例合并门禁（sandbox 录制拒以 standard 重放 = config drift；同档跨宿主重放逐字节一致——坑：网关 replay 读自身挂载 journal，replay host 须 `beginRecording()` 后 restoreSnapshot 再 attach）。全量 **397 内核**（381→397）+ **97 前端**，干净从零 `tsc -b` 零错误。清理：src/index.ts 三行重复 `export *` 收敛为一行。**坑**：`decideCompression` 阈值是字节数非 token 数（测试载荷先写错）；standard 初版 paeAdmission=["js","mcp"] 破坏了 cordis/openapi 既有测试 → 全量回归抓出，改 "all"（"设计文档直接落地会踩既有能力"的典型） |

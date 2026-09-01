@@ -42,4 +42,4 @@ export function makeUniqueMark(): string {
  * trace recorded under a different release apart from a digest drift.
  * Keep in sync with package.json#version when cutting a release.
  */
-export const KERNEL_VERSION = "0.5.0";
+export const KERNEL_VERSION = "0.6.0";

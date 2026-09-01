@@ -4,6 +4,65 @@ All notable changes to Orbit Agent Runtime are documented here. This project
 follows a pre-alpha versioning scheme: `v0.x.minor` marks a release wave,
 `patch` marks fixes. Until `v1.0` the public API is not yet stability-promised.
 
+## [0.6.0] — 2026-09-01 · Four-tier governance (W29)
+
+VISION §3.1 — the four-tier governance model — stops being a design goal and
+becomes concrete, switchable configuration. The last major "documented but not
+shipped" architectural surface is closed.
+
+### Added
+- **`GovernanceProfile` contract** (`@orbit/infra-common/types/governance`):
+  `sandbox` (development) / `standard` (default) / `strict` (compliance),
+  resolved by `resolveGovernanceProfile()` and hashed by
+  `governanceProfileHash()`. Each profile declares compression strength, rate
+  limit, trip threshold/cooldown, PAE admission and trace durability.
+- **Host option** — `new OrbitRuntimeHost({ governanceProfile: "strict" })`
+  plus a read-only `host.currentGovernanceProfile` accessor. `strict`
+  construction fails without a durable `traceJournalPath` (a compliance tier
+  with an ephemeral audit trail is a contradiction).
+- **Mechanism injection** — limiter and trip numbers come from the profile;
+  `tokenBudgetConfigForProfile()` maps compression strength onto
+  `TokenBudgetEngine` (off / normal / aggressive with halved thresholds);
+  `tripThresholdForProfile()` softens the threshold by dependency out-degree
+  (strict collapses to a floor of 1, standard/sandbox to 2).
+- **PAE admission gate** — `registerPaeToolAdapter` / `connectPaeToolAdapter`
+  check the adapter kind against the profile (sandbox + standard: all kinds;
+  strict: none). `connect` gates BEFORE the handshake so a denied kind never
+  spawns a child process.
+- **Config-drift surface** — a non-default tier adds `governanceProfileHash`
+  to the run fingerprint and `CapabilityGateway.verifyFingerprint` compares it
+  (absent-on-both = compatible, same pattern as `paeAdaptersHash`). A trace
+  recorded under one tier refuses to replay under another with
+  `RunFingerprintDriftError`. The `standard` tier is omitted from the
+  fingerprint, so default hosts keep the pre-W29 fingerprint byte for byte.
+- **Console** — the settings panel shows the active tier and its concrete
+  numbers (read-only; the tier is a construction-time decision).
+
+### Changed
+- The `standard` profile is the kernel's pre-W29 numbers **verbatim** — a
+  default host behaves exactly as before (asserted by test).
+- Engineering note on the VISION table: `standard` keeps the FULL PAE surface
+  (`all` kinds) rather than "MCP + JS" — the governance axiom is that tiers
+  scale strength, never capability, and the already-shipped OpenAPI/Cordis
+  adapters must not silently disappear from the default tier. `strict` still
+  closes the foreign-runtime surface as a compliance choice. See VISION §3.1
+  "与原始表的偏差".
+- `src/index.ts` three-way duplicate `export * from "@orbit/infra-common"` was
+  collapsed to one line.
+
+### Verification
+- Clean `tsc -b`, strict mode, zero errors.
+- Kernel suite: **397 cases** green (381 → +14 `governance_profile` + 2
+  `replay_compat` merge gates: cross-tier replay refuses as config drift;
+  same-tier replay stays byte-identical across hosts).
+- Console suite: **97 cases** green (css-coverage gate caught a missing `.col`
+  style for the new settings panel block; added).
+- Examples unchanged and green.
+
+### Migration
+- No API break: `governanceProfile` is optional and defaults to `standard`,
+  which resolves to the previous behaviour verbatim.
+
 ## [0.5.0] — 2026-09-01 · Engineering hardening & release prep (M5/M6)
 
 The kernel is architecturally complete (VISION Phases 1–5 shipped); this wave

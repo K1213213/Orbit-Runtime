@@ -1201,3 +1201,141 @@ test("replay_compat wal: durability does not perturb the recorded bytes", async 
   assert.deepEqual(strip(durable), strip(plain));
   await fs.rm(root, { recursive: true, force: true });
 });
+
+// ---------------------------------------------------------------------------
+// Governance tiers (W29) — merge gate for the four-tier model
+// ---------------------------------------------------------------------------
+
+test("replay_compat governance: a sandbox-tier recording refuses to replay as standard (config drift)", async () => {
+  const { OrbitRuntimeHost, PersistedRecordJournal, ChannelKind } = await import("../src/index");
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "orbit-compat-gov-"));
+  const walFile = path.join(root, "record.wal.jsonl");
+  const tracePath = path.join(root, "trace.wal.jsonl");
+
+  // "Process 1": record one governed call under the sandbox tier.
+  const sandboxHost = new OrbitRuntimeHost({
+    governanceProfile: "sandbox",
+    recordJournalPath: walFile,
+    traceJournalPath: tracePath
+  });
+  await sandboxHost.bootHost();
+  sandboxHost.registerPlugin({
+    id: "gov.compat",
+    displayName: "Gov",
+    edition: "1.0.0",
+    requireHostMinEdition: "1.0.0",
+    allowCapabilities: ["channel:read"]
+  });
+  const ctx = { traceMarkId: "t-gov", maxWaitMs: 5000, pluginUnitId: "gov.compat" };
+  await sandboxHost.capabilityInvoke({
+    kind: ChannelKind.MEM_KV_STORE,
+    pluginId: "gov.compat",
+    funcName: "readEntry",
+    args: ["k"],
+    mode: "record",
+    ctx
+  });
+  await sandboxHost.shutdownHost();
+
+  const recorded = await PersistedRecordJournal.recover(walFile);
+  assert.ok(
+    recorded.get(0)!.runFingerprint!.governanceProfileHash,
+    "sandbox-tier recordings carry the tier hash"
+  );
+
+  // "Process 2": a standard-tier host tries to replay the same window.
+  const standardHost = new OrbitRuntimeHost({
+    recordJournalPath: walFile,
+    traceJournalPath: path.join(root, "trace2.wal.jsonl")
+  });
+  await standardHost.bootHost();
+  standardHost.registerPlugin({
+    id: "gov.compat",
+    displayName: "Gov",
+    edition: "1.0.0",
+    requireHostMinEdition: "1.0.0",
+    allowCapabilities: ["channel:read"]
+  });
+  const resumed = await PersistedRecordJournal.recover(walFile);
+  standardHost.attachReplayEngine(resumed);
+  await assert.rejects(
+    standardHost.capabilityInvoke({
+      kind: ChannelKind.MEM_KV_STORE,
+      pluginId: "gov.compat",
+      funcName: "readEntry",
+      args: ["k"],
+      mode: "replay",
+      ctx
+    }),
+    (err: unknown) => {
+      assert.equal(
+        (err as { errorToken?: string }).errorToken,
+        "RUN_FINGERPRINT_DRIFT",
+        "cross-tier replay must surface as config drift, not digest drift"
+      );
+      return true;
+    }
+  );
+  await standardHost.shutdownHost();
+  await fs.rm(root, { recursive: true, force: true });
+});
+
+test("replay_compat governance: same-tier replay stays byte-identical across hosts", async () => {
+  const { OrbitRuntimeHost, PersistedRecordJournal, ChannelKind } = await import("../src/index");
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "orbit-compat-gov-ok-"));
+  const walFile = path.join(root, "record.wal.jsonl");
+
+  const run = async (
+    mode: "record" | "replay"
+  ): Promise<{ host: OrbitRuntimeHost; journal?: RecordJournal; out?: unknown }> => {
+    const host = new OrbitRuntimeHost({
+      governanceProfile: "strict",
+      recordJournalPath: walFile,
+      traceJournalPath: path.join(root, `trace-${mode}.wal.jsonl`)
+    });
+    await host.bootHost();
+    host.registerPlugin({
+      id: "gov.ok",
+      displayName: "Gov",
+      edition: "1.0.0",
+      requireHostMinEdition: "1.0.0",
+      allowCapabilities: ["channel:read"]
+    });
+    const ctx = { traceMarkId: `t-${mode}`, maxWaitMs: 5000, pluginUnitId: "gov.ok" };
+    if (mode === "record") {
+      const journal = host.beginRecording();
+      await host.capabilityInvoke({
+        kind: ChannelKind.MEM_KV_STORE,
+        pluginId: "gov.ok",
+        funcName: "readEntry",
+        args: ["k"],
+        mode: "record",
+        ctx
+      });
+      await journal.flush();
+      return { host, journal };
+    }
+    const resumed = await PersistedRecordJournal.recover(walFile);
+    // The gateway replays from ITS attached journal: attach the recovered
+    // snapshot through beginRecording, then switch the injection source.
+    const replayed = host.beginRecording();
+    replayed.restoreSnapshot(resumed.snapshot());
+    host.attachReplayEngine(replayed);
+    const out = await host.capabilityInvoke({
+      kind: ChannelKind.MEM_KV_STORE,
+      pluginId: "gov.ok",
+      funcName: "readEntry",
+      args: ["k"],
+      mode: "replay",
+      ctx
+    });
+    return { host, out };
+  };
+
+  const recordPhase = await run("record");
+  const replayPhase = await run("replay");
+  assert.equal(replayPhase.out, recordPhase.journal!.get(0)!.outputSnapshot);
+  await recordPhase.host.shutdownHost();
+  await replayPhase.host.shutdownHost();
+  await fs.rm(root, { recursive: true, force: true });
+});

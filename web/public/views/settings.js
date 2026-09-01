@@ -116,6 +116,25 @@ export async function renderSettings(root) {
   if (!can(role, "host")) hostOps.append(el("span", "hint", "当前角色无权启停主机（见权限矩阵）"));
   hostPanel.append(row("生命周期操作", "自底向上装配 / 严格反序释放。", hostOps));
 
+  /* ---- 治理档位（W29 · VISION §3.1） ---- */
+  const gov = await api
+    .state()
+    .then((s) => s.governance)
+    .catch(() => null);
+  if (gov) {
+    const label = { sandbox: "Sandbox（开发）", standard: "Standard（默认）", strict: "Strict（合规）" }[gov.profile] ?? gov.profile;
+    const govMeta = el("div", "hint", "");
+    govMeta.append(
+      el("span", "", `压缩 ${gov.compression} · 限流 ${gov.limiter.maxCallsPerWindow}/窗口 · 熔断 ${gov.trip.failureThreshold} 次 · `),
+      el("span", "", `PAE ${gov.paeAdmission === "all" ? "全部" : gov.paeAdmission.length === 0 ? "关闭" : gov.paeAdmission.join("+")} · 轨迹 ${gov.traceDurability}`)
+    );
+    hostPanel.append(row(
+      "治理档位",
+      "四档治理模式（Sandbox / Standard / Strict），在构造宿主时选定；本面板只读展示。",
+      el("div", "col", [badgeEl(label, gov.profile === "strict" ? "warn" : "ok"), govMeta])
+    ));
+  }
+
   /* ---- 模型适配器（DeepSeek / OpenAI 兼容） ---- */
   const adapters = panels.get("adapters");
   const adStatus = el("span", "badge neutral", "加载中…");

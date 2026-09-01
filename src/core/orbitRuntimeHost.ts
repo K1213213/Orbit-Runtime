@@ -20,9 +20,16 @@ import { PaeChannel } from "@orbit/pae-engine";
 import type { IPaeAdapter, PaeFidelity, PaeToolDescriptor } from "@orbit/pae-engine";
 import type { GatewayInvokeParams } from "@orbit/core-hub";
 import type { GatewayCheckers } from "@orbit/core-hub";
+import { tripThresholdForProfile, tokenBudgetConfigForProfile } from "@orbit/core-hub";
 import type { AgentSandbox } from "@orbit/sandbox-runtime";
 import {
   ChannelKind, ChannelCallCtx, PluginUnitPact, AgentBoxConfig, CapabilityKey, ReplayMode
+} from "@orbit/infra-common";
+import {
+  resolveGovernanceProfile,
+  governanceProfileHash,
+  type GovernanceProfile,
+  type GovernanceProfileName
 } from "@orbit/infra-common";
 import type { RunVersionFingerprint } from "@orbit/infra-common";
 import type { ClockSource } from "@orbit/infra-common";
@@ -63,6 +70,17 @@ export interface OrbitRuntimeHostOptions {
    * boot (after recovery) and at shutdown. Omit for unbounded retention.
    */
   auditRetention?: number;
+  /**
+   * W29: governance tier (VISION §3.1). `standard` is the default and resolves
+   * to the kernel's pre-W29 numbers verbatim. `sandbox` disables token
+   * compression, widens rate limits, admits every PAE adapter kind and keeps
+   * the trace in memory. `strict` narrows rate limits, trips earlier, compresses
+   * aggressively, admits NO foreign adapters and REQUIRES a durable trace path
+   * (construction fails without one). The profile name is hashed into the run
+   * fingerprint, so a trace recorded under one tier refuses to replay under
+   * another (`RunFingerprintDriftError`).
+   */
+  governanceProfile?: GovernanceProfileName;
 }
 
 /**
@@ -118,10 +136,23 @@ export class OrbitRuntimeHost {
   private readonly durableTraceJournal: PersistedTraceJournal;
   /** W27: audit retention bound; undefined means unbounded. */
   private readonly auditRetention?: number;
+  /** W29: resolved governance tier; drives limiter / trip / compression / PAE / durability. */
+  private readonly governanceProfile: GovernanceProfile;
 
   public constructor(opts?: OrbitRuntimeHostOptions) {
     this.recordJournalPath = opts?.recordJournalPath;
     this.clock = opts?.clock;
+    this.governanceProfile = resolveGovernanceProfile(opts?.governanceProfile);
+    // A compliance tier with an ephemeral audit trail is a contradiction in
+    // terms: fail at construction, not at the first reboot.
+    if (
+      this.governanceProfile.traceDurability === "required" &&
+      !opts?.traceJournalPath
+    ) {
+      throw new Error(
+        "governance profile 'strict' requires traceJournalPath — a compliance tier must have a durable audit trail"
+      );
+    }
     if (opts?.auditRetention !== undefined) {
       if (!Number.isInteger(opts.auditRetention) || opts.auditRetention < 0) {
         throw new RangeError(
@@ -131,8 +162,11 @@ export class OrbitRuntimeHost {
       this.auditRetention = opts.auditRetention;
     }
     this.costRouter = new CostRouter();
-    this.tokenBudget = new TokenBudgetEngine();
-    this.rateLimiter = new RateLimiter();
+    this.tokenBudget = new TokenBudgetEngine(tokenBudgetConfigForProfile(this.governanceProfile));
+    this.rateLimiter = new RateLimiter({
+      maxCallsPerWindow: this.governanceProfile.limiter.maxCallsPerWindow,
+      windowSizeCalls: this.governanceProfile.limiter.windowSizeCalls
+    });
     this.behaviorCollector = new BehaviorCollector();
     this.paeRegistry = new PaeAdapterRegistry();
     this.paeChannel = new PaeChannel(this.paeRegistry);
@@ -143,7 +177,9 @@ export class OrbitRuntimeHost {
     this.pluginPactVerifier = new PluginPactVerifier();
     this.pluginSandboxGuard = new PluginSandboxGuard(
       this.traceJournal,
-      (pluginId) => Math.max(2, 5 - this.impactGraph.outDegree(pluginId)),
+      // W29: the trip threshold comes from the profile, softened by the
+      // plugin's dependency out-degree (see tripThresholdForProfile).
+      (pluginId) => tripThresholdForProfile(this.governanceProfile, this.impactGraph.outDegree(pluginId)),
       opts?.clock
     );
     this.sandboxPool = new SandboxPool(this.channelHub, this.traceJournal, this.costRouter);
@@ -240,8 +276,23 @@ export class OrbitRuntimeHost {
       tokenConfigHash: this.tokenBudget.configHash(),
       paeEnabled: this.paeAdapterKinds.size > 0,
       ...(this.paeRegistry.isEmpty() ? {} : { paeAdaptersHash: this.paeRegistry.configHash() }),
-      ...(this.domainManager?.planOf() ? { domainPlanHash: this.domainManager.planHash() } : {})
+      ...(this.domainManager?.planOf() ? { domainPlanHash: this.domainManager.planHash() } : {}),
+      // W29: only a NON-default tier is a fingerprint surface. `standard` is
+      // omitted so a default host keeps its pre-W29 fingerprint byte for byte
+      // (backward-compat rule: new hash fields are omitted, never empty).
+      ...(this.governanceProfile.name === "standard"
+        ? {}
+        : { governanceProfileHash: governanceProfileHash(this.governanceProfile) })
     };
+  }
+
+  /**
+   * W29: the resolved governance tier and its concrete numbers. Read-only —
+   * the tier is a construction-time decision; switching it means constructing
+   * a host with `governanceProfile`.
+   */
+  public get currentGovernanceProfile(): GovernanceProfile {
+    return this.governanceProfile;
   }
 
   public async bootHost(): Promise<void> {
@@ -368,6 +419,9 @@ export class OrbitRuntimeHost {
     adapter: IPaeAdapter,
     opts: { registerPact?: boolean; requireHostMinEdition?: string } = {}
   ): PluginUnitPact {
+    // W29: the governance tier admits adapter kinds explicitly. `strict`
+    // admits none — a compliance tier has no foreign-runtime surface at all.
+    this.assertPaeKindAdmitted(adapter.meta.kind);
     this.paeRegistry.register(adapter, makeUniqueMark());
     this.paeChannel.syncTools();
     this.paeAdapterKinds.add(ChannelKind.PAE_TOOL);
@@ -378,6 +432,22 @@ export class OrbitRuntimeHost {
       this.registerPlugin(pact);
     }
     return pact;
+  }
+
+  /**
+   * W29: the governance gate for foreign adapters. `sandbox` admits every
+   * kind; `standard` admits the documented set (js + mcp); `strict` admits
+   * none. The check runs before any handshake or registration, so a denied
+   * adapter is rejected outright rather than half-connected.
+   */
+  private assertPaeKindAdmitted(kind: string): void {
+    const admission = this.governanceProfile.paeAdmission;
+    if (admission === "all") return;
+    if (admission.includes(kind)) return;
+    throw new Error(
+      `governance profile '${this.governanceProfile.name}' does not admit PAE adapter kind '${kind}' ` +
+        `(admitted: ${admission.length === 0 ? "none" : admission.join(", ")})`
+    );
   }
 
   /**
@@ -398,6 +468,9 @@ export class OrbitRuntimeHost {
     adapter: IPaeAdapter,
     opts: { registerPact?: boolean; requireHostMinEdition?: string; maxWaitMs?: number } = {}
   ): Promise<PluginUnitPact> {
+    // W29: gate BEFORE the handshake — a denied kind must not spawn a child
+    // process just to be rejected (registerPaeToolAdapter re-checks).
+    this.assertPaeKindAdmitted(adapter.meta.kind);
     if (adapter.setup) {
       await adapter.setup({
         traceMarkId: makeUniqueMark(),

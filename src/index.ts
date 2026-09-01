@@ -22,6 +22,7 @@ export type { ShellChannelConfig, ShellExecResult } from "@orbit/core-hub";
 export { PluginPactVerifier } from "@orbit/core-hub";
 export { TripProtector } from "@orbit/core-hub";
 export type { TripSnapshot } from "@orbit/core-hub";
+export { tokenBudgetConfigForProfile, tripThresholdForProfile } from "@orbit/core-hub";
 export { PluginSandboxGuard } from "@orbit/core-hub";
 export { TraceJournal } from "@orbit/core-hub";
 export { AgentSandbox } from "@orbit/sandbox-runtime";
@@ -241,6 +242,4 @@ export type { ChannelCostMeta } from "@orbit/core-hub";
 
 export { digestInputs } from "@orbit/infra-common";
 
-export * from "@orbit/infra-common";
-export * from "@orbit/infra-common";
 export * from "@orbit/infra-common";

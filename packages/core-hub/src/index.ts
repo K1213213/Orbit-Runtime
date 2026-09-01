@@ -13,6 +13,7 @@ export * from "./channel/providers/openai_compat_channel";
 export * from "./channel/providers/ShellChannel";
 export * from "./gateway/BehaviorCollector";
 export * from "./gateway/CapabilityGateway";
+export * from "./gateway/governance";
 export * from "./gateway/RateLimiter";
 export * from "./gateway/TokenBudgetEngine";
 export * from "./gateway/types";

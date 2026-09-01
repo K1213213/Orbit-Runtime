@@ -152,6 +152,16 @@ export interface TraceJournalEntry {
   pluginUnitId?: PluginUnitId;
   agentBoxId?: AgentBoxId;
   factPayload: Record<string, unknown>;
+  /**
+   * W30: hash-chain linkage (audit integrity). Present only when the journal
+   * was constructed with a signing key. `prevHash` is the previous entry's
+   * `chainHash` (or the genesis seed for the first entry); `chainHash` is
+   * HMAC-SHA256(key, prevHash + canonical entry content). Optional per the
+   * backward-compat rule: entries recorded without a key carry no chain
+   * fields, so old journals stay byte-identical and replay untouched.
+   */
+  prevHash?: string;
+  chainHash?: string;
 }
 
 /** Capabilities a plugin unit may declare. */

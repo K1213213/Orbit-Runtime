@@ -1,15 +1,32 @@
 import { makeUniqueMark } from "@orbit/infra-common";
 import type { TraceJournalEntry, TraceMarkId } from "@orbit/infra-common";
+import { chainFieldsOf, chainTailOf, firstChainHash } from "../audit/audit_chain";
 
 /**
  * Append-only behavior journal. Reads always return copies so callers cannot
  * mutate internal state; snapshots support audit and replay scenarios.
+ *
+ * W30: when constructed with a signing key, every appended entry is linked
+ * into an audit hash chain (`prevHash`/`chainHash`, see audit_chain.ts) so a
+ * tampered audit trail is detectable. Without a key the journal records no
+ * chain fields at all — the pre-W30 behaviour, byte for byte.
  */
 export class TraceJournal {
   private readonly entryList: TraceJournalEntry[] = [];
+  /** W30: next append links from this hash (null when unsigned). */
+  private chainTail: string | null = null;
+
+  public constructor(private readonly chainKey?: string) {}
 
   public append(raw: Omit<TraceJournalEntry, "entryUid" | "occurredAt">): TraceJournalEntry {
     const entry: TraceJournalEntry = { ...raw, entryUid: makeUniqueMark(), occurredAt: Date.now() };
+    if (this.chainKey) {
+      const prev = this.chainTail ?? firstChainHash(this.chainKey);
+      const fields = chainFieldsOf(this.chainKey, prev, entry);
+      entry.prevHash = fields.prevHash;
+      entry.chainHash = fields.chainHash;
+      this.chainTail = fields.chainHash;
+    }
     this.entryList.push(entry);
     return entry;
   }
@@ -41,6 +58,9 @@ export class TraceJournal {
   public restoreSnapshot(snapshot: TraceJournalEntry[]): void {
     this.entryList.length = 0;
     this.entryList.push(...snapshot);
+    // W30: a restored journal continues the chain from its last entry; a
+    // journal without chain fields stays unsigned.
+    this.chainTail = chainTailOf(snapshot);
   }
 
   /**
@@ -54,6 +74,7 @@ export class TraceJournal {
 
   public clear(): void {
     this.entryList.length = 0;
+    this.chainTail = null;
   }
 
   public flush(): Promise<void> {

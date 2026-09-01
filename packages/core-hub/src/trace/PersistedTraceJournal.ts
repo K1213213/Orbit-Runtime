@@ -26,8 +26,8 @@ export class PersistedTraceJournal extends TraceJournal {
    */
   private lastError: unknown = null;
 
-  public constructor(filePath?: string) {
-    super();
+  public constructor(filePath?: string, chainKey?: string) {
+    super(chainKey);
     this.filePath = filePath;
   }
 

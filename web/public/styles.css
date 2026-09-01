@@ -119,6 +119,7 @@ code, .mono { font-family: var(--font-mono); font-size: 0.92em; }
 .faint { color: var(--text-faint); }
 .mt8 { margin-top: 8px; }
 .mt16 { margin-top: 16px; }
+.strong { font-weight: 600; }
 .row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .col { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
 .spread { display: flex; align-items: center; justify-content: space-between; gap: 8px; }

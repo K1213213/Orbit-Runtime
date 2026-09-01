@@ -1290,6 +1290,7 @@ test("replay_compat governance: same-tier replay stays byte-identical across hos
   ): Promise<{ host: OrbitRuntimeHost; journal?: RecordJournal; out?: unknown }> => {
     const host = new OrbitRuntimeHost({
       governanceProfile: "strict",
+      auditSigningKey: "compat-gov-key",
       recordJournalPath: walFile,
       traceJournalPath: path.join(root, `trace-${mode}.wal.jsonl`)
     });
@@ -1337,5 +1338,68 @@ test("replay_compat governance: same-tier replay stays byte-identical across hos
   assert.equal(replayPhase.out, recordPhase.journal!.get(0)!.outputSnapshot);
   await recordPhase.host.shutdownHost();
   await replayPhase.host.shutdownHost();
+  await fs.rm(root, { recursive: true, force: true });
+});
+
+// ---------------------------------------------------------------------------
+// Audit hash chain (W30) — merge gate: signing must not perturb replay
+// ---------------------------------------------------------------------------
+
+test("replay_compat audit: a signing-key host records and replays byte-identically", async () => {
+  const { OrbitRuntimeHost, PersistedRecordJournal, ChannelKind } = await import("../src/index");
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "orbit-compat-audit-"));
+  const walFile = path.join(root, "record.wal.jsonl");
+  const tracePath = path.join(root, "trace.wal.jsonl");
+
+  // "Process 1": record one governed call under a signing-key host. The audit
+  // chain lives on the OBSERVATION layer; the recorded decision values must be
+  // untouched by it.
+  const host = new OrbitRuntimeHost({ auditSigningKey: "compat-key", recordJournalPath: walFile, traceJournalPath: tracePath });
+  await host.bootHost();
+  host.registerPlugin({
+    id: "audit.compat",
+    displayName: "Audit",
+    edition: "1.0.0",
+    requireHostMinEdition: "1.0.0",
+    allowCapabilities: ["channel:read"]
+  });
+  const ctx = { traceMarkId: "t-audit", maxWaitMs: 5000, pluginUnitId: "audit.compat" };
+  const live = await host.capabilityInvoke({
+    kind: ChannelKind.MEM_KV_STORE,
+    pluginId: "audit.compat",
+    funcName: "readEntry",
+    args: ["k"],
+    mode: "record",
+    ctx
+  });
+  await host.shutdownHost();
+
+  // "Process 2": replay the same window with the same signing key — the
+  // injected output must equal the live one, and the audit chain verifies.
+  const host2 = new OrbitRuntimeHost({ auditSigningKey: "compat-key", recordJournalPath: walFile, traceJournalPath: tracePath });
+  await host2.bootHost();
+  host2.registerPlugin({
+    id: "audit.compat",
+    displayName: "Audit",
+    edition: "1.0.0",
+    requireHostMinEdition: "1.0.0",
+    allowCapabilities: ["channel:read"]
+  });
+  const recovered = await PersistedRecordJournal.recover(walFile);
+  const replayJournal = host2.beginRecording();
+  replayJournal.restoreSnapshot(recovered.snapshot());
+  host2.attachReplayEngine(replayJournal);
+  const replayed = await host2.capabilityInvoke({
+    kind: ChannelKind.MEM_KV_STORE,
+    pluginId: "audit.compat",
+    funcName: "readEntry",
+    args: ["k"],
+    mode: "replay",
+    ctx
+  });
+  assert.equal(replayed, live, "signing the audit trail does not perturb recorded decisions");
+  const chain = host2.verifyAuditChain();
+  assert.equal(chain.consistent, true, "the audit chain stays provable across the replay");
+  await host2.shutdownHost();
   await fs.rm(root, { recursive: true, force: true });
 });

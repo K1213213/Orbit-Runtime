@@ -1,6 +1,6 @@
 {
   "name": "@orbit/core-hub",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "private": true,
   "description": "Channel layer, gateway, replay, trace, pact, safeguards and routing \u2014 the kernel hub.",
   "license": "Apache-2.0",

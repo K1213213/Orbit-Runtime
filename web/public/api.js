@@ -153,6 +153,7 @@ export const api = {
   billing: () => request("GET", "/api/billing"),
   audit: (params = {}) => request("GET", `/api/audit${qs(params)}`),
   auditExport: (format, params = {}) => request("GET", `/api/audit/export${qs({ format, ...params })}`),
+  auditChain: () => request("GET", "/api/audit/chain"),
   notifications: () => request("GET", "/api/notifications"),
   notificationsRead: (ids) => request("POST", "/api/notifications/read", { ids }),
 

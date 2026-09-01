@@ -17,6 +17,49 @@ const LEVEL_TONE = { ok: "ok", warn: "warn", err: "err" };
 export async function renderAudit(root) {
   const wrap = el("div", "");
 
+  /* ---- 内核审计链（W30 · 防篡改） ---- */
+  const chainCard = el("div", "card");
+  const chainBody = el("div", "card-body");
+  const chainBadge = el("span", "badge neutral", "校验中…");
+  const chainMeta = el("span", "sub");
+  api.auditChain().then((r) => {
+    if (!r || r.total === 0) {
+      chainBadge.className = "badge neutral";
+      chainBadge.textContent = "无内核审计条目";
+      chainMeta.textContent = "内核尚未产生审计条目（auditSigningKey 配置后链路可验证）";
+      return;
+    }
+    if (!r.signed) {
+      chainBadge.className = "badge neutral";
+      chainBadge.textContent = "未签名";
+      chainMeta.textContent = `${r.total} 条 · 未配置 ORBIT_AUDIT_SIGNING_KEY，无法证明未被篡改`;
+      return;
+    }
+    if (r.consistent) {
+      chainBadge.className = "badge ok";
+      chainBadge.textContent = "链一致";
+      chainMeta.textContent = `${r.total} 条 · HMAC 哈希链验证通过，审计轨迹未被篡改`;
+    } else {
+      chainBadge.className = "badge err";
+      chainBadge.textContent = "链断裂";
+      chainMeta.textContent = `第 ${r.brokenAt} 条开始损坏：${r.brokenReason}`;
+    }
+  }).catch(() => {
+    chainBadge.className = "badge neutral";
+    chainBadge.textContent = "不可用";
+  });
+  chainBody.append(
+    el("div", "row spread", [
+      el("div", "col", [
+        el("span", "strong", "内核审计链完整性"),
+        el("span", "sub", "内核 trace journal 的 HMAC 哈希链（W30）；平台 /api/audit 事件流见下。")
+      ]),
+      el("div", "col", [chainBadge, chainMeta])
+    ])
+  );
+  chainCard.append(chainBody);
+  wrap.append(chainCard);
+
   /* ---- 过滤器 ---- */
   const filterCard = el("div", "card");
   const filterBody = el("div", "card-body");

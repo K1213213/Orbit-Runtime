@@ -41,6 +41,17 @@ export { ReplayEngine, ReplayDriftError } from "@orbit/core-hub";
 export type { ReconcileReport } from "@orbit/core-hub";
 export { saveRecordJournal, loadRecordJournal, TraceFileInvalidError } from "@orbit/core-hub";
 export type { ChannelRuntimeMeta } from "@orbit/core-hub";
+// W30: audit hash chain — anti-tamper audit trail primitives.
+export {
+  verifyAuditChain,
+  chainFieldsOf,
+  firstChainHash,
+  auditChainHash,
+  chainTailOf,
+  stableJson,
+  AUDIT_GENESIS_HASH
+} from "@orbit/core-hub";
+export type { AuditChainReport } from "@orbit/core-hub";
 
 // W27: journal durability — append-only WAL substrate, persisted journals and
 // the explicit checkpoint/export pair for the audit journal.

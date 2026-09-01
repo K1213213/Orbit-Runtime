@@ -410,6 +410,43 @@ async function cmdDiff(aPath, bPath, opts) {
   }
 }
 
+async function cmdAudit(tracePath, opts) {
+  if (!tracePath) {
+    fail("audit requires <trace.wal.jsonl>", 2);
+    return;
+  }
+  const file = path.resolve(process.cwd(), tracePath);
+  const journal = new orbit.PersistedTraceJournal(file);
+  await journal.load();
+  const entries = journal.snapshot();
+  if (!opts.key) {
+    const summary = {
+      file,
+      entries: entries.length,
+      signed: false,
+      note: "pass --key <hmac-key> to verify the chain signature"
+    };
+    if (isJsonFlag(opts.json)) {
+      out(summary);
+    } else {
+      process.stdout.write(`audit ${file}\n  entries : ${entries.length}\n  signed  : no key given — pass --key to verify the chain\n`);
+    }
+    return;
+  }
+  const report = orbit.verifyAuditChain(entries, opts.key);
+  if (isJsonFlag(opts.json)) {
+    out({ file, ...report });
+  } else {
+    process.stdout.write(`audit ${file}\n  entries : ${report.total}\n  signed  : ${report.signed}\n`);
+    if (report.consistent) {
+      process.stdout.write("  result  : ✓ audit chain consistent (no tampering detected)\n");
+    } else {
+      process.stdout.write(`  result  : ✗ chain broken at entry #${report.brokenAt} — ${report.brokenReason}\n`);
+      process.exitCode = 1;
+    }
+  }
+}
+
 function printUsage() {
   process.stdout.write(
     `orbit ${PKG.version} — deterministic-replay CLI for Orbit Agent Runtime
@@ -418,6 +455,7 @@ Usage:
   orbit record <script.js> [--out trace.jsonl] [--config orbit.config.json]
   orbit replay <trace.jsonl> [--via script.js] [--config orbit.config.json]
   orbit diff <a.jsonl> <b.jsonl>
+  orbit audit <trace.wal.jsonl> [--key <hmac-key>] [--json]
   orbit --version
   orbit help
 
@@ -461,6 +499,9 @@ async function main() {
         break;
       case "diff":
         await cmdDiff(positionals[0], positionals[1], { json });
+        break;
+      case "audit":
+        await cmdAudit(positionals[0], { key: flags.key, json });
         break;
       case "help":
       case undefined:

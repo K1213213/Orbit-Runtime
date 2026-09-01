@@ -67,7 +67,13 @@ const REPLAY_CYCLES = ["tell me a joke", "what is orbit", "explain a capability 
 /* Host singleton                                                      */
 /* ------------------------------------------------------------------ */
 
-const host = new OrbitRuntimeHost();
+// W30: the console can sign its audit trail when the operator provides a key
+// (ORBIT_AUDIT_SIGNING_KEY); the audit chain endpoint then proves integrity.
+const host = new OrbitRuntimeHost(
+  process.env.ORBIT_AUDIT_SIGNING_KEY
+    ? { auditSigningKey: process.env.ORBIT_AUDIT_SIGNING_KEY }
+    : undefined
+);
 let running = false;
 
 async function ensureRunning() {
@@ -2090,6 +2096,12 @@ const api = {
     return auditList(query);
   },
 
+  /* W30: prove the kernel audit chain (host.verifyAuditChain). The console's
+     own /api/audit stream is separate; this is the kernel trace journal. */
+  auditChain() {
+    return host.verifyAuditChain();
+  },
+
   /* 零依赖生成合法多页 PDF（Helvetica/WinAnsi；非 ASCII 折叠为 '?'）。
      仅用于审计导出，不引入任何第三方库。 */
   pdfText(s) {
@@ -2459,6 +2471,8 @@ const server = http.createServer(async (req, res) => {
         if (method === "GET" && seg[0] === "billing") return api.billing();
         if (method === "GET" && seg[0] === "audit" && seg[1] === "export") {
           needRole(); return api.auditExport(String(query.format ?? "md"), query); }
+        if (method === "GET" && seg[0] === "audit" && seg[1] === "chain")
+          return api.auditChain();
         if (method === "GET" && seg[0] === "audit" && seg.length === 1) return api.auditEvents(query);
         if (method === "GET" && seg[0] === "notifications" && seg.length === 1) return api.notifications(needSession());
         if (method === "POST" && seg[0] === "notifications" && seg[1] === "read") {

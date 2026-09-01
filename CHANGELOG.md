@@ -4,6 +4,53 @@ All notable changes to Orbit Agent Runtime are documented here. This project
 follows a pre-alpha versioning scheme: `v0.x.minor` marks a release wave,
 `patch` marks fixes. Until `v1.0` the public API is not yet stability-promised.
 
+## [0.7.0] — 2026-09-01 · Audit hash chain (W30)
+
+VISION §3.1's "落盘 + 签名" lands: the append-only audit log becomes
+tamper-evident. This is the commercial core of the product story — "prove the
+agent really did what it did" needs more than a file that anyone with write
+access can edit.
+
+### Added
+- **Audit hash chain** (`core-hub/audit/audit_chain.ts`): every audit entry
+  carries `prevHash` (previous entry's `chainHash`, genesis seed for the first)
+  and `chainHash` = HMAC-SHA256(key, prevHash + canonical entry). Editing ANY
+  entry — content, timestamp, or deleting one in the middle — breaks the chain
+  at that entry and every entry after it. HMAC is a pure function and the
+  canonical form is key-sorted JSON, so the hash is reproducible anywhere.
+- **Host option** — `new OrbitRuntimeHost({ auditSigningKey })` signs the audit
+  trail; without a key the journal records NO chain fields (pre-W30 behaviour,
+  byte for byte). `host.verifyAuditChain()` proves integrity; `strict` tier now
+  REQUIRES the signing key (construction fails without it) and refuses to boot
+  on a broken recovered chain — an untrusted audit trail is an untrusted
+  environment.
+- **Recovery continuation** — restored entries keep their chain fields and
+  `restoreSnapshot` rebuilds the chain tail, so a window continued across
+  processes stays one unbroken chain.
+- **`orbit audit <trace.wal.jsonl> [--key]` CLI command** — verifies a chain
+  from the genesis seed; unsigned reports need a key, a broken chain exits
+  non-zero with the break point and reason.
+- **Console** — audit page "kernel audit chain" card (`GET /api/audit/chain`);
+  the bridge signs when `ORBIT_AUDIT_SIGNING_KEY` is set.
+
+### Changed
+- `strict` governance now validates BOTH a durable trace path and a signing
+  key at construction, and verifies the recovered chain at boot.
+- `TraceJournal` accepts an optional signing key; `PersistedTraceJournal`
+  threads it through (WAL mirrors the chained entries verbatim).
+
+### Verification
+- Clean `tsc -b`, strict, zero errors.
+- Kernel suite: **413 cases** green (397 → +15 `audit_chain` + 1
+  `replay_compat` merge gate: signing does not perturb replay — a keyed host
+  records and replays byte-identically while the chain stays provable).
+- Console suite: **97/97** green (css-coverage gate caught a missing `.strong`
+  style for the new audit card; added). Examples: 4/4 green.
+
+### Migration
+- No API break: `auditSigningKey` is optional; unsigned hosts behave exactly
+  as before.
+
 ## [0.6.0] — 2026-09-01 · Four-tier governance (W29)
 
 VISION §3.1 — the four-tier governance model — stops being a design goal and

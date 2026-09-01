@@ -6,6 +6,7 @@
  */
 export * from "./channel/ChannelHub";
 export * from "./channel/IChannelProvider";
+export * from "./audit/audit_chain";
 export * from "./channel/providers/FileChannel";
 export * from "./channel/providers/LlmMockChannel";
 export * from "./channel/providers/MemoryKvChannel";

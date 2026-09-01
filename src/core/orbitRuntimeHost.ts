@@ -21,6 +21,8 @@ import type { IPaeAdapter, PaeFidelity, PaeToolDescriptor } from "@orbit/pae-eng
 import type { GatewayInvokeParams } from "@orbit/core-hub";
 import type { GatewayCheckers } from "@orbit/core-hub";
 import { tripThresholdForProfile, tokenBudgetConfigForProfile } from "@orbit/core-hub";
+import { verifyAuditChain } from "@orbit/core-hub";
+import type { AuditChainReport } from "@orbit/core-hub";
 import type { AgentSandbox } from "@orbit/sandbox-runtime";
 import {
   ChannelKind, ChannelCallCtx, PluginUnitPact, AgentBoxConfig, CapabilityKey, ReplayMode
@@ -81,6 +83,15 @@ export interface OrbitRuntimeHostOptions {
    * another (`RunFingerprintDriftError`).
    */
   governanceProfile?: GovernanceProfileName;
+  /**
+   * W30: HMAC-SHA256 signing key for the audit hash chain (VISION §3.1's
+   * "落盘 + 签名"). When provided, every audit entry is linked with
+   * `prevHash`/`chainHash` and `host.verifyAuditChain()` can prove the trail
+   * has not been tampered with. Without a key the journal records no chain
+   * fields at all (pre-W30 behaviour). The `strict` governance tier REQUIRES
+   * a signing key — a compliance tier must be able to prove its audit trail.
+   */
+  auditSigningKey?: string;
 }
 
 /**
@@ -138,6 +149,8 @@ export class OrbitRuntimeHost {
   private readonly auditRetention?: number;
   /** W29: resolved governance tier; drives limiter / trip / compression / PAE / durability. */
   private readonly governanceProfile: GovernanceProfile;
+  /** W30: HMAC key for the audit hash chain; undefined = unsigned journal. */
+  private readonly auditSigningKey?: string;
 
   public constructor(opts?: OrbitRuntimeHostOptions) {
     this.recordJournalPath = opts?.recordJournalPath;
@@ -153,6 +166,14 @@ export class OrbitRuntimeHost {
         "governance profile 'strict' requires traceJournalPath — a compliance tier must have a durable audit trail"
       );
     }
+    // W30: strict also requires the ability to PROVE the trail. The signing
+    // key is what turns an append-only file into a tamper-evident one.
+    if (this.governanceProfile.name === "strict" && !opts?.auditSigningKey) {
+      throw new Error(
+        "governance profile 'strict' requires auditSigningKey — a compliance tier must sign its audit chain"
+      );
+    }
+    this.auditSigningKey = opts?.auditSigningKey;
     if (opts?.auditRetention !== undefined) {
       if (!Number.isInteger(opts.auditRetention) || opts.auditRetention < 0) {
         throw new RangeError(
@@ -171,7 +192,7 @@ export class OrbitRuntimeHost {
     this.paeRegistry = new PaeAdapterRegistry();
     this.paeChannel = new PaeChannel(this.paeRegistry);
     this.channelHub = new ChannelHub();
-    this.durableTraceJournal = new PersistedTraceJournal(opts?.traceJournalPath);
+    this.durableTraceJournal = new PersistedTraceJournal(opts?.traceJournalPath, this.auditSigningKey);
     this.traceJournal = this.durableTraceJournal;
     this.impactGraph = new ImpactDomainGraph();
     this.pluginPactVerifier = new PluginPactVerifier();
@@ -302,6 +323,18 @@ export class OrbitRuntimeHost {
     // rebuilds the whole chain, so it must precede channel setup — otherwise
     // setup-time audit entries would be overwritten by the recovered snapshot.
     await this.traceJournal.load();
+    // W30: a compliance tier starts only against a PROVABLE audit trail. A
+    // chain that fails verification after recovery means the log was edited
+    // while the host was down — a strict tier refuses to run on it.
+    if (this.governanceProfile.name === "strict" && this.auditSigningKey) {
+      const report = this.verifyAuditChain();
+      if (!report.consistent) {
+        throw new Error(
+          `governance profile 'strict' refuses to boot: audit chain broken at entry #${report.brokenAt} ` +
+            `(${report.brokenReason})`
+        );
+      }
+    }
     // Apply the retention bound to whatever the previous run left behind, before
     // this run starts appending. Compaction also physically removes a tail that
     // a crash truncated (recovery merely ignores it), so the log is well-formed
@@ -311,6 +344,19 @@ export class OrbitRuntimeHost {
     if (this.recordJournalPath) {
       await this.resumeRecording();
     }
+  }
+
+  /**
+   * W30: prove the audit trail has not been tampered with. Recomputes the
+   * hash chain from the genesis seed and reports the first broken entry.
+   * An unsigned journal (no key configured) reports `signed: false` and is
+   * vacuously consistent.
+   */
+  public verifyAuditChain(): AuditChainReport {
+    if (!this.auditSigningKey) {
+      return { consistent: true, total: this.traceJournal.entries().length, signed: false };
+    }
+    return verifyAuditChain(this.traceJournal.entries(), this.auditSigningKey);
   }
 
   /**

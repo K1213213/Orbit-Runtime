@@ -255,3 +255,40 @@ await host.shutdownHost();      // 排空在途写入 → 应用留存 → 逐�
   且 OpenAPI/Cordis 是已发布能力（初始按表实现反而破坏了 cordis/openapi 既有测试）。
 - **限流数字的语义**："1000/min" 落地为"每窗口 1000 次"（纯计数窗口，保证可重放）。
 - 信任推定 / Schema 校验 / 轨迹签名仍属演进面（隔离域分配与哈希链审计），未成为档位字段。
+
+## 11. 审计哈希链（W30，VISION §3.1「落盘 + 签名」）
+
+append-only 审计日志只能防"意外"，不能防"被改"——有文件权限的人可以静默编辑。
+哈希链用最小代价把审计文件变成**可证明未被篡改**的载体。
+
+### 11.1 链条构成
+
+每条 `TraceJournalEntry` 带两个可选字段：`prevHash`（上一条的 `chainHash`，首条为
+genesis 种子）与 `chainHash` = HMAC-SHA256(key, prevHash + 规范化条目内容)。HMAC 是
+纯函数（无随机/无时钟/无 I/O），规范化是键排序 JSON——同一 key、同一条目、同一前驱，
+哈希处处可复现。改任何一条（内容、时间戳、或删中间条）都会在该条断裂、后续全断。
+
+### 11.2 接线
+
+- 宿主选项 `auditSigningKey`：提供则审计日志自动带链（`TraceJournal(chainKey)`），
+  不提供则**完全不带链字段**（v0.6.x 行为逐字一致，向后兼容铁律）。
+- `verifyAuditChain(entries, key)` 纯函数：从 genesis 重算整条链，返回首个断裂点
+  与原因（内容篡改 / prevHash 失配 / 混入无链条目 / key 错误）。
+- 宿主 `verifyAuditChain()` 封装 + strict 档联动：**构造期**缺 `auditSigningKey` 即
+  抛错；**bootHost 时**验证已恢复的链，被篡改则拒绝启动（合规语义：不可信的审计
+  轨迹 = 不可信的环境）。
+- 恢复延续：W27 恢复保留原始字段（现含链字段），`restoreSnapshot` 重建链尾，新追加
+  从恢复的末条继续——跨进程续写不重链、不破裂。
+
+### 11.3 验证工具
+
+- `orbit audit <trace.wal.jsonl> [--key <hmac-key>]`：无 key 报 unsigned；有 key 输出
+  consistent / brokenAt + 原因，断裂退出非零。
+- 控制台：审计页顶部"内核审计链完整性"卡（`GET /api/audit/chain`），bridge 读
+  `ORBIT_AUDIT_SIGNING_KEY` 环境变量决定是否签名。
+
+### 11.4 边界
+
+链条在**观测层**，不参与记录的决策值——签名不扰动确定性重放（replay_compat 有
+合并门禁）。密钥是运维护有的带外秘密：持有 key 才能验证（正确 key 通过、错误 key
+在第 0 条即 prevHash 失配）。

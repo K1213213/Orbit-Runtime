@@ -85,6 +85,7 @@ test("governance: sandbox disables token compression (engine is a pass-through)"
 test("governance: strict compresses earlier and harder than standard", async () => {
   const strictHost = new OrbitRuntimeHost({
     governanceProfile: "strict",
+    auditSigningKey: "test-key",
     traceJournalPath: "./dist-test-strict-compress.wal"
   });
   await strictHost.bootHost();
@@ -110,6 +111,7 @@ test("governance: strict compresses earlier and harder than standard", async () 
 test("governance: rate limits follow the profile (strict caps at 60 calls)", async () => {
   const host = new OrbitRuntimeHost({
     governanceProfile: "strict",
+    auditSigningKey: "test-key",
     traceJournalPath: "./dist-test-strict-rate.wal"
   });
   await host.bootHost();
@@ -169,6 +171,7 @@ test("governance: sandbox admits every adapter kind", async () => {
 test("governance: strict rejects every adapter before it is registered", async () => {
   const host = new OrbitRuntimeHost({
     governanceProfile: "strict",
+    auditSigningKey: "test-key",
     traceJournalPath: "./dist-test-strict-gov.wal" // strict requires a durable trail
   });
   await host.bootHost();
@@ -203,6 +206,7 @@ test("governance: a non-default tier is a fingerprint surface; standard is omitt
   await plain.bootHost();
   const strict = new OrbitRuntimeHost({
     governanceProfile: "strict",
+    auditSigningKey: "test-key",
     traceJournalPath: "./dist-test-gov-fp.wal"
   });
   await strict.bootHost();

@@ -37,6 +37,7 @@ Orbit Agent Runtime is a lightweight, dependency-free runtime host for plugin-ba
 - **Isolation domains (W19)** — the impact graph allocates the physical layer: a unit whose failure closure exceeds the threshold gets its own L2 child process (`iso:<unit>`), the rest share deterministic chunks (`shared:<n>`). The sync is a diff, not a rebuild, and domains are published as one capability channel, so a domain call is recorded and replayed byte-identically
 - **Cross-domain transactions (W20)** — every hop between domains is an atomic gateway transaction: `decision (assignment / isolation) + execution + result + audit`, settled in a ledger that reconciles by (source → target) pair. Orphans (a hop that crossed a boundary and never settled) and refusals are both detectable from the records alone; replay injects the frozen output without re-entering the domain
 - **Durable journals (W27)** — the audit journal and the recording window each mirror to a crash-safe write-ahead log, so a restart does not erase the audit trail or a recorded run. One JSON line per entry means the only artifact a crash can leave is a partial final line: recovery drops exactly that and rejects any invalid *interior* line as a genuine fault. Recovered entries keep their original ids and ordering, so they are byte-identical and a window split across processes replays as one uninterrupted run
+- **Audit hash chain (W30)** — an append-only audit log is only as trustworthy as its file permissions; a hash chain makes it tamper-evident. With `new OrbitRuntimeHost({ auditSigningKey })` every audit entry carries HMAC-SHA256 `prevHash`/`chainHash` linkage, `host.verifyAuditChain()` proves integrity, `orbit audit <trace.wal> --key …` verifies from the CLI, and the `strict` tier refuses to boot on a broken chain. Editing any entry breaks the chain at that point and everything after it
 - **Four-tier governance (W29)** — VISION's Sandbox / Standard / Strict tiers are switchable configuration, not a design goal: `new OrbitRuntimeHost({ governanceProfile: "strict" })` tunes rate limits, trip thresholds, compression, PAE admission and trace durability in one declaration. `standard` is the kernel's previous numbers verbatim; a non-default tier is hashed into the run fingerprint, so a trace recorded under one tier refuses to replay under another (config drift, not silent divergence)
 - **Zero runtime dependencies** — pure TypeScript, strict mode, runs on Node.js ≥ 20
 
@@ -118,7 +119,7 @@ host.registerPlugin({
   id: "p.worker",
   displayName: "p.worker",
   edition: "1.0.0",
-  requireHostMinEdition: "0.6.0",
+  requireHostMinEdition: "0.7.0",
   allowCapabilities: ["channel:read", "channel:write"],
   declareChannelDeps: [ChannelKind.LLM_ACCESS]
 });

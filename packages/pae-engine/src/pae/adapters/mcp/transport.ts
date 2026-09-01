@@ -270,7 +270,8 @@ export class StdioMcpTransport implements IMcpTransport {
         if (err) {
           clearTimeout(timer);
           this.pending.delete(id);
-          reject(new PaeRemoteError(`mcp write failed: ${err.message}`));
+          // A dying peer EPIPEs the in-flight write; fold its last words in.
+          reject(new PaeRemoteError(`mcp write failed: ${err.message}${this.stderrContext()}`));
         }
       });
     });
@@ -286,7 +287,9 @@ export class StdioMcpTransport implements IMcpTransport {
     if (!stdin) throw new PaeRemoteError(`mcp server has no writable stdin (notify ${method})`);
     const message = encodeJsonRpc({ jsonrpc: "2.0", method, params });
     await new Promise<void>((resolve, reject) => {
-      stdin.write(`${message}\n`, (err) => (err ? reject(new PaeRemoteError(`mcp write failed: ${err.message}`)) : resolve()));
+      stdin.write(`${message}\n`, (err) =>
+        err ? reject(new PaeRemoteError(`mcp write failed: ${err.message}${this.stderrContext()}`)) : resolve()
+      );
     });
   }
 

@@ -117,7 +117,7 @@ host.registerPlugin({
   id: "p.worker",
   displayName: "p.worker",
   edition: "1.0.0",
-  requireHostMinEdition: "0.4.0",
+  requireHostMinEdition: "0.5.0",
   allowCapabilities: ["channel:read", "channel:write"],
   declareChannelDeps: [ChannelKind.LLM_ACCESS]
 });
@@ -201,6 +201,28 @@ sandboxes, trace, replay studio, impact graph and cost routing.
 npm run build
 node web/bridge-server.mjs        # http://127.0.0.1:8899
 ```
+
+## Examples & benchmarks
+
+**Examples** (`./examples`) are runnable, assertion-gated walkthroughs — each
+exits non-zero on any failed check, so they double as CI smoke tests:
+
+```bash
+node examples/custom-channel.mjs   # implement a channel → record → replay byte-identically
+node examples/js-pae-plugin.mjs    # foreign JS tools through a governed channel (PAE L0)
+node examples/mcp-adapter.mjs      # real MCP child process, replayed after the peer is dead (L2)
+node examples/cli-record-replay.mjs # the orbit CLI record → replay → diff loop
+```
+
+**Benchmarks** (`./benchmarks`, `npm run benchmark`) observe the hot paths
+against the budgets in [docs/VISION.md](./docs/VISION.md):
+
+| Suite | What it measures | Sample (Node 22) |
+|---|---|---|
+| `gateway` | governed `capabilityInvoke` end to end (record mode) | ~82k calls/s (~12 µs) |
+| `replay` | journal fast-path injection | ~261k calls/s (~3.8 µs) |
+| `wal` | durable append + flush (WAL mirror) | ~1.5k appends/s |
+| `pae` | L0 in-process vs L2 stdio-child adapter latency | ~38 µs vs ~176 µs (4.6×) |
 
 ## Repository layout (monorepo)
 

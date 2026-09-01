@@ -229,7 +229,13 @@ export class ChildProcessDomainTransport implements IDomainTransport {
         if (err) {
           clearTimeout(timer);
           this.pending.delete(id);
-          reject(new DomainRemoteError(`domain request ${method} failed to write: ${err.message}`));
+          // A dying host EPIPEs the in-flight write; the bare EPIPE would hide
+          // the actual cause, so fold the stderr tail (its last words) in.
+          reject(
+            new DomainRemoteError(
+              `domain request ${method} failed to write: ${err.message}${this.stderrContext()}`
+            )
+          );
         }
       });
     });

@@ -132,6 +132,26 @@ npm run build
 node web/bridge-server.mjs        # http://127.0.0.1:8899
 ```
 
+## 示例与基准（M5/M6）
+
+**示例**（`./examples`）是可运行、带断言的走查——任一步失败即非零退出，可兼作 CI 冒烟：
+
+```bash
+node examples/custom-channel.mjs    # 实现通道 → record → replay 逐字节一致
+node examples/js-pae-plugin.mjs     # 外来 JS 工具经网关治理（PAE L0）
+node examples/mcp-adapter.mjs       # 真实 MCP 子进程，对端死后仍可逐字节重放（L2）
+node examples/cli-record-replay.mjs # orbit CLI record → replay → diff 闭环
+```
+
+**基准**（`./benchmarks`，`npm run benchmark`）对照 VISION 性能预算观测热路径：
+
+| 套件 | 测量内容 | 样例（Node 22） |
+|---|---|---|
+| `gateway` | 治理化 `capabilityInvoke` 全链路（record 模式） | ~82k calls/s（~12 µs） |
+| `replay` | journal 快路径注入 | ~261k calls/s（~3.8 µs） |
+| `wal` | 持久化 append + flush（WAL 镜像） | ~1.5k appends/s |
+| `pae` | L0 进程内 vs L2 stdio 子进程适配器延迟 | ~38 µs vs ~176 µs（4.6×） |
+
 ## 快速开始 · 确定性重放闭环
 
 产品的核心卖点是**可复现**：记录一次真实运行，用**零**模型调用重放它，并证明两条调用链逐字节一致。驱动它的就是 `orbit` CLI（零额外依赖，随包发布于 `bin/`，Node ≥ 20 即可运行）。

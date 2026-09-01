@@ -1,6 +1,6 @@
 {
   "name": "orbit-agent-runtime",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "Deterministic · Provable · Governable — a plugin-based agent runtime kernel with hot plugin registration, provable fault isolation, full-chain traceability and sandboxed execution.",
   "keywords": [
     "agent",
@@ -21,7 +21,10 @@
     "bin",
     "dist",
     "src",
+    "examples",
+    "benchmarks",
     "README.md",
+    "README.zh-CN.md",
     "LICENSE",
     "CHANGELOG.md"
   ],
@@ -40,7 +43,12 @@
     "demo": "npm run build && node dist/demo-host.js",
     "demo:replay": "npm run build && node dist/demo-replay.js",
     "demo:deepseek": "npm run build && node dist/demo-deepseek.js",
-    "prepublishOnly": "npm run clean && npm run build && npm test"
+    "example:channel": "npm run build && node examples/custom-channel.mjs",
+    "example:pae": "npm run build && node examples/js-pae-plugin.mjs",
+    "example:mcp": "npm run build && node examples/mcp-adapter.mjs",
+    "example:cli": "npm run build && node examples/cli-record-replay.mjs",
+    "benchmark": "npm run build && node benchmarks/run-all.mjs",
+    "prepublishOnly": "npm run clean && npm run build && npm test && npm run test:console"
   },
   "engines": {
     "node": ">=20"

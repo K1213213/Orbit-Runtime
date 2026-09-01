@@ -246,7 +246,12 @@ export class ChildProcessCordisTransport implements ICordisTransport {
         if (err) {
           clearTimeout(timer);
           this.pending.delete(id);
-          reject(new PaeRemoteError(`cordis request ${method} failed to write: ${err.message}`));
+          // A dying host EPIPEs the in-flight write; fold its last words in.
+          reject(
+            new PaeRemoteError(
+              `cordis request ${method} failed to write: ${err.message}${this.stderrContext()}`
+            )
+          );
         }
       });
     });

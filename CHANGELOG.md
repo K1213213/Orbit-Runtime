@@ -4,6 +4,41 @@ All notable changes to Orbit Agent Runtime are documented here. This project
 follows a pre-alpha versioning scheme: `v0.x.minor` marks a release wave,
 `patch` marks fixes. Until `v1.0` the public API is not yet stability-promised.
 
+## [0.5.0] — 2026-09-01 · Engineering hardening & release prep (M5/M6)
+
+The kernel is architecturally complete (VISION Phases 1–5 shipped); this wave
+closes the product-hardening track so the release is not just complete but
+provable and publishable.
+
+### Added
+- **`examples/`** — four runnable, assertion-gated walkthroughs:
+  `custom-channel.mjs` (implement a channel, wire it in, prove
+  record → replay byte-identical plus drift detection), `js-pae-plugin.mjs`
+  (foreign JS tools through a governed channel), `mcp-adapter.mjs` (a real
+  stdio child process, handshake-discovered, replayed after the peer is dead),
+  and `cli-record-replay.mjs` (the three-command CLI loop). Each exits
+  non-zero on failure, so the set doubles as CI smoke checks.
+- **`benchmarks/`** — `gateway` (governed `capabilityInvoke` cost), `replay`
+  (journal fast-path throughput), `wal` (durable append + flush), `pae`
+  (L0 in-process vs L2 stdio-child latency), plus `run-all.mjs` and
+  `npm run benchmark`. Sample numbers on Node 22: gateway ~82k calls/s
+  (~12 µs), replay ~261k calls/s (~3.8 µs), WAL ~1.5k durable appends/s,
+  L0 ~38 µs vs L2 ~176 µs (4.6× cross-process factor).
+- **CI coverage closed**: the console suite (`npm run test:console`, 97
+  cases) now runs in CI alongside the kernel suite; all four examples and all
+  four benchmark suites run as smoke checks.
+- **Package contents**: `examples/`, `benchmarks/` and `README.zh-CN.md` are
+  now shipped in the npm tarball; `prepublishOnly` also runs the console
+  suite.
+
+### Changed
+- `KERNEL_VERSION` and all six `package.json` files bumped to `0.5.0`;
+  fingerprint assertion and README example updated.
+
+### Migration
+- No API change. The new npm scripts are additive
+  (`npm run example:*`, `npm run benchmark`).
+
 ## [0.4.0] — 2026-08-31 · Journal durability (W27)
 
 Closes the last architectural gap carried by the v0.3.0 documentation: journals

@@ -30,6 +30,23 @@ jobs:
       - name: Unit tests
         run: npm test
 
+      - name: Console tests (web, node:test)
+        run: npm run test:console
+
+      - name: Examples (custom channel / PAE / MCP / CLI loop)
+        run: |
+          node examples/custom-channel.mjs
+          node examples/js-pae-plugin.mjs
+          node examples/mcp-adapter.mjs
+          node examples/cli-record-replay.mjs
+
+      - name: Benchmark smoke (each suite runs to completion)
+        run: |
+          N=2000 node benchmarks/gateway.mjs
+          N=10000 node benchmarks/replay.mjs
+          N=5000 node benchmarks/wal.mjs
+          N=200 node benchmarks/pae.mjs
+
       - name: Demos (lifecycle + deterministic replay)
         run: |
           npm run demo

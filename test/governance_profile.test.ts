@@ -120,7 +120,8 @@ test("governance: rate limits follow the profile (strict caps at 60 calls)", asy
     displayName: "Rate",
     edition: "1.0.0",
     requireHostMinEdition: "1.0.0",
-    allowCapabilities: ["channel:read"]
+    allowCapabilities: ["channel:read"],
+    schema: { type: "object", properties: {} }
   });
   for (let i = 0; i < 60; i += 1) {
     assert.equal(host.rateLimiter.isLimited("gov.rate"), false, `call ${i} is free`);

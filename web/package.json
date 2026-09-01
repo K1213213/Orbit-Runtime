@@ -1,6 +1,6 @@
 {
   "name": "@orbit/admin-console",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "private": true,
   "description": "Web admin console for Orbit Agent Runtime — drives a live kernel instance through the bridge server.",
   "type": "module",

@@ -22,6 +22,7 @@ import type { GatewayInvokeParams } from "@orbit/core-hub";
 import type { GatewayCheckers } from "@orbit/core-hub";
 import { tripThresholdForProfile, tokenBudgetConfigForProfile } from "@orbit/core-hub";
 import { verifyAuditChain } from "@orbit/core-hub";
+import { validateArgsAgainstSchema } from "@orbit/infra-common";
 import type { AuditChainReport } from "@orbit/core-hub";
 import type { AgentSandbox } from "@orbit/sandbox-runtime";
 import {
@@ -52,6 +53,11 @@ const HOST_DEFAULT_TIMEOUT_MS = 10_000;
  * a path (the default) keeps the journal purely in-memory — the original
  * behavior, and what every existing test relies on.
  */
+/** W31: PAE isolation rank for the trust-assumption cap (L0 < L1 < L2). */
+function rankIsolation(level: string): number {
+  return level === "L2" ? 2 : level === "L1" ? 1 : 0;
+}
+
 export interface OrbitRuntimeHostOptions {
   /** Durable audit/behavior journal (trace) WAL path. */
   traceJournalPath?: string;
@@ -418,6 +424,13 @@ export class OrbitRuntimeHost {
 
   /** Register a plugin; its declared channel deps feed the impact graph (M3). */
   public registerPlugin(pact: PluginUnitPact): void {
+    // W31: the strict tier demands a declared parameter contract for every
+    // plugin — a compliance tier must state what it accepts.
+    if (this.governanceProfile.schemaMode === "required" && !pact.schema) {
+      throw new Error(
+        `governance profile 'strict' requires a schema on plugin '${pact.id}' — a compliance tier must declare its parameter contract`
+      );
+    }
     this.pluginPactVerifier.registerPluginUnit(pact, makeUniqueMark());
     this.impactGraph.addNode(pact.id);
     for (const dep of pact.declareChannelDeps ?? []) {
@@ -467,7 +480,7 @@ export class OrbitRuntimeHost {
   ): PluginUnitPact {
     // W29: the governance tier admits adapter kinds explicitly. `strict`
     // admits none — a compliance tier has no foreign-runtime surface at all.
-    this.assertPaeKindAdmitted(adapter.meta.kind);
+    this.assertPaeAdmitted(adapter.meta.kind, adapter.meta.isolation);
     this.paeRegistry.register(adapter, makeUniqueMark());
     this.paeChannel.syncTools();
     this.paeAdapterKinds.add(ChannelKind.PAE_TOOL);
@@ -481,19 +494,26 @@ export class OrbitRuntimeHost {
   }
 
   /**
-   * W29: the governance gate for foreign adapters. `sandbox` admits every
-   * kind; `standard` admits the documented set (js + mcp); `strict` admits
-   * none. The check runs before any handshake or registration, so a denied
-   * adapter is rejected outright rather than half-connected.
+   * W29+W31: the governance gate for foreign adapters — kind admission
+   * (`paeAdmission`) and isolation cap (`maxIsolationLevel`, the trust
+   * assumption). `strict` admits no kind at all and caps isolation at L1; a
+   * denied adapter is rejected outright rather than half-connected.
    */
-  private assertPaeKindAdmitted(kind: string): void {
+  private assertPaeAdmitted(kind: string, isolation: string): void {
     const admission = this.governanceProfile.paeAdmission;
-    if (admission === "all") return;
-    if (admission.includes(kind)) return;
-    throw new Error(
-      `governance profile '${this.governanceProfile.name}' does not admit PAE adapter kind '${kind}' ` +
-        `(admitted: ${admission.length === 0 ? "none" : admission.join(", ")})`
-    );
+    if (admission !== "all" && !admission.includes(kind)) {
+      throw new Error(
+        `governance profile '${this.governanceProfile.name}' does not admit PAE adapter kind '${kind}' ` +
+          `(admitted: ${admission.length === 0 ? "none" : admission.join(", ")})`
+      );
+    }
+    const cap = this.governanceProfile.maxIsolationLevel;
+    if (rankIsolation(isolation) > rankIsolation(cap)) {
+      throw new Error(
+        `governance profile '${this.governanceProfile.name}' caps PAE isolation at ${cap}; ` +
+          `adapter '${kind}' claims ${isolation} (trust assumption)`
+      );
+    }
   }
 
   /**
@@ -514,9 +534,9 @@ export class OrbitRuntimeHost {
     adapter: IPaeAdapter,
     opts: { registerPact?: boolean; requireHostMinEdition?: string; maxWaitMs?: number } = {}
   ): Promise<PluginUnitPact> {
-    // W29: gate BEFORE the handshake — a denied kind must not spawn a child
-    // process just to be rejected (registerPaeToolAdapter re-checks).
-    this.assertPaeKindAdmitted(adapter.meta.kind);
+    // W29+W31: gate BEFORE the handshake — a denied kind or isolation must
+    // not spawn a child process just to be rejected (register re-checks).
+    this.assertPaeAdmitted(adapter.meta.kind, adapter.meta.isolation);
     if (adapter.setup) {
       await adapter.setup({
         traceMarkId: makeUniqueMark(),
@@ -644,7 +664,7 @@ export class OrbitRuntimeHost {
   }
 
   /** W7: the unified gateway entry — deterministic boundary for governed calls. */
-  public capabilityInvoke<T>(params: {
+  public async capabilityInvoke<T>(params: {
     kind: ChannelKind;
     pluginId?: string;
     funcName: string;
@@ -652,7 +672,33 @@ export class OrbitRuntimeHost {
     mode: ReplayMode;
     ctx?: Partial<ChannelCallCtx>;
   }): Promise<T> {
+    // W31: progressive contractification — when the tier checks schemas and
+    // the target tool declares one, reject non-conforming arguments BEFORE
+    // the call executes. Replay bypasses the check: arguments were already
+    // validated at record time, and injection must stay a pure replay. The
+    // function is async so the rejection is a rejected promise, never a
+    // synchronous throw (callers use await / assert.rejects uniformly).
+    if (params.mode !== "replay" && this.governanceProfile.schemaMode !== "optional") {
+      this.assertArgsAgainstSchema(params.funcName, params.args);
+    }
     return this.gateway.capabilityInvoke<T>(params as GatewayInvokeParams);
+  }
+
+  /**
+   * W31: gateway-side parameter validation for PAE tools that declare a
+   * schema. The error is raised as a plain Error (user-classified 400 by the
+   * console bridge); the recorded call never happens, so nothing to replay.
+   */
+  private assertArgsAgainstSchema(funcName: string, args: unknown[]): void {
+    const binding = this.paeRegistry.lookup(funcName);
+    const schema = binding?.tool.schema;
+    if (!schema) return; // no contract declared -> nothing to check
+    const result = validateArgsAgainstSchema(schema, args);
+    if (!result.ok) {
+      throw new Error(
+        `parameter contract violated for tool '${funcName}' at ${result.path}: ${result.error}`
+      );
+    }
   }
 
   /** M3: nodes that would be affected if the given node fails (reachability closure). */

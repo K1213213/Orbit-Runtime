@@ -69,7 +69,11 @@
 >   "为治理不砍功能"；安全性已由保真度协商 + 能力门 + 适配面哈希承担。Strict 仍关闭。
 > ② **限流数字**——限流是**纯调用计数预算**（`RateLimiter`，无墙钟窗口，保证重放
 >   确定性），"1000/min"落地为"每窗口 1000 次"：数量对档位生效，机制不引入时间。
-> ③ **信任推定 / Schema 校验**——属隔离域分配与演进面，尚未成为 profile 字段。
+> ③ **信任推定 / Schema 校验已落地**（W31）：信任推定 = PAE 隔离级上限
+>    （`maxIsolationLevel`：strict 封顶 L1——防御性机制，strict 的 kind 关闭已覆盖外部
+>    运行时）；Schema 校验 = 渐进式契约化（`schemaMode`：sandbox 可选 / standard 声明则
+>    校验 / strict 强制声明，`validateArgsAgainstSchema` 纯函数 + 网关调用前校验，
+>    详见 architecture.md §12）。
 >    **轨迹签名已落地**（W30）：审计哈希链（HMAC-SHA256）——strict 档强制
 >    `auditSigningKey`，每次启动验证整条链、被篡改即拒绝启动；`orbit audit` CLI 与
 >    控制台审计页可随时验证（详见 architecture.md §11）。

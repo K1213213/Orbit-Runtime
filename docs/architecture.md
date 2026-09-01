@@ -292,3 +292,33 @@ genesis 种子）与 `chainHash` = HMAC-SHA256(key, prevHash + 规范化条目�
 链条在**观测层**，不参与记录的决策值——签名不扰动确定性重放（replay_compat 有
 合并门禁）。密钥是运维护有的带外秘密：持有 key 才能验证（正确 key 通过、错误 key
 在第 0 条即 prevHash 失配）。
+
+## 12. 信任推定与渐进式契约化（W31，VISION §3.1 收口）
+
+四档治理的剩余两个维度落地，VISION §3.1 全部维度均有代码实现。
+
+### 12.1 信任推定 → PAE 隔离级上限（maxIsolationLevel）
+
+「信任推定」落地为对**外来适配器隔离级**的档位门禁：
+
+| 档位 | maxIsolationLevel | 语义 |
+|---|---|---|
+| sandbox | L2 | 自动推定最强隔离（允许子进程适配器） |
+| standard | L2 | 按来源尊重适配器声明 |
+| strict | L1 | 封顶进程内隔离，拒绝 out-of-process 适配器 |
+
+`assertPaeAdmitted(kind, isolation)` 同时校验 kind 准入与隔离级（rankIsolation:
+L0 < L1 < L2）。诚实说明：strict 档的 `paeAdmission: []` 使 kind 门禁先于隔离级
+触发，`maxIsolationLevel` 当前是**防御性机制**——为未来"允许部分 kind 但封顶隔离级"
+的档位组合预留；三档现状下由 kind 门禁完整覆盖。
+
+### 12.2 Schema 校验 → 渐进式契约化（schemaMode）
+
+- `PluginUnitPact.schema` / PAE 工具 `schema`：可选参数契约，形状记法见
+  `validateArgsAgainstSchema`（JSON-Schema 子集：object/array/string/number/boolean、
+  必填、additionalProperties、maxItems）。
+- `validateArgsAgainstSchema` 纯函数（无随机/时钟/I/O），返回首个违规点与原因。
+- 三档语义：sandbox 不校验（零摩擦）；standard 声明则校验（网关调用前拒绝非合规
+  参数）；strict 强制（`registerPlugin` 无 schema 直接拒绝——合规档必须声明它接受什么）。
+- 网关路径：`capabilityInvoke`（async）在 record/live 调用前校验 PAE 工具参数；
+  **replay 旁路**——参数在录制时已校验，注入保持纯重放。

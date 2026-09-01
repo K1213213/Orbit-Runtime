@@ -44,6 +44,20 @@ export type TraceDurability = "memory" | "optional" | "required";
 /** Adapter kinds admitted by the profile; "all" or an explicit list. */
 export type PaeAdmission = "all" | readonly string[];
 
+/**
+ * W31: how much isolation a foreign adapter may claim (trust assumption).
+ * L2 is an out-of-process child — the strongest, and the one a compliance
+ * tier refuses outright. Ordering: L0 < L1 < L2.
+ */
+export type IsolationCap = "L0" | "L1" | "L2";
+
+/**
+ * W31: progressive contractification strength. `optional` never checks
+ * schemas; `declared` validates a tool's arguments when a schema is present;
+ * `required` refuses plugins without a schema (compliance).
+ */
+export type SchemaMode = "optional" | "declared" | "required";
+
 export interface GovernanceProfile {
   readonly name: GovernanceProfileName;
   /** Token compression: off (sandbox) / normal (standard) / aggressive (strict). */
@@ -52,6 +66,10 @@ export interface GovernanceProfile {
   readonly trip: GovernanceTripConfig;
   readonly paeAdmission: PaeAdmission;
   readonly traceDurability: TraceDurability;
+  /** W31: highest PAE isolation level an adapter may claim (trust assumption). */
+  readonly maxIsolationLevel: IsolationCap;
+  /** W31: schema (parameter contract) enforcement strength. */
+  readonly schemaMode: SchemaMode;
 }
 
 /** Sandbox — development: everything on, nothing aggressive. */
@@ -61,7 +79,9 @@ const SANDBOX: GovernanceProfile = {
   limiter: { maxCallsPerWindow: 1000, windowSizeCalls: 1000 },
   trip: { failureThreshold: 5, cooldownMs: 30_000 },
   paeAdmission: "all",
-  traceDurability: "memory"
+  traceDurability: "memory",
+  maxIsolationLevel: "L2",
+  schemaMode: "optional"
 };
 
 /**
@@ -79,7 +99,9 @@ const STANDARD: GovernanceProfile = {
   limiter: { maxCallsPerWindow: 100, windowSizeCalls: 100 },
   trip: { failureThreshold: 5, cooldownMs: 10_000 },
   paeAdmission: "all",
-  traceDurability: "optional"
+  traceDurability: "optional",
+  maxIsolationLevel: "L2",
+  schemaMode: "declared"
 };
 
 /** Strict — compliance: only the provable path, durability mandatory. */
@@ -89,7 +111,9 @@ const STRICT: GovernanceProfile = {
   limiter: { maxCallsPerWindow: 60, windowSizeCalls: 60 },
   trip: { failureThreshold: 3, cooldownMs: 5_000 },
   paeAdmission: [],
-  traceDurability: "required"
+  traceDurability: "required",
+  maxIsolationLevel: "L1",
+  schemaMode: "required"
 };
 
 const PROFILES: Readonly<Record<GovernanceProfileName, GovernanceProfile>> = {
@@ -111,7 +135,9 @@ export function governanceProfileHash(profile: GovernanceProfile): string {
     l: [profile.limiter.maxCallsPerWindow, profile.limiter.windowSizeCalls],
     t: [profile.trip.failureThreshold, profile.trip.cooldownMs],
     p: profile.paeAdmission === "all" ? "*" : [...profile.paeAdmission].sort(),
-    d: profile.traceDurability
+    d: profile.traceDurability,
+    i: profile.maxIsolationLevel,
+    s: profile.schemaMode
   });
 }
 

@@ -30,6 +30,12 @@ export interface JsToolSpec {
   fidelityNote?: string;
   description?: string;
   /**
+   * W31: parameter contract (validateArgsAgainstSchema shape). When present
+   * and the host tier checks schemas, arguments are validated before the
+   * handler runs.
+   */
+  schema?: Record<string, unknown>;
+  /**
    * The implementation. Randomness and time must come from `ctx.rng` /
    * `ctx.clock`; reaching for `Math.random` or `Date.now` breaks replay.
    */
@@ -104,7 +110,8 @@ export class JsPaeAdapter implements IPaeAdapter {
         determinism: spec.determinism ?? DeterminismLevel.IO_BOUND,
         fidelity: spec.fidelity ?? "full",
         description: spec.description,
-        fidelityNote: spec.fidelityNote
+        fidelityNote: spec.fidelityNote,
+        ...(spec.schema ? { schema: spec.schema } : {})
       }))
       .sort((a, b) => a.name.localeCompare(b.name));
   }

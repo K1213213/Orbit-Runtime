@@ -4,6 +4,47 @@ All notable changes to Orbit Agent Runtime are documented here. This project
 follows a pre-alpha versioning scheme: `v0.x.minor` marks a release wave,
 `patch` marks fixes. Until `v1.0` the public API is not yet stability-promised.
 
+## [0.8.0] — 2026-09-01 · Trust assumption & contractification (W31)
+
+The last two VISION §3.1 governance dimensions ship, closing the four-tier
+model: every dimension in the table now has a code path.
+
+### Added
+- **Trust assumption → PAE isolation cap** (`GovernanceProfile.maxIsolationLevel`,
+  L0 < L1 < L2): `strict` caps foreign adapters at L1 (no out-of-process
+  children); `sandbox`/`standard` allow L2. `assertPaeAdmitted` checks kind
+  admission AND isolation before any handshake. Honest note (architecture §12):
+  with `strict`'s empty kind admission the kind gate fires first today — the
+  cap is the defense-in-depth for future tier combinations that admit kinds
+  but cap isolation.
+- **Progressive contractification** (`schemaMode` + `validateArgsAgainstSchema`):
+  - `PluginUnitPact.schema` and PAE tool `schema` declare an optional parameter
+    contract (JSON-Schema subset: object/array/string/number/boolean, required,
+    additionalProperties, maxItems).
+  - Pure validator with precise first-failure location (`arg.payload.name`).
+  - `sandbox` checks nothing; `standard` validates a declared schema before the
+    call executes; `strict` REQUIRES a schema on every plugin
+    (`registerPlugin` rejects schema-less plugins).
+  - Gateway path: `capabilityInvoke` (now async, so the rejection is a promise
+    rejection, never a synchronous throw) validates PAE tool arguments in
+    record/live; **replay bypasses** — arguments were already checked at record
+    time and injection stays a pure replay.
+- Profile hash extended with the two new dimensions (cross-tier replay keeps
+  refusing as config drift).
+
+### Verification
+- Clean `tsc -b`, strict, zero errors.
+- Kernel suite: **423 cases** green (413 → +10 `governance_schema`). Console
+  97/97. Examples 4/4.
+- The strict-tier schema requirement surfaced as 2 pre-existing test fixes
+  (W29 strict hosts registered schema-less plugins) — caught by full
+  regression.
+
+### Migration
+- `schemaMode` is `optional` on sandbox, `declared` on standard: a default
+  host only validates PAE tools that declare a schema — no behavioural change
+  for existing plugins without schemas.
+
 ## [0.7.0] — 2026-09-01 · Audit hash chain (W30)
 
 VISION §3.1's "落盘 + 签名" lands: the append-only audit log becomes

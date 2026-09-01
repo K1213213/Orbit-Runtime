@@ -8,4 +8,5 @@ export * from "./core/orbitDomainError";
 export * from "./types/orbitDomain";
 export * from "./types/governance";
 export * from "./utils/digest";
+export * from "./utils/schema_validation";
 export * from "./utils/versionIdGen";

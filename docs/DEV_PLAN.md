@@ -36,6 +36,7 @@
 | **v0.5.0** | W28 | **工程硬化与发布准备**：examples + benchmarks + CI 覆盖闭合 | 每个示例独立跑通且失败非零退出；每套基准可独立运行；CI 覆盖内核+控制台+示例+基准 |
 | **v0.6.0** | W29 | **四档治理模式落地**：VISION §3.1 从设计目标变为可切换配置 | profile 契约 + 宿主选项 + 机制注入（限流/熔断/压缩/PAE 准入/轨迹持久化）+ 跨档重放报配置漂移；standard 与旧行为逐字一致 |
 | **v0.7.0** | W30 | **审计哈希链（防篡改审计）**：VISION §3.1「落盘 + 签名」| 审计条目带 HMAC 哈希链（prevHash/chainHash）；orbit audit CLI + 控制台验证；strict 强制签名并在启动时验证被篡改链拒绝启动 |
+| **v0.8.0** | W31 | **信任推定与契约化**：VISION §3.1 最后两维落地 | 隔离级上限（strict 封顶 L1）+ 渐进式 Schema 校验（strict 强制声明）；profile 哈希含新维；VISION §3.1 全维度有代码实现 |
 
 版本号策略：宪章前语义化版本不承诺稳定 API（pre-alpha），v0.x.minor = 波次，patch = 修复。
 
@@ -129,6 +130,18 @@ VISION §3.1「落盘 + 签名」的签名半落地：append-only 审计日志�
 `verifyAuditChain` 定位 · 跨进程续写链不断裂 · strict 构造期缺签名抛错、boot 验证
 断裂链拒绝启动 · 签名不扰动确定性重放（replay_compat 合并门禁）· 全量回归只增不减。
 
+### 波次 8 · v0.8.0 信任推定与渐进式契约化（W31）
+
+VISION §3.1 最后两维落地，四档模式全部维度均有代码实现。
+
+| 阶段 | 内容 | 依据 |
+|---|---|---|
+| **W31 ✅** | 隔离级上限（`maxIsolationLevel`：strict 封顶 L1）+ `assertPaeAdmitted`（kind + 隔离级双门禁）+ 渐进式契约化（`schemaMode`：sandbox 可选 / standard 声明则校验 / strict 强制 + `PluginUnitPact.schema` + PAE 工具 schema + `validateArgsAgainstSchema` 纯函数 + 网关调用前校验、replay 旁路）+ profile 哈希含新维 | VISION §3.1（见下方进度日志） |
+
+**波次 8 门禁**：strict 拒 L2 适配器与无 schema 插件（构造/注册期）· standard 声明则
+校验参数（违规定位到 `arg.<path>`）· sandbox 零校验 · replay 旁路参数校验 ·
+schema/隔离级维度进 profile 哈希 · 全量回归只增不减。
+
 ---
 
 ## 3. 贯穿性工作流（非周任务，持续）
@@ -192,4 +205,6 @@ VISION §3.1「落盘 + 签名」的签名半落地：append-only 审计日志�
 | 2026-09-01 | **W28 落地（工程硬化，v0.5.0）**：M5/M6 产品硬化轨道收口。**examples/** 4 个可运行示例（全部带断言、失败退出非零、可当 CI smoke）：`custom-channel.mjs`（实现 IChannelProvider → 注册 → record/replay 逐字节一致 + 篡改输入触发 ReplayDriftError）、`js-pae-plugin.mjs`（JsPaeAdapter L0，外来 JS 函数经网关治理，SeededRng 确定性骰子，适配面哈希进指纹）、`mcp-adapter.mjs`（真实 stdio 子进程，initialize→tools/list 握手后注册，record 后关子进程仍可逐字节重放——注入冻结输出不重入子进程）、`cli-record-replay.mjs`（驱动 bin/orbit.mjs 的 record→replay→diff 三命令，temp 目录自清理）。**benchmarks/** 4 套 + 汇总：gateway（capabilityInvoke 全链路含 journal，实测 ~12µs/call / 82k calls/s）、replay（journal 快路径 ~3.8µs / 261k calls/s）、wal（持久化 append+flush ~685µs/条）、pae（L0 in-process ~38µs vs L2 stdio-child ~176µs，跨进程因子 4.6×）；对照 VISION 性能预算。**CI 补闭合**：`.github/workflows/ci.yml` 增 `npm run test:console`（前端 97 例此前完全没进 CI——真实缺口）+ 4 示例 smoke + 4 基准 smoke（N 缩档跑）。**发布准备**：package.json `files` 补 examples/benchmarks/README.zh-CN.md，新增 `example:*`/`benchmark` scripts，`prepublishOnly` 补 `npm run test:console`。版本升 0.5.0（KERNEL_VERSION + 6 package.json + 指纹断言 + README 示例），CHANGELOG `[0.5.0]`。全量回归：内核 381（前轮审计后基线）+ 前端 97，干净从零 `tsc -b` 零错误。**坑**：示例里直接 `hub.attachRecordJournal` 不记录网关调用（gateway 有独立 journal，须走 `host.beginRecording`/`attachReplayEngine`）；`ReplayMode` 是纯类型无运行时值（示例用字符串字面量） |
 | 2026-09-01 | **W29 落地（四档治理模式，v0.6.0）**：VISION §3.1 从"设计目标"变为"已落地"。`infra-common/types/governance.ts`：`GovernanceProfile` 契约（sandbox/standard/strict）+ `resolveGovernanceProfile`（缺省/未知 → standard）+ `governanceProfileHash`（FNV-1a，进指纹）。宿主 `governanceProfile` 选项 + `currentGovernanceProfile` 只读访问器；`strict` 构造缺 `traceJournalPath` 抛错（合规档必须有耐久审计轨迹）。机制注入：`tokenBudgetConfigForProfile`（off/normal/aggressive，aggressive 阈值减半）、`tripThresholdForProfile`（按依赖出度软化，strict 下限 1 / 其余 2）、RateLimiter 取 profile 数字；PAE 准入门 `assertPaeKindAdmitted` 在 register/connect 前检查（connect 在握手**之前**，拒绝对端不 spawn 子进程）；`RunVersionFingerprint.governanceProfileHash` 可选字段 + `CapabilityGateway.verifyFingerprint` 对比（双方缺省=兼容，同 paeAdaptersHash 模式）——**standard 档省略字段，默认宿主指纹与 v0.5.x 逐字节一致**。**落地裁决**：standard 的 paeAdmission 用 "all" 而非 VISION 原始表的 "MCP+JS"——治理公理"为治理不砍功能"优先，且 OpenAPI/Cordis 是已发布能力；偏差记录进 VISION §3.1"与原始表的偏差"。**控制台**：settings.js 主机面板新增治理档位只读展示，bridge `state()` 增 governance 字段；css-coverage 门禁抓到新增 `.col` class 未定义 → styles.css 补上。测试 +16：`governance_profile.test.ts` 14 例 + `replay_compat` 2 例合并门禁（sandbox 录制拒以 standard 重放 = config drift；同档跨宿主重放逐字节一致——坑：网关 replay 读自身挂载 journal，replay host 须 `beginRecording()` 后 restoreSnapshot 再 attach）。全量 **397 内核**（381→397）+ **97 前端**，干净从零 `tsc -b` 零错误。清理：src/index.ts 三行重复 `export *` 收敛为一行。**坑**：`decideCompression` 阈值是字节数非 token 数（测试载荷先写错）；standard 初版 paeAdmission=["js","mcp"] 破坏了 cordis/openapi 既有测试 → 全量回归抓出，改 "all"（"设计文档直接落地会踩既有能力"的典型） |
 | 2026-09-01 | **W30 落地（审计哈希链，v0.7.0）**：VISION §3.1「落盘 + 签名」落地。`core-hub/audit/audit_chain.ts`：`auditChainHash` = HMAC-SHA256(key, prevHash + 规范化条目)（键排序 JSON，纯函数确定性）、`AUDIT_GENESIS_HASH` 首条种子、`firstChainHash`、`chainFieldsOf`、`chainTailOf`、`verifyAuditChain`（返回 consistent/brokenAt/brokenReason/signed；空链与无链条目 signed=false；混入无链条目视为故障）。`TraceJournal` 构造接可选密钥：append 自动带 prevHash/chainHash 并推进链尾；`restoreSnapshot` 重建链尾（恢复延续，跨进程不重链）。`PersistedTraceJournal` 透传密钥。宿主 `auditSigningKey` 选项 + `verifyAuditChain()` 公开方法 + **strict 联动**：构造期缺签名抛错（与 traceJournalPath 同规则）、bootHost 验证恢复链被篡改即拒绝启动。**CLI `orbit audit <trace.wal> [--key]`**：无 key 报 unsigned、正确 key 报一致、错误 key 第 0 条 prevHash 失配且退出非零。**控制台**：审计页顶部"内核审计链完整性"卡（`GET /api/audit/chain`），bridge 读 `ORBIT_AUDIT_SIGNING_KEY`。测试 +16：`audit_chain.test.ts` 15 例（链一致/篡改定位/删条/错 key/未签名/混合链/确定性/密钥 journal 链式 append+restore 延续/无密钥零链字段/宿主验证/篡改注入检出/strict 缺签名抛错/strict 拒启动断裂链/跨进程持久化延续）+ `replay_compat` 1 例合并门禁（签名不扰动重放）。**坑**：宿主常规路径不写 trace journal（审计条目由事件/异常写入）——测试需显式 `traceJournal.append` 制造条目；`verifyAuditChain` 空链 signed 初始值应为 false；strict 新增强制签名后 W29 的 strict 测试全部要补 `auditSigningKey`（全量回归抓出）。全量 **413 内核**（397→+16）+ **97 前端**（css-coverage 抓出审计卡缺 `.strong` → 补上），干净从零 `tsc -b` 零错误。清理：无。文档：VISION §3.1 偏差③更新（轨迹签名已落地）、architecture.md §11、CHANGELOG [0.7.0]、DEV_PLAN 波次 7。 |
+| 2026-09-01 | **W31 落地（信任推定与契约化，v0.8.0）**：VISION §3.1 最后两维落地。**信任推定** → `GovernanceProfile.maxIsolationLevel`（L0<L1<L2，strict 封顶 L1）+ `assertPaeAdmitted(kind, isolation)` 双门禁（register/connect 前检查）。**契约化** → `PluginUnitPact.schema` + PAE 工具 `schema`（PaeToolDescriptor/JsToolSpec）+ `infra-common/utils/schema_validation.ts` 的 `validateArgsAgainstSchema` 纯函数（JSON-Schema 子集：object/array/string/number/boolean、required、additionalProperties、maxItems；返回首个违规点 arg.<path>）+ `schemaMode`（sandbox optional / standard declared / strict required）+ 网关调用前校验（record/live）与 replay 旁路；strict 的 `registerPlugin` 无 schema 拒绝。profile 哈希含 i/s 两维。测试 +10（`governance_schema.test.ts`）：schema 纯函数（必填/类型/多余属性/maxItems/数组根）、strict 拒 L2 与无 schema、sandbox/standard 放行 L2、standard 声明则校验（conforming 过、违规拒于执行前）、sandbox 零校验、replay 旁路。**坑**：① `capabilityInvoke` 原非 async——校验同步 throw 会被 `assert.rejects` 当同步异常传播（测试挂），改 async 后拒绝走 promise；② strict 的 kind 拒绝先于隔离级（paeAdmission=[] 遮蔽 maxIsolationLevel——如实记录为防御性机制）；③ strict 新增强制 schema 后 W29 的 strict 测试（registerPlugin 无 schema）全量回归抓出 2 处补齐。全量 **423 内核**（413→+10）+ **97 前端**，干净从零 `tsc -b` 零错误。文档：VISION §3.1 偏差③更新（信任推定/Schema 已落地）、architecture.md §12、CHANGELOG [0.8.0]、DEV_PLAN 波次 8。 |
+
 

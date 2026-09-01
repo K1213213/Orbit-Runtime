@@ -1300,7 +1300,8 @@ test("replay_compat governance: same-tier replay stays byte-identical across hos
       displayName: "Gov",
       edition: "1.0.0",
       requireHostMinEdition: "1.0.0",
-      allowCapabilities: ["channel:read"]
+      allowCapabilities: ["channel:read"],
+      schema: { type: "object", properties: {} }
     });
     const ctx = { traceMarkId: `t-${mode}`, maxWaitMs: 5000, pluginUnitId: "gov.ok" };
     if (mode === "record") {

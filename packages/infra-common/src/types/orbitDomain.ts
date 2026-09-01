@@ -176,6 +176,14 @@ export interface PluginUnitPact {
   allowCapabilities: CapabilityKey[];
   /** M3: channels this plugin depends on, feeding the impact domain graph. */
   declareChannelDeps?: ChannelKind[];
+  /**
+   * W31: parameter contract for the plugin's tools, in the shape-notation of
+   * {@link validateArgsAgainstSchema}. Progressive contractification: writing
+   * one enables parameter validation; omitting it is allowed on sandbox /
+   * standard, and REJECTED on the `strict` governance tier (a compliance tier
+   * must declare what it accepts).
+   */
+  schema?: Record<string, unknown>;
 }
 
 /** Agent sandbox configuration. */

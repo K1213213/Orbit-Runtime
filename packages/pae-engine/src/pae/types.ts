@@ -77,6 +77,13 @@ export interface PaeToolDescriptor {
   description?: string;
   /** Mandatory when `fidelity !== "full"`: what exactly is reduced or lossy. */
   fidelityNote?: string;
+  /**
+   * W31: parameter contract for the tool, in the shape-notation of
+   * {@link validateArgsAgainstSchema}. When present and the host tier is
+   * `declared`/`required`, arguments are validated at the gateway before the
+   * call executes.
+   */
+  schema?: Record<string, unknown>;
 }
 
 /** Identity and provenance of an adapter, hashed into the run fingerprint. */

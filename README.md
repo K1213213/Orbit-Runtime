@@ -385,8 +385,9 @@ app workspace, run with `npm run start:web`.
 | M2 | **Deterministic replay** — record non-determinism, replay with zero model calls, digest-chain reconciliation | ✅ Done |
 | M3 | **Impact domain graph** — fault isolation as reverse reachability closure with an isolation theorem, static capability-closure verification | ✅ Done |
 | M4 | **Cost-aware routing** — channel cost/latency/quality profiles, per-cycle sandbox budgets | ✅ Done |
-| M5 | Product hardening: benchmarks, plugin examples, CI, npm publish | In progress |
-| M6 | **Open-source launch** — `orbit` CLI (`record`/`replay`/`diff`), docs site, first public release | In progress (CLI shipped) |
+| M5 | Product hardening: benchmarks, plugin examples, CI, npm publish | ✅ Done |
+| M6 | **Open-source launch** — `orbit` CLI (`record`/`replay`/`diff`) | ✅ Done (CLI + audit shipped) |
+| M6b | **Open-source launch** — docs site / landing page, first public npm release | Pending (npm publish is one command away; `prepublishOnly` gates it) |
 
 > M5/M6 track the `P0` milestones in [docs/PRODUCT_PLAN.md](./docs/PRODUCT_PLAN.md)
 > (P0.1 real capabilities → P0.2 CLI release → P0.3 open-source launch).

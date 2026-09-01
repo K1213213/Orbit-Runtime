@@ -299,8 +299,9 @@ orbit-agent-runtime/
 | M2 | **确定性重放** —— 记录非确定源，重放零调用精确复现，digest 链对账 | ✅ 已完成 |
 | M3 | **影响域图论内核** —— 故障隔离建模为反向可达闭包，附隔离定理，注册期能力闭包静态验证 | ✅ 已完成 |
 | M4 | **成本感知路由** —— 通道成本/延迟/质量档案，沙箱按轮预算调度 | ✅ 已完成 |
-| M5 | 产品化攻坚：基准测试、插件示例、CI、npm 发布 | 进行中 |
-| M6 | **开源发布** —— `orbit` CLI（`record`/`replay`/`diff`）、文档站、首个公开版本 | 进行中（CLI 已落地） |
+| M5 | 产品化攻坚：基准测试、插件示例、CI、npm 发布 | ✅ 已完成 |
+| M6 | **开源发布** —— `orbit` CLI（`record`/`replay`/`diff`） | ✅ 已完成（CLI + audit 命令已交付） |
+| M6b | **开源发布** —— 文档站 / 落地页、首个公开 npm 版本 | 待办（npm publish 一步之遥；`prepublishOnly` 已配好门禁） |
 
 > M5/M6 对应 [docs/PRODUCT_PLAN.md](./docs/PRODUCT_PLAN.md) 的 P0 里程碑
 > （P0.1 真能力落地 → P0.2 CLI 发布 → P0.3 开源发布）。

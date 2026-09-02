@@ -32,6 +32,8 @@ jobs:
 
       - name: Console tests (web, node:test)
         run: npm run test:console
+      - name: Docsite tests + build (zero-dependency renderer)
+        run: npm run test:docsite && npm run docsite
 
       - name: Examples (custom channel / PAE / MCP / CLI loop)
         run: |

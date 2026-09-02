@@ -4,6 +4,24 @@ All notable changes to Orbit Agent Runtime are documented here. This project
 follows a pre-alpha versioning scheme: `v0.x.minor` marks a release wave,
 `patch` marks fixes. Until `v1.0` the public API is not yet stability-promised.
 
+## [Unreleased] — Doc site (W34, M6b closeout)
+
+The open-source launch's last code gap closes: the architecture documents
+become a browsable static site, generated with the project's own zero
+dependencies.
+
+- **`tools/render-md.mjs`** — zero-dependency Markdown subset renderer
+  (ATX headings, fenced code, pipe tables, blockquotes, lists, hr,
+  paragraphs; inline bold / code / links). Pure functions, no I/O.
+- **`tools/build-site.mjs`** — renders `README.md` + `docs/*.md` +
+  `docs/blog/*` into a Bio-Lineage-themed static site under `site/` (9
+  pages). `npm run docsite`; `site/` is git-ignored generated output.
+- **CI** — new `Docsite tests + build` step (`npm run test:docsite`).
+- **Tests** — `tools/render-md.test.mjs`, 8 cases including a real-doc
+  golden check (architecture.md renders with no raw markdown leaking).
+- Product version untouched (kernel/console zero change); CHANGELOG gains
+  an `[Unreleased]` convention for tooling waves.
+
 ## [0.10.0] — 2026-09-02 · Compliance report (W33, PRODUCT_PLAN P2)
 
 The audit story reaches its product conclusion: one exportable artifact that

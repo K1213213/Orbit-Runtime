@@ -25,3 +25,4 @@ output/
 
 # Local dev screenshots (not part of the repository)
 .shots/
+site/

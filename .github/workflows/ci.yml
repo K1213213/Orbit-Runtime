@@ -41,6 +41,7 @@ jobs:
           node examples/js-pae-plugin.mjs
           node examples/mcp-adapter.mjs
           node examples/cli-record-replay.mjs
+          node examples/langgraph-orchestration.mjs
 
       - name: Benchmark smoke (each suite runs to completion)
         run: |

@@ -14,6 +14,9 @@ node examples/mcp-adapter.mjs
 
 # 4. the orbit CLI record → replay → diff loop, driven exactly as a user would
 node examples/cli-record-replay.mjs
+
+# 5. LangGraph-style orchestration on a provable runtime (P1.2)
+node examples/langgraph-orchestration.mjs
 ```
 
 | Example | Shows |
@@ -22,6 +25,7 @@ node examples/cli-record-replay.mjs
 | `js-pae-plugin.mjs` | Mapping plain JS functions onto the capability contract via `JsPaeAdapter`; the adapter surface becomes a governed channel whose output replays verbatim |
 | `mcp-adapter.mjs` | Spawning a real MCP server child, `initialize` → `tools/list` handshake, recorded call, then replay **after the peer is dead** (the frozen output is injected, the child is never re-entered) |
 | `cli-record-replay.mjs` | The three-command reproducibility story: `orbit record` → `orbit replay` (zero channel calls) → `orbit diff` (digest-chain reconciliation) |
+| `langgraph-orchestration.mjs` | P1.2 — a minimal LangGraph-style StateGraph whose agent nodes call tools through the Orbit gateway: the SAME graph runs twice, record (real tool side effects) then replay (frozen outputs, zero re-execution), and the final answer is byte-identical while the signed audit chain verifies PASS |
 
 The imports use relative paths so the examples run inside the repository;
 after `npm i orbit-agent-runtime` they become plain package imports:

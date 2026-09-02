@@ -49,6 +49,7 @@
     "example:pae": "npm run build && node examples/js-pae-plugin.mjs",
     "example:mcp": "npm run build && node examples/mcp-adapter.mjs",
     "example:cli": "npm run build && node examples/cli-record-replay.mjs",
+    "example:langgraph": "npm run build && node examples/langgraph-orchestration.mjs",
     "benchmark": "npm run build && node benchmarks/run-all.mjs",
     "prepublishOnly": "npm run clean && npm run build && npm test && npm run test:console"
   },

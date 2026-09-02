@@ -124,7 +124,7 @@ host.registerPlugin({
   id: "p.worker",
   displayName: "p.worker",
   edition: "1.0.0",
-  requireHostMinEdition: "0.11.0",
+  requireHostMinEdition: "0.12.0",
   allowCapabilities: ["channel:read", "channel:write"],
   declareChannelDeps: [ChannelKind.LLM_ACCESS]
 });

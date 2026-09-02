@@ -1,6 +1,6 @@
 {
   "name": "orbit-runtime",
-  "version": "0.11.0",
+  "version": "0.12.0",
   "description": "Deterministic · Provable · Governable — a plugin-based agent runtime kernel with hot plugin registration, provable fault isolation, full-chain traceability and sandboxed execution.",
   "keywords": [
     "agent",

@@ -345,6 +345,23 @@ code, .mono { font-family: var(--font-mono); font-size: 0.92em; }
   white-space: nowrap;
 }
 
+/* 渐进披露（方案 A）：折叠组以 <details> 呈现，默认收起 */
+.nav-group { margin: 2px 0; }
+.nav-group > summary {
+  padding: 10px 10px 4px;
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  color: var(--text-faint);
+  text-transform: uppercase;
+  cursor: pointer;
+  list-style: none;
+  white-space: nowrap;
+  user-select: none;
+}
+.nav-group > summary:hover { color: var(--text); }
+.nav-group > summary::after { content: " ▾"; font-size: 10px; opacity: 0.7; }
+.nav-group[open] > summary::after { content: " ▴"; }
+
 .nav-item {
   display: flex;
   align-items: center;

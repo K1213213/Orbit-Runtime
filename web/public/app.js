@@ -285,21 +285,32 @@ function showShell() {
 
 const navEl = document.getElementById("nav");
 
+function navItemButton(item, group) {
+  const btn = el("button", "nav-item", `
+    <span class="nav-ico">${esc(item.icon)}</span>
+    <span class="nav-label">${esc(item.title)}</span>`);
+  btn.dataset.route = item.path;
+  btn.title = group.desc;
+  return btn;
+}
+
 function buildNav() {
   if (!navEl) return;
   navEl.replaceChildren();
   for (const group of NAV_GROUPS) {
     const items = group.items.filter((i) => VIEW_RENDERERS[i.path]);
     if (items.length === 0) continue;
-    navEl.append(el("div", "nav-group-label", esc(group.label)));
-    for (const item of items) {
-      const btn = el("button", "nav-item", `
-        <span class="nav-ico">${esc(item.icon)}</span>
-        <span class="nav-label">${esc(item.title)}</span>`);
-      btn.dataset.route = item.path;
-      btn.title = group.desc;
-      navEl.append(btn);
+    if (group.collapsed) {
+      // 渐进披露：开发者控制台默认收起，点标签展开（原生 <details>，零 JS 状态）。
+      const box = el("details", "nav-group");
+      const sum = el("summary", "", esc(group.label));
+      box.append(sum);
+      for (const item of items) box.append(navItemButton(item, group));
+      navEl.append(box);
+      continue;
     }
+    navEl.append(el("div", "nav-group-label", esc(group.label)));
+    for (const item of items) navEl.append(navItemButton(item, group));
   }
 }
 

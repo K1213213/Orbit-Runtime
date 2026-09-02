@@ -239,46 +239,40 @@ export function describePaeTool(templateId, name, overrides = {}) {
  */
 export const NAV_GROUPS = [
   {
-    id: "runtime",
-    label: "运行时",
-    desc: "观察并驱动正在运行的智能体与任务",
+    id: "primary",
+    label: "工作台",
+    desc: "日常运行与观察：跑一个智能体、看任务结果",
     items: [
-      { path: "overview", title: "数据总览", icon: "◈", keywords: "overview home 首页 总览 大盘 dashboard 指标 数据" },
+      { path: "overview", title: "工作台", icon: "◈", keywords: "overview home 首页 总览 大盘 dashboard 指标 数据 工作台 启动" },
       { path: "boxes", title: "智能体实例", icon: "▣", keywords: "box sandbox agent instance 沙箱 实例 智能体 对话 执行" },
-      { path: "tasks", title: "任务中心", icon: "⧉", keywords: "task job 任务 运行 记录 中心" },
-      { path: "workflow", title: "工作流编排", icon: "❋", keywords: "workflow dag canvas 编排 工作流 画布 节点" }
+      { path: "tasks", title: "任务中心", icon: "⧉", keywords: "task job 任务 运行 记录 中心" }
     ]
   },
   {
-    id: "knowledge",
-    label: "知识",
-    desc: "沉淀私有语料并在推演中调用",
+    id: "proof",
+    label: "证明",
+    desc: "可复现、可审计、可出示——给外部看的页面",
     items: [
+      { path: "trace", title: "审计与合规", icon: "≡", keywords: "trace audit event 审计 溯源 追踪 日志 事件 合规 报告 链 链卡" }
+    ]
+  },
+  {
+    id: "developer",
+    label: "开发者控制台",
+    desc: "内核机制的控制面：图论、通道、适配器、重放调试",
+    collapsed: true,
+    items: [
+      { path: "workflow", title: "工作流编排", icon: "❋", keywords: "workflow dag canvas 编排 工作流 画布 节点" },
       { path: "knowledge", title: "知识库管理", icon: "❑", keywords: "knowledge kb 知识库 文档 切片 索引" },
-      { path: "rag", title: "RAG推演工作台", icon: "✵", keywords: "rag retrieve 检索 推演 问答 溯源 补搜" }
-    ]
-  },
-  {
-    id: "artifacts",
-    label: "构件",
-    desc: "接入模板、插件、模型与外来运行时",
-    items: [
+      { path: "rag", title: "知识问答", icon: "✵", keywords: "rag retrieve 检索 推演 问答 溯源 补搜" },
       { path: "templates", title: "智能体模板", icon: "◱", keywords: "template persona 模板 人设 智能体 版本" },
       { path: "plugins", title: "插件市场", icon: "◇", keywords: "plugin market pact 插件 市场 卸载" },
-      { path: "channels", title: "模型适配", icon: "⊡", keywords: "channel llm model provider 模型 通道 适配 deepseek" },
-      { path: "pae", title: "异构适配", icon: "❖", keywords: "pae adapter mcp openapi 异构 适配 外来 接驳" }
-    ]
-  },
-  {
-    id: "governance",
-    label: "治理",
-    desc: "证明隔离、复现执行、控制成本",
-    items: [
-      { path: "trace", title: "事件审计", icon: "≡", keywords: "trace audit event 审计 溯源 追踪 日志 事件" },
-      { path: "billing", title: "Token账单", icon: "⌾", keywords: "billing token cost 账单 消耗 余额 排行" },
-      { path: "routing", title: "成本路由", icon: "⌁", keywords: "routing cost budget 成本 路由 预算 模拟" },
-      { path: "replay", title: "回放台", icon: "↻", keywords: "replay deterministic 回放 重放 对账 digest" },
-      { path: "graph", title: "影响域图", icon: "✧", keywords: "graph isolation dependency 影响域 依赖 隔离 血缘" }
+      { path: "channels", title: "模型接入", icon: "⊡", keywords: "channel llm model provider 模型 通道 适配 deepseek 接入" },
+      { path: "pae", title: "外部工具接入", icon: "❖", keywords: "pae adapter mcp openapi 异构 适配 外来 接驳 工具 连接器" },
+      { path: "billing", title: "用量账单", icon: "⌾", keywords: "billing token cost 账单 消耗 余额 排行 用量" },
+      { path: "routing", title: "路由与预算", icon: "⌁", keywords: "routing cost budget 成本 路由 预算 模拟" },
+      { path: "replay", title: "重放调试台", icon: "↻", keywords: "replay deterministic 回放 重放 对账 digest 调试 复现" },
+      { path: "graph", title: "故障隔离图", icon: "✧", keywords: "graph isolation dependency 影响域 依赖 隔离 血缘 故障" }
     ]
   },
   {

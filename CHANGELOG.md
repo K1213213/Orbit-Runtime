@@ -4,6 +4,39 @@ All notable changes to Orbit Agent Runtime are documented here. This project
 follows a pre-alpha versioning scheme: `v0.x.minor` marks a release wave,
 `patch` marks fixes. Until `v1.0` the public API is not yet stability-promised.
 
+## [0.12.0] — 2026-09-02 · Console productization (方案 A + D)
+
+The console stops presenting the kernel as a flat 17-item control plane and
+starts presenting a product: the pages a user comes for are visible, the
+mechanism pages are one disclosure away, and the naming speaks business
+language. Kernel untouched — all changes are in the console shell.
+
+### Changed (方案 A · progressive disclosure + naming)
+- NAV_GROUPS regrouped from 5 kernel-themed groups into 4 user-shaped ones:
+  - **工作台** (always visible): 工作台 / 智能体实例 / 任务中心
+  - **证明** (always visible): 审计与合规 (the proof surface a customer sees)
+  - **开发者控制台** (`collapsed: true`): the 11 mechanism pages — workflow,
+    knowledge, 知识问答, templates, plugins, 模型接入, 外部工具接入, 用量账单,
+    路由与预算, 重放调试台, 故障隔离图 — behind a native `<details>` toggle
+  - **系统**: settings / profile
+- Business-language renaming: 事件审计→审计与合规, 数据总览→工作台, 影响域图→
+  故障隔离图, 成本路由→路由与预算, Token账单→用量账单, 回放台→重放调试台,
+  模型适配→模型接入, 异构适配→外部工具接入, RAG推演工作台→知识问答.
+- keywords updated so the command palette ranks under the new names.
+
+### Added (方案 D · product first screen)
+- Dashboard gains a quick-action row (new task / connect model / import
+  knowledge) and a live compliance summary (tier + audit status + one click
+  to the audit & compliance page).
+
+### Verification
+- Console suite: **109/109** (107 → +2 nav assertions; group-id tests updated
+  for the new IA: replay/pae → developer, boxes → primary, trace → proof;
+  new gates assert the collapsed developer group holds exactly the 11
+  mechanism pages and the visible surface is the 6 product pages).
+- Kernel: **430/430** unchanged. css-coverage green (new `.nav-group`
+  styles added). npm pack v0.12.0.
+
 ## [0.11.0] — 2026-09-02 · Signed compliance reports (W35, P2)
 
 The compliance report becomes a *signed document*: a third party holding only

@@ -82,10 +82,40 @@ test("nav: every view is reachable and grouped exactly once", () => {
 });
 
 test("nav: lookup resolves a path to its group", () => {
-  assert.equal(navItemOf("replay").group, "governance");
-  assert.equal(navItemOf("pae").group, "artifacts");
-  assert.equal(navItemOf("boxes").group, "runtime");
+  assert.equal(navItemOf("replay").group, "developer");
+  assert.equal(navItemOf("pae").group, "developer");
+  assert.equal(navItemOf("boxes").group, "primary");
+  assert.equal(navItemOf("trace").group, "proof");
+  assert.equal(navItemOf("settings").group, "system");
   assert.equal(navItemOf("nope"), null);
+});
+
+test("nav: progressive disclosure — mechanism pages live in the collapsed developer group", () => {
+  const dev = NAV_GROUPS.find((g) => g.id === "developer");
+  assert.ok(dev, "developer group exists");
+  assert.equal(dev.collapsed, true, "developer control plane is collapsed by default");
+  const devPaths = dev.items.map((i) => i.path).sort();
+  assert.deepEqual(
+    devPaths,
+    ["billing", "channels", "graph", "knowledge", "pae", "plugins", "rag", "replay", "routing", "templates", "workflow"].sort(),
+    "the 11 mechanism pages are grouped under developer"
+  );
+  // The always-visible groups are the product-facing surface.
+  const visible = NAV_GROUPS.filter((g) => !g.collapsed).flatMap((g) => g.items.map((i) => i.path));
+  assert.deepEqual(visible.sort(), ["boxes", "overview", "profile", "settings", "tasks", "trace"].sort());
+  for (const g of NAV_GROUPS) {
+    if (!g.collapsed) continue;
+    for (const i of g.items) assert.ok(i.path !== "trace" && i.path !== "overview", "core product pages stay visible");
+  }
+});
+
+test("nav: product-facing naming (business language, not kernel jargon)", () => {
+  assert.equal(navItemOf("overview").title, "工作台");
+  assert.equal(navItemOf("trace").title, "审计与合规");
+  assert.equal(navItemOf("graph").title, "故障隔离图");
+  assert.equal(navItemOf("replay").title, "重放调试台");
+  assert.equal(navItemOf("billing").title, "用量账单");
+  assert.equal(navItemOf("routing").title, "路由与预算");
 });
 
 test("nav: a declared route with no renderer is detected, not silently unreachable", () => {

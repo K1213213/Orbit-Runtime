@@ -44,6 +44,28 @@ export async function renderDashboard(root) {
       <span class="hint">OrbitRuntimeHost v${esc(d.version)} · 已运行 ${esc(fmtDuration(d.uptimeSec))} · 累计 ${esc(d.runCounter)} 轮</span></span>`)
   );
 
+  /* ---------- 快捷操作 + 合规摘要（方案 D · 产品化首屏） ---------- */
+  const quick = el("div", "row mt8");
+  const makeGo = (label, route) => {
+    const b = el("button", "btn sm", esc(label));
+    b.type = "button";
+    b.addEventListener("click", () => go(route));
+    return b;
+  };
+  quick.append(makeGo("＋ 新建任务", "tasks"), makeGo("接入模型", "channels"), makeGo("导入知识", "knowledge"));
+  const compLine = el("div", "hint grow");
+  quick.append(compLine);
+  api.complianceReport().then((r) => {
+    const btn = makeGo("打开审计与合规 →", "trace");
+    btn.className = "btn sm ghost";
+    compLine.innerHTML = `<b>合规</b> · 审计 ${r.audit.status}（${r.audit.entries} 条）· 档位 ${esc(r.governance.profile)}${r.audit.status === "PASS" ? " · 链可出示" : ""}`;
+    quick.append(btn);
+  }).catch(() => {
+    compLine.textContent = "合规报告暂不可用（需运行中的桥接宿主）";
+  });
+
+  wrap.append(quick);
+
   /* ---------- 模块1：四大核心指标卡 ---------- */
   const metrics = [
     {

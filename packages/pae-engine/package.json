@@ -1,6 +1,6 @@
 {
   "name": "@orbit/pae-engine",
-  "version": "0.11.0",
+  "version": "0.12.0",
   "private": true,
   "description": "Plugin Adaptation Engine \u2014 foreign runtimes (JS / MCP / OpenAPI / Cordis) as governed tools.",
   "license": "Apache-2.0",

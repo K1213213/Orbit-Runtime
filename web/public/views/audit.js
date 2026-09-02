@@ -10,7 +10,7 @@
  * 也会落一条审计事件，"谁导出了什么"因此同样可追溯。
  */
 import { api } from "../api.js";
-import { el, esc, badge, fmtTime, fmtDate, toast, empty, go } from "../app.js";
+import { el, esc, badge, badgeEl, fmtTime, fmtDate, toast, empty, go } from "../app.js";
 
 const LEVEL_TONE = { ok: "ok", warn: "warn", err: "err" };
 
@@ -59,6 +59,48 @@ export async function renderAudit(root) {
   );
   chainCard.append(chainBody);
   wrap.append(chainCard);
+
+  /* ---- 合规报告（W33 · PRODUCT_PLAN P2） ---- */
+  const compCard = el("div", "card mt8");
+  const compBody = el("div", "card-body");
+  const compStatus = el("div", "hint", "生成中…");
+  compBody.append(compStatus);
+  compCard.append(el("div", "card-head", "<h3>合规报告</h3><span class='sub'>档位 + 审计链 + 治理干预，一份可出示</span>"), compBody);
+  wrap.append(compCard);
+
+  api.complianceReport().then((r) => {
+    const tone = r.audit.status === "PASS" ? "ok" : r.audit.status === "FAIL" ? "err" : "neutral";
+    const row = el("div", "row spread", [
+      el("div", "col", [
+        el("span", "strong", `${r.governance.tier} · 审计 ${r.audit.status}`),
+        el("span", "sub", `${r.audit.entries} 条审计 · ${r.determinism.calls} 次录制调用 · ${r.determinism.flagged} 次治理干预`)
+      ]),
+      el("div", "row", [
+        ...Object.entries(r.interventions).map(([k, v]) => badgeEl(`${k} ${v}`, "neutral"))
+      ])
+    ]);
+    const ops = el("div", "row mt8");
+    for (const [text, fmt] of [["导出 Markdown", "md"], ["导出 JSON", "json"], ["导出 PDF", "pdf"]]) {
+      const b = el("button", "btn sm", esc(text));
+      b.type = "button";
+      b.addEventListener("click", async () => {
+        try {
+          const out = await api.complianceExport(fmt);
+          const blob = new Blob([out.content], { type: out.mime });
+          const a = document.createElement("a");
+          a.href = URL.createObjectURL(blob);
+          a.download = out.filename;
+          a.click();
+          URL.revokeObjectURL(a.href);
+          toast(`已导出 ${out.filename}`, "ok");
+        } catch (err) { toast(err.message, "err"); }
+      });
+      ops.append(b);
+    }
+    compBody.replaceChildren(row, ops);
+  }).catch((err) => {
+    compStatus.textContent = `合规报告不可用：${err.message}`;
+  });
 
   /* ---- 过滤器 ---- */
   const filterCard = el("div", "card");

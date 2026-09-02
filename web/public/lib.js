@@ -770,3 +770,101 @@ export function buildTimeline(records) {
 export function flaggedSteps(timeline) {
   return (timeline ?? []).filter((s) => s.facts.some((f) => f.key !== "route"));
 }
+
+
+/* ---------------------------------------------------------------------------
+ * 合规报告（W33 · PRODUCT_PLAN P2）
+ * 把治理档位 + 审计链状态 + 录制窗口干预统计收敛成一份可出示的结构化报告。
+ * 纯函数、DOM-free：bridge 组装输入，视图只管渲染与导出。
+ * ------------------------------------------------------------------------- */
+
+const TIER_LABEL = {
+  sandbox: "Sandbox（开发）",
+  standard: "Standard（默认）",
+  strict: "Strict（合规）"
+};
+
+/** 干预事实 key -> 中文名（与 callFacts 的 facts 对齐）。 */
+const FACT_LABEL = {
+  "rate-limited": "限流",
+  tripped: "熔断",
+  "no-pact": "越权",
+  budget: "预算收缩",
+  compressed: "压缩",
+  route: "路由"
+};
+
+function auditStatus(a) {
+  if (!a || a.total === 0) return "EMPTY";
+  if (!a.signed) return "UNSIGNED";
+  return a.consistent ? "PASS" : "FAIL";
+}
+
+/** 统计窗口内治理干预次数（按 fact key）。 */
+export function countInterventions(steps) {
+  const counts = {};
+  for (const s of steps ?? []) {
+    for (const f of s.facts ?? []) {
+      if (f.key === "route") continue;
+      const label = FACT_LABEL[f.key] ?? f.key;
+      counts[label] = (counts[label] ?? 0) + 1;
+    }
+  }
+  return counts;
+}
+
+/**
+ * 组装合规报告。input:
+ *   { version, generatedAt, profile, audit, window: { total, steps } | null }
+ * 返回纯数据：meta / governance / audit / interventions / determinism / summary。
+ */
+export function buildComplianceReport(input) {
+  const p = input.profile ?? {};
+  const audit = input.audit ?? {};
+  const windowInfo = input.window ?? { total: 0, steps: [] };
+  const interventions = countInterventions(windowInfo.steps);
+  const status = auditStatus(audit);
+  const auditText = {
+    EMPTY: "审计轨迹为空（尚未产生内核审计条目）",
+    UNSIGNED: "审计轨迹未签名（未配置 auditSigningKey，无法证明未被篡改）",
+    PASS: "审计哈希链一致，轨迹未被篡改",
+    FAIL: `审计链在 #${audit.brokenAt} 处断裂（${audit.brokenReason ?? "原因未知"}）`
+  }[status];
+
+  const governanceTier = TIER_LABEL[p.name] ?? p.name ?? "—";
+  return {
+    meta: {
+      product: "Orbit Agent Runtime",
+      version: input.version ?? "?",
+      generatedAt: input.generatedAt ?? new Date().toISOString()
+    },
+    governance: {
+      tier: governanceTier,
+      profile: p.name ?? "standard",
+      compression: p.compression ?? "normal",
+      limiter: p.limiter ? `${p.limiter.maxCallsPerWindow}/${p.limiter.windowSizeCalls}` : "—",
+      trip: p.trip ? `${p.trip.failureThreshold} 次 / ${p.trip.cooldownMs}ms` : "—",
+      paeAdmission: p.paeAdmission === "all" ? "全部" : (p.paeAdmission ?? []).length === 0 ? "关闭" : [...(p.paeAdmission ?? [])].join(", "),
+      traceDurability: p.traceDurability ?? "optional",
+      maxIsolationLevel: p.maxIsolationLevel ?? "L2",
+      schemaMode: p.schemaMode ?? "declared"
+    },
+    audit: {
+      entries: audit.total ?? 0,
+      signed: audit.signed ?? false,
+      consistent: audit.consistent ?? false,
+      status,
+      text: auditText
+    },
+    interventions,
+    determinism: {
+      calls: windowInfo.total ?? 0,
+      flagged: Object.values(interventions).reduce((a, b) => a + b, 0)
+    },
+    summary: status === "PASS"
+      ? "审计链完整且已签名：本窗口的治理决策与轨迹可向第三方出示。"
+      : status === "FAIL"
+        ? "审计链断裂：轨迹可能被篡改，报告不可用于外部出示。"
+        : "审计轨迹未签名或为空：只能证明结构存在，不能证明未被篡改。"
+  };
+}

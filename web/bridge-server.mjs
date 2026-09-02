@@ -39,7 +39,8 @@ import {
   deriveNotifications,
   deriveSystemHealth,
   suggestNextSteps,
-  buildTimeline
+  buildTimeline,
+  buildComplianceReport
 } from "./public/lib.js";
 import {
   chunkText,
@@ -1110,6 +1111,84 @@ const api = {
     const snapshot = j.snapshot().slice(0, at + 1);
     j.restoreSnapshot(snapshot);
     return { forkedAt: at, remaining: j.size(), branch: body?.branch ?? null };
+  },
+
+  /* W33 · PRODUCT_PLAN P2 —— 合规报告：档位 + 审计链 + 干预统计，一份可出示产物。 */
+  complianceData() {
+    const j = host.currentRecordJournal();
+    return buildComplianceReport({
+      version: KERNEL_VERSION,
+      generatedAt: new Date().toISOString(),
+      profile: host.currentGovernanceProfile,
+      audit: host.verifyAuditChain(),
+      window: j
+        ? { total: j.size(), steps: buildTimeline(j.snapshot()) }
+        : { total: 0, steps: [] }
+    });
+  },
+
+  complianceExport(format = "md") {
+    const r = this.complianceData();
+    audit("compliance.export", format, `导出合规报告（审计 ${r.audit.status}）`);
+    if (format === "json") {
+      return { format: "json", filename: `orbit-compliance-${r.meta.generatedAt.slice(0, 10)}.json`, mime: "application/json", content: JSON.stringify(r, null, 2) };
+    }
+    if (format === "pdf") {
+      const g = r.governance;
+      const lines = [
+        "Orbit Agent Runtime - Compliance Report",
+        `Version: ${r.meta.version}`,
+        `Generated: ${r.meta.generatedAt}`,
+        "",
+        `Governance tier: ${g.profile} (${g.tier})`,
+        `Compression: ${g.compression} | Rate limit: ${g.limiter} | Trip: ${g.trip}`,
+        `PAE admission: ${g.paeAdmission} | Trace: ${g.traceDurability} | Isolation cap: ${g.maxIsolationLevel} | Schema: ${g.schemaMode}`,
+        "",
+        `Audit chain: ${r.audit.status} (${r.audit.entries} entries, signed=${r.audit.signed}) - ${r.audit.text}`,
+        "",
+        `Recorded window: ${r.determinism.calls} calls, ${r.determinism.flagged} governance interventions`,
+        ...Object.entries(r.interventions).map(([k, v]) => `  - ${k}: ${v}`),
+        "",
+        `Conclusion: ${r.summary}`
+      ];
+      return { format: "pdf", filename: `orbit-compliance-${r.meta.generatedAt.slice(0, 10)}.pdf`, mime: "application/pdf", content: this.buildPdf(lines) };
+    }
+    const esc_ = (s) => String(s ?? "").replace(/\|/g, "\\|");
+    const g = r.governance;
+    const rows = [
+      `# Orbit Agent Runtime 合规报告`,
+      "",
+      `- 产品版本：${esc_(r.meta.version)}`,
+      `- 生成时间：${esc_(r.meta.generatedAt)}`,
+      "",
+      "## 治理档位",
+      "",
+      "| 维度 | 值 |",
+      "|---|---|",
+      `| 档位 | ${esc_(g.tier)}（${esc_(g.profile)}） |`,
+      `| 压缩 | ${esc_(g.compression)} |`,
+      `| 限流 | ${esc_(g.limiter)} |`,
+      `| 熔断 | ${esc_(g.trip)} |`,
+      `| PAE 准入 | ${esc_(g.paeAdmission)} |`,
+      `| 轨迹持久化 | ${esc_(g.traceDurability)} |`,
+      `| 隔离级上限 | ${esc_(g.maxIsolationLevel)} |`,
+      `| Schema 模式 | ${esc_(g.schemaMode)} |`,
+      "",
+      "## 审计链（防篡改）",
+      "",
+      `- 状态：**${r.audit.status}**（${r.audit.entries} 条，signed=${r.audit.signed}）`,
+      `- 说明：${esc_(r.audit.text)}`,
+      "",
+      "## 治理干预（录制窗口）",
+      "",
+      `- 调用数：${r.determinism.calls} · 干预步：${r.determinism.flagged}`,
+      ...Object.entries(r.interventions).map(([k, v]) => `- ${esc_(k)}：${v}`),
+      "",
+      "## 结论",
+      "",
+      esc_(r.summary)
+    ];
+    return { format: "md", filename: `orbit-compliance-${r.meta.generatedAt.slice(0, 10)}.md`, mime: "text/markdown", content: rows.join("\n") };
   },
 
   async replayDemo() {
@@ -2500,6 +2579,10 @@ const server = http.createServer(async (req, res) => {
           needRole(); return api.auditExport(String(query.format ?? "md"), query); }
         if (method === "GET" && seg[0] === "audit" && seg[1] === "chain")
           return api.auditChain();
+        if (method === "GET" && seg[0] === "compliance" && seg.length === 1)
+          return api.complianceData();
+        if (method === "GET" && seg[0] === "compliance" && seg[1] === "export") {
+          needRole(); return api.complianceExport(String(query.format ?? "md")); }
         if (method === "GET" && seg[0] === "audit" && seg.length === 1) return api.auditEvents(query);
         if (method === "GET" && seg[0] === "notifications" && seg.length === 1) return api.notifications(needSession());
         if (method === "POST" && seg[0] === "notifications" && seg[1] === "read") {

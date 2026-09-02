@@ -156,6 +156,8 @@ export const api = {
   auditChain: () => request("GET", "/api/audit/chain"),
   replayTimeline: () => request("GET", "/api/replay/timeline"),
   replayFork: (body) => request("POST", "/api/replay/fork", body),
+  complianceReport: () => request("GET", "/api/compliance"),
+  complianceExport: (format) => request("GET", `/api/compliance/export${qs({ format })}`),
   notifications: () => request("GET", "/api/notifications"),
   notificationsRead: (ids) => request("POST", "/api/notifications/read", { ids }),
 

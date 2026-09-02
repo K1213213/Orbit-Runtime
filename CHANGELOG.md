@@ -4,6 +4,40 @@ All notable changes to Orbit Agent Runtime are documented here. This project
 follows a pre-alpha versioning scheme: `v0.x.minor` marks a release wave,
 `patch` marks fixes. Until `v1.0` the public API is not yet stability-promised.
 
+## [0.10.0] — 2026-09-02 · Compliance report (W33, PRODUCT_PLAN P2)
+
+The audit story reaches its product conclusion: one exportable artifact that
+states the governance tier, proves the audit chain and summarises the
+governance interventions — the thing a third party can actually be shown.
+
+### Added
+- **Report model** (`web/public/lib.js`, DOM-free): `buildComplianceReport`
+  folds the governance profile, the audit-chain report and the recording
+  window into `{ meta, governance, audit, interventions, determinism,
+  summary }`. Audit status derives honestly: `EMPTY` (no entries), `UNSIGNED`
+  (no key — structure provable, integrity not), `PASS` (signed + consistent),
+  `FAIL` (broken at entry N with the reason). `countInterventions` tallies the
+  governance interventions from timeline steps (rate-limit / trip / pact /
+  budget / compression).
+- **Bridge endpoints**:
+  - `GET /api/compliance` — live report JSON.
+  - `GET /api/compliance/export?format=md|json|pdf` — downloadable report
+    (PDF reuses the existing zero-dependency buildPdf; export is itself an
+    audited action in the console event stream).
+- **Console audit page** — a "合规报告" card under the audit-chain card:
+  tier + audit status + intervention chips, and md / json / pdf export.
+
+### Verification
+- Console suite: **107/107** (103 → +4 compliance pure-function cases).
+- Kernel unchanged and green: **423/423** (console/bridge wave).
+- Smoke: a keyed strict host produces a `PASS` report with the entry count;
+  an unsigned host reports `EMPTY`/`UNSIGNED` honestly.
+- view-refs gate caught `badgeEl` used-but-not-imported in the audit view;
+  added to its import.
+
+### Migration
+- New API only (`/api/compliance*`, lib functions). No kernel change.
+
 ## [0.9.0] — 2026-09-02 · Replay timeline (W32, PRODUCT_PLAN P1.1)
 
 The first PRODUCT_PLAN P1 delivery: deterministic replay becomes a visual,

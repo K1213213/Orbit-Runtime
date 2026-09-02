@@ -6,7 +6,9 @@ import {
   NAV_ITEMS,
   NAV_PATHS,
   buildTimeline,
+  buildComplianceReport,
   callFacts,
+  countInterventions,
   deriveSystemHealth,
   flaggedSteps,
   fuzzyScore,
@@ -343,4 +345,70 @@ test("timeline: buildTimeline indexes steps by call order", () => {
     { channelKind: "b", funcName: "f2", outputSnapshot: null, durationMs: 2, decision: {} }
   ]);
   assert.deepEqual(t.map((s) => s.index), [0, 1]);
+});
+
+/* ---------------------------------------------------------------- W33 合规报告 */
+
+const GOV = {
+  name: "strict", compression: "aggressive",
+  limiter: { maxCallsPerWindow: 60, windowSizeCalls: 60 },
+  trip: { failureThreshold: 3, cooldownMs: 5000 },
+  paeAdmission: [], traceDurability: "required",
+  maxIsolationLevel: "L1", schemaMode: "required"
+};
+
+test("compliance: a signed consistent chain reports PASS", () => {
+  const r = buildComplianceReport({
+    version: "0.10.0", generatedAt: "2026-09-02T00:00:00.000Z",
+    profile: GOV,
+    audit: { total: 5, signed: true, consistent: true },
+    window: { total: 3, steps: [] }
+  });
+  assert.equal(r.audit.status, "PASS");
+  assert.equal(r.governance.tier, "Strict（合规）");
+  assert.equal(r.governance.maxIsolationLevel, "L1");
+  assert.equal(r.governance.schemaMode, "required");
+  assert.equal(r.determinism.calls, 3);
+  assert.match(r.summary, /可向第三方出示/);
+});
+
+test("compliance: unsigned or broken chains report UNSIGNED / FAIL", () => {
+  const base = { version: "0.10.0", generatedAt: "x", profile: GOV, window: { total: 0, steps: [] } };
+  const unsigned = buildComplianceReport({ ...base, audit: { total: 5, signed: false, consistent: false } });
+  assert.equal(unsigned.audit.status, "UNSIGNED");
+  const broken = buildComplianceReport({
+    ...base,
+    audit: { total: 5, signed: true, consistent: false, brokenAt: 2, brokenReason: "tampered" }
+  });
+  assert.equal(broken.audit.status, "FAIL");
+  assert.equal(broken.audit.text.includes("#2"), true);
+  const empty = buildComplianceReport({ ...base, audit: { total: 0, signed: false, consistent: false } });
+  assert.equal(empty.audit.status, "EMPTY");
+});
+
+test("compliance: interventions are counted from timeline steps", () => {
+  const steps = buildTimeline([
+    { channelKind: "llm-access", funcName: "a", outputSnapshot: 1, durationMs: 1,
+      decision: { route: "pae", rateLimited: true } },
+    { channelKind: "llm-access", funcName: "b", outputSnapshot: 2, durationMs: 2,
+      decision: { route: "pae", budget: { allow: false, strategy: "shrink" } } },
+    { channelKind: "llm-access", funcName: "c", outputSnapshot: 3, durationMs: 3,
+      decision: { route: "pae", rateLimited: true, compression: { level: "normal", applied: true, bytesSaved: 5 } } },
+    { channelKind: "mem-kv-store", funcName: "d", outputSnapshot: 4, durationMs: 4, decision: { route: "native" } }
+  ]);
+  const r = buildComplianceReport({
+    version: "1", generatedAt: "x", profile: GOV,
+    audit: { total: 1, signed: true, consistent: true },
+    window: { total: steps.length, steps }
+  });
+  assert.equal(r.interventions["限流"], 2);
+  assert.equal(r.interventions["预算收缩"], 1);
+  assert.equal(r.interventions["压缩"], 1);
+  assert.ok(!r.interventions["路由"], "pure routing is not an intervention");
+  assert.equal(r.determinism.flagged, 4);
+});
+
+test("compliance: countInterventions skips empty windows", () => {
+  assert.deepEqual(countInterventions([]), {});
+  assert.deepEqual(countInterventions(undefined), {});
 });

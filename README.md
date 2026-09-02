@@ -91,7 +91,7 @@ surface into the run fingerprint, so a changed tool set reports as
 configuration drift rather than as a digest mismatch.
 
 ```ts
-import { OrbitRuntimeHost, JsPaeAdapter, ChannelKind } from "orbit-agent-runtime";
+import { OrbitRuntimeHost, JsPaeAdapter, ChannelKind } from "orbit-runtime";
 
 const host = new OrbitRuntimeHost();
 await host.bootHost();
@@ -391,7 +391,7 @@ app workspace, run with `npm run start:web`.
 | M4 | **Cost-aware routing** — channel cost/latency/quality profiles, per-cycle sandbox budgets | ✅ Done |
 | M5 | Product hardening: benchmarks, plugin examples, CI, npm publish | ✅ Done |
 | M6 | **Open-source launch** — `orbit` CLI (`record`/`replay`/`diff`) | ✅ Done (CLI + audit shipped) |
-| M6b | **Open-source launch** — docs site / landing page, first public npm release | npm publish ✅ (orbit-agent-runtime 0.8.0+ live); docs site pending |
+| M6b | **Open-source launch** — docs site / landing page, first public npm release | npm publish ✅ (orbit-runtime 0.8.0+ live); docs site pending |
 
 > M5/M6 track the `P0` milestones in [docs/PRODUCT_PLAN.md](./docs/PRODUCT_PLAN.md)
 > (P0.1 real capabilities → P0.2 CLI release → P0.3 open-source launch).
@@ -413,7 +413,7 @@ provider (OpenAI-compatible, zero extra deps) at runtime — plugin channels
 take precedence over built-ins:
 
 ```ts
-import { OrbitRuntimeHost, DeepSeekChannel, ChannelKind } from "orbit-agent-runtime";
+import { OrbitRuntimeHost, DeepSeekChannel, ChannelKind } from "orbit-runtime";
 
 const host = new OrbitRuntimeHost();
 await host.bootHost();
@@ -436,7 +436,7 @@ DEEPSEEK_API_KEY=sk-xxx npm run demo:deepseek
 just point `baseUrl` at it:
 
 ```ts
-import { OpenAICompatChannel } from "orbit-agent-runtime";
+import { OpenAICompatChannel } from "orbit-runtime";
 
 // DeepSeek / OpenAI / Qwen / Kimi / GLM / Ollama / vLLM ...
 host.channelHub.registerPluginExtChannel(ChannelKind.LLM_ACCESS, new OpenAICompatChannel({
@@ -460,7 +460,7 @@ the record journal.
 ### Real tool channels (File / Shell)
 
 ```ts
-import { FileChannel, ShellChannel } from "orbit-agent-runtime";
+import { FileChannel, ShellChannel } from "orbit-runtime";
 
 // Filesystem access jailed to a root directory (path escapes are rejected).
 host.channelHub.registerPluginExtChannel(ChannelKind.FILE_SYSTEM, new FileChannel({
@@ -485,7 +485,7 @@ read/list/stat → `channel:read` and write/append/remove/mkdir/exec →
 ### Trace persistence (JSONL)
 
 ```ts
-import { saveRecordJournal, loadRecordJournal } from "orbit-agent-runtime";
+import { saveRecordJournal, loadRecordJournal } from "orbit-runtime";
 
 await saveRecordJournal(journal, "trace.jsonl");   // atomic write (tmp + rename)
 const restored = await loadRecordJournal("trace.jsonl"); // validated load

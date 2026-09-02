@@ -176,7 +176,7 @@ class FixedClock { /* now() 在 base 上单调 +1 */ }
 安装（发布后）：
 
 ```bash
-npm i -g orbit-agent-runtime
+npm i -g orbit-runtime
 ```
 
 写一个脚本，默认导出一个 `async (ctx)` 函数：

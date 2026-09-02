@@ -88,7 +88,7 @@ export class IsolationDomain {
         "initialize",
         {
           protocolVersion: DOMAIN_PROTOCOL_VERSION,
-          clientInfo: { name: "orbit-agent-runtime", domainId: this.config.domainId }
+          clientInfo: { name: "orbit-runtime", domainId: this.config.domainId }
         },
         timeout
       ),

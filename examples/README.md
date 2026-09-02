@@ -28,10 +28,10 @@ node examples/langgraph-orchestration.mjs
 | `langgraph-orchestration.mjs` | P1.2 — a minimal LangGraph-style StateGraph whose agent nodes call tools through the Orbit gateway: the SAME graph runs twice, record (real tool side effects) then replay (frozen outputs, zero re-execution), and the final answer is byte-identical while the signed audit chain verifies PASS |
 
 The imports use relative paths so the examples run inside the repository;
-after `npm i orbit-agent-runtime` they become plain package imports:
+after `npm i orbit-runtime` they become plain package imports:
 
 ```js
-import { OrbitRuntimeHost, ChannelKind } from "orbit-agent-runtime";
+import { OrbitRuntimeHost, ChannelKind } from "orbit-runtime";
 ```
 
 Every example exits non-zero on any failed assertion, so they can be used as

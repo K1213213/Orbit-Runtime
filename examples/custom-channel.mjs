@@ -11,7 +11,7 @@
  * Run: node examples/custom-channel.mjs
  *
  * For npm consumers the imports below become
- *   import { OrbitRuntimeHost, ChannelKind, ... } from "orbit-agent-runtime";
+ *   import { OrbitRuntimeHost, ChannelKind, ... } from "orbit-runtime";
  * The relative paths are only for running inside this repository.
  */
 import { OrbitRuntimeHost, ChannelKind } from "../dist/src/index.js";

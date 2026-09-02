@@ -7,7 +7,7 @@ assignees: ""
 ---
 
 ## Environment
-- orbit-agent-runtime version (or commit):
+- orbit-runtime version (or commit):
 - Node.js version:
 - OS:
 

@@ -77,7 +77,7 @@ runtime_host（顶层宿主入口）
 能力协商是显式的，而非静默：适配器若无法无损映射某外来工具，必须借 `fidelity`（`full | reduced | lossy`）声明，调用方亦可要求最低保真度；低于 `full` 必须附带 `fidelityNote`。注册表还会把整个适配面的 `configHash` 写进运行指纹，使工具集的变更被报告为配置漂移，而非 digest 不匹配。
 
 ```ts
-import { OrbitRuntimeHost, JsPaeAdapter, ChannelKind } from "orbit-agent-runtime";
+import { OrbitRuntimeHost, JsPaeAdapter, ChannelKind } from "orbit-runtime";
 
 const host = new OrbitRuntimeHost();
 await host.bootHost();
@@ -270,7 +270,7 @@ export default async function (ctx) {
 构建、版本与测试，而 `src/index.ts` 的公共 API 保持不变。
 
 ```
-orbit-agent-runtime/
+orbit-runtime/
 ├── packages/
 │   ├── infra-common/      # @orbit/infra-common —— 领域契约/纯工具/异常（types·utils·core）
 │   ├── core-hub/          # @orbit/core-hub —— 通道/网关/replay/trace/pact/safeguard/routing
@@ -305,7 +305,7 @@ orbit-agent-runtime/
 | M4 | **成本感知路由** —— 通道成本/延迟/质量档案，沙箱按轮预算调度 | ✅ 已完成 |
 | M5 | 产品化攻坚：基准测试、插件示例、CI、npm 发布 | ✅ 已完成 |
 | M6 | **开源发布** —— `orbit` CLI（`record`/`replay`/`diff`） | ✅ 已完成（CLI + audit 命令已交付） |
-| M6b | **开源发布** —— 文档站 / 落地页、首个公开 npm 版本 | npm 发布 ✅（orbit-agent-runtime 0.8.0+ 已上线）；文档站待建 |
+| M6b | **开源发布** —— 文档站 / 落地页、首个公开 npm 版本 | npm 发布 ✅（orbit-runtime 0.8.0+ 已上线）；文档站待建 |
 
 > M5/M6 对应 [docs/PRODUCT_PLAN.md](./docs/PRODUCT_PLAN.md) 的 P0 里程碑
 > （P0.1 真能力落地 → P0.2 CLI 发布 → P0.3 开源发布）。
@@ -325,7 +325,7 @@ orbit-agent-runtime/
 内置 LLM 通道为测试用模拟实现；运行时将真实 DeepSeek provider 注册为插件扩展通道即可覆盖（插件通道优先于内置）：
 
 ```ts
-import { OrbitRuntimeHost, DeepSeekChannel, ChannelKind } from "orbit-agent-runtime";
+import { OrbitRuntimeHost, DeepSeekChannel, ChannelKind } from "orbit-runtime";
 
 const host = new OrbitRuntimeHost();
 await host.bootHost();
@@ -346,7 +346,7 @@ DEEPSEEK_API_KEY=sk-xxx npm run demo:deepseek
 `OpenAICompatChannel` 支持**任意** OpenAI 兼容端点——把 `baseUrl` 指过去即可：
 
 ```ts
-import { OpenAICompatChannel } from "orbit-agent-runtime";
+import { OpenAICompatChannel } from "orbit-runtime";
 
 // DeepSeek / OpenAI / OpenAI / 通义 / Kimi / Ollama / vLLM ...
 host.channelHub.registerPluginExtChannel(ChannelKind.LLM_ACCESS, new OpenAICompatChannel({
@@ -363,7 +363,7 @@ host.channelHub.registerPluginExtChannel(ChannelKind.LLM_ACCESS, new OpenAICompa
 ### 真实工具通道（文件 / Shell）
 
 ```ts
-import { FileChannel, ShellChannel } from "orbit-agent-runtime";
+import { FileChannel, ShellChannel } from "orbit-runtime";
 
 // 文件访问，监禁在根目录内（路径越界即拒绝）。
 host.channelHub.registerPluginExtChannel(ChannelKind.FILE_SYSTEM, new FileChannel({
@@ -384,7 +384,7 @@ host.channelHub.registerPluginExtChannel(ChannelKind.SHELL_EXEC, new ShellChanne
 ### 轨迹持久化（JSONL）
 
 ```ts
-import { saveRecordJournal, loadRecordJournal } from "orbit-agent-runtime";
+import { saveRecordJournal, loadRecordJournal } from "orbit-runtime";
 
 await saveRecordJournal(journal, "trace.jsonl");   // 原子写（tmp + rename）
 const restored = await loadRecordJournal("trace.jsonl"); // 校验加载

@@ -171,7 +171,7 @@ export class McpPaeAdapter implements IPaeAdapter {
           protocolVersion: MCP_PROTOCOL_VERSION,
           capabilities: {},
           clientInfo: this.config.clientInfo ?? {
-            name: "orbit-agent-runtime",
+            name: "orbit-runtime",
             version: KERNEL_VERSION
           }
         },

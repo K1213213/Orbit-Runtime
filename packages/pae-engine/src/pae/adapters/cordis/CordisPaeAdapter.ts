@@ -166,7 +166,7 @@ export class CordisPaeAdapter implements IPaeAdapter {
         "initialize",
         {
           protocolVersion: CORDIS_PROTOCOL_VERSION,
-          clientInfo: { name: "orbit-agent-runtime", version: KERNEL_VERSION }
+          clientInfo: { name: "orbit-runtime", version: KERNEL_VERSION }
         },
         timeout
       ),

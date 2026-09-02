@@ -4,6 +4,42 @@ All notable changes to Orbit Agent Runtime are documented here. This project
 follows a pre-alpha versioning scheme: `v0.x.minor` marks a release wave,
 `patch` marks fixes. Until `v1.0` the public API is not yet stability-promised.
 
+## [0.9.0] — 2026-09-02 · Replay timeline (W32, PRODUCT_PLAN P1.1)
+
+The first PRODUCT_PLAN P1 delivery: deterministic replay becomes a visual,
+step-through debugging experience instead of a raw JSONL inspection.
+
+### Added
+- **Timeline model** (`web/public/lib.js`, DOM-free pure functions shared by
+  bridge and views): `buildTimeline(records)` expands a recording window into
+  ordered steps; `callFacts(record)` extracts channel/function/input digest/
+  output summary/duration/token estimate plus governance facts (rate-limit,
+  trip, pact, budget, compression, route); `flaggedSteps` isolates the
+  governance-intervened steps; `summarizeValue` renders a bounded output.
+- **Bridge endpoints**:
+  - `GET /api/replay/timeline` — the host's live recording window as steps.
+  - `POST /api/replay/fork { at }` — branch: keep `0..at`, discard the rest,
+    continue live recording from `at` (the window's `orderIndex` continues).
+- **Console replay page** — timeline card over the real window: step list with
+  governance badges, step-through navigation (prev/next), per-step detail
+  (input digest / output / duration / tokens / decisions) and a fork action
+  that branches a new experiment from the selected step.
+- **Console tests**: 6 new cases for the timeline pure functions
+  (103 console total).
+
+### Verification
+- Kernel suite unchanged and green: **423/423** (this wave is console/bridge
+  only — the kernel API surface is untouched, `RecordJournal.restoreSnapshot`
+  already provides the fork primitive).
+- Console suite: **103/103** green. css-coverage gate caught an unused
+  `tl-step` class in the new view; removed.
+- E2E smoke: 4-step window builds a timeline; fork at #1 keeps 0..1 and the
+  next live call lands at orderIndex 2.
+
+### Migration
+- New API only: `replayTimeline` / `replayFork` bridge calls plus lib
+  functions. No kernel change; no breaking change.
+
 ## [0.8.0] — 2026-09-01 · Trust assumption & contractification (W31)
 
 The last two VISION §3.1 governance dimensions ship, closing the four-tier

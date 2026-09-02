@@ -37,6 +37,7 @@
 | **v0.6.0** | W29 | **四档治理模式落地**：VISION §3.1 从设计目标变为可切换配置 | profile 契约 + 宿主选项 + 机制注入（限流/熔断/压缩/PAE 准入/轨迹持久化）+ 跨档重放报配置漂移；standard 与旧行为逐字一致 |
 | **v0.7.0** | W30 | **审计哈希链（防篡改审计）**：VISION §3.1「落盘 + 签名」| 审计条目带 HMAC 哈希链（prevHash/chainHash）；orbit audit CLI + 控制台验证；strict 强制签名并在启动时验证被篡改链拒绝启动 |
 | **v0.8.0** | W31 | **信任推定与契约化**：VISION §3.1 最后两维落地 | 隔离级上限（strict 封顶 L1）+ 渐进式 Schema 校验（strict 强制声明）；profile 哈希含新维；VISION §3.1 全维度有代码实现 |
+| **v0.9.0** | W32 | **重放时间线**（PRODUCT_PLAN P1.1）| 录制窗口展开为可 step-through 时间线（输入/输出/成本/决策）+ 分叉实验；bridge timeline/fork 端点 + 控制台时间线卡 |
 
 版本号策略：宪章前语义化版本不承诺稳定 API（pre-alpha），v0.x.minor = 波次，patch = 修复。
 
@@ -142,6 +143,17 @@ VISION §3.1 最后两维落地，四档模式全部维度均有代码实现。
 校验参数（违规定位到 `arg.<path>`）· sandbox 零校验 · replay 旁路参数校验 ·
 schema/隔离级维度进 profile 哈希 · 全量回归只增不减。
 
+### 波次 9 · v0.9.0 重放时间线（W32，PRODUCT_PLAN P1.1）
+
+内核架构已闭环；本波次开始 PRODUCT_PLAN P1 产品面——把确定性重放变成可视化调试体验。
+
+| 阶段 | 内容 | 依据 |
+|---|---|---|
+| **W32 ✅** | `web/public/lib.js` 时间线纯函数（`buildTimeline`/`callFacts`/`flaggedSteps`/`summarizeValue`）+ bridge `GET /api/replay/timeline` + `POST /api/replay/fork`（保留 0..at 截断续录）+ 控制台回放台时间线卡（step-through + 分叉按钮）+ 前端 6 例新测试 | PRODUCT_PLAN P1.1（见下方进度日志） |
+
+**波次 9 门禁**：时间线纯函数 DOM-free 可测 · fork 复用内核 `RecordJournal.restoreSnapshot`
+（零内核改动）· 视图只用现有 class（css-coverage 绿）· 内核 423 不受扰动 · 前端回归只增不减。
+
 ---
 
 ## 3. 贯穿性工作流（非周任务，持续）
@@ -206,5 +218,7 @@ schema/隔离级维度进 profile 哈希 · 全量回归只增不减。
 | 2026-09-01 | **W29 落地（四档治理模式，v0.6.0）**：VISION §3.1 从"设计目标"变为"已落地"。`infra-common/types/governance.ts`：`GovernanceProfile` 契约（sandbox/standard/strict）+ `resolveGovernanceProfile`（缺省/未知 → standard）+ `governanceProfileHash`（FNV-1a，进指纹）。宿主 `governanceProfile` 选项 + `currentGovernanceProfile` 只读访问器；`strict` 构造缺 `traceJournalPath` 抛错（合规档必须有耐久审计轨迹）。机制注入：`tokenBudgetConfigForProfile`（off/normal/aggressive，aggressive 阈值减半）、`tripThresholdForProfile`（按依赖出度软化，strict 下限 1 / 其余 2）、RateLimiter 取 profile 数字；PAE 准入门 `assertPaeKindAdmitted` 在 register/connect 前检查（connect 在握手**之前**，拒绝对端不 spawn 子进程）；`RunVersionFingerprint.governanceProfileHash` 可选字段 + `CapabilityGateway.verifyFingerprint` 对比（双方缺省=兼容，同 paeAdaptersHash 模式）——**standard 档省略字段，默认宿主指纹与 v0.5.x 逐字节一致**。**落地裁决**：standard 的 paeAdmission 用 "all" 而非 VISION 原始表的 "MCP+JS"——治理公理"为治理不砍功能"优先，且 OpenAPI/Cordis 是已发布能力；偏差记录进 VISION §3.1"与原始表的偏差"。**控制台**：settings.js 主机面板新增治理档位只读展示，bridge `state()` 增 governance 字段；css-coverage 门禁抓到新增 `.col` class 未定义 → styles.css 补上。测试 +16：`governance_profile.test.ts` 14 例 + `replay_compat` 2 例合并门禁（sandbox 录制拒以 standard 重放 = config drift；同档跨宿主重放逐字节一致——坑：网关 replay 读自身挂载 journal，replay host 须 `beginRecording()` 后 restoreSnapshot 再 attach）。全量 **397 内核**（381→397）+ **97 前端**，干净从零 `tsc -b` 零错误。清理：src/index.ts 三行重复 `export *` 收敛为一行。**坑**：`decideCompression` 阈值是字节数非 token 数（测试载荷先写错）；standard 初版 paeAdmission=["js","mcp"] 破坏了 cordis/openapi 既有测试 → 全量回归抓出，改 "all"（"设计文档直接落地会踩既有能力"的典型） |
 | 2026-09-01 | **W30 落地（审计哈希链，v0.7.0）**：VISION §3.1「落盘 + 签名」落地。`core-hub/audit/audit_chain.ts`：`auditChainHash` = HMAC-SHA256(key, prevHash + 规范化条目)（键排序 JSON，纯函数确定性）、`AUDIT_GENESIS_HASH` 首条种子、`firstChainHash`、`chainFieldsOf`、`chainTailOf`、`verifyAuditChain`（返回 consistent/brokenAt/brokenReason/signed；空链与无链条目 signed=false；混入无链条目视为故障）。`TraceJournal` 构造接可选密钥：append 自动带 prevHash/chainHash 并推进链尾；`restoreSnapshot` 重建链尾（恢复延续，跨进程不重链）。`PersistedTraceJournal` 透传密钥。宿主 `auditSigningKey` 选项 + `verifyAuditChain()` 公开方法 + **strict 联动**：构造期缺签名抛错（与 traceJournalPath 同规则）、bootHost 验证恢复链被篡改即拒绝启动。**CLI `orbit audit <trace.wal> [--key]`**：无 key 报 unsigned、正确 key 报一致、错误 key 第 0 条 prevHash 失配且退出非零。**控制台**：审计页顶部"内核审计链完整性"卡（`GET /api/audit/chain`），bridge 读 `ORBIT_AUDIT_SIGNING_KEY`。测试 +16：`audit_chain.test.ts` 15 例（链一致/篡改定位/删条/错 key/未签名/混合链/确定性/密钥 journal 链式 append+restore 延续/无密钥零链字段/宿主验证/篡改注入检出/strict 缺签名抛错/strict 拒启动断裂链/跨进程持久化延续）+ `replay_compat` 1 例合并门禁（签名不扰动重放）。**坑**：宿主常规路径不写 trace journal（审计条目由事件/异常写入）——测试需显式 `traceJournal.append` 制造条目；`verifyAuditChain` 空链 signed 初始值应为 false；strict 新增强制签名后 W29 的 strict 测试全部要补 `auditSigningKey`（全量回归抓出）。全量 **413 内核**（397→+16）+ **97 前端**（css-coverage 抓出审计卡缺 `.strong` → 补上），干净从零 `tsc -b` 零错误。清理：无。文档：VISION §3.1 偏差③更新（轨迹签名已落地）、architecture.md §11、CHANGELOG [0.7.0]、DEV_PLAN 波次 7。 |
 | 2026-09-01 | **W31 落地（信任推定与契约化，v0.8.0）**：VISION §3.1 最后两维落地。**信任推定** → `GovernanceProfile.maxIsolationLevel`（L0<L1<L2，strict 封顶 L1）+ `assertPaeAdmitted(kind, isolation)` 双门禁（register/connect 前检查）。**契约化** → `PluginUnitPact.schema` + PAE 工具 `schema`（PaeToolDescriptor/JsToolSpec）+ `infra-common/utils/schema_validation.ts` 的 `validateArgsAgainstSchema` 纯函数（JSON-Schema 子集：object/array/string/number/boolean、required、additionalProperties、maxItems；返回首个违规点 arg.<path>）+ `schemaMode`（sandbox optional / standard declared / strict required）+ 网关调用前校验（record/live）与 replay 旁路；strict 的 `registerPlugin` 无 schema 拒绝。profile 哈希含 i/s 两维。测试 +10（`governance_schema.test.ts`）：schema 纯函数（必填/类型/多余属性/maxItems/数组根）、strict 拒 L2 与无 schema、sandbox/standard 放行 L2、standard 声明则校验（conforming 过、违规拒于执行前）、sandbox 零校验、replay 旁路。**坑**：① `capabilityInvoke` 原非 async——校验同步 throw 会被 `assert.rejects` 当同步异常传播（测试挂），改 async 后拒绝走 promise；② strict 的 kind 拒绝先于隔离级（paeAdmission=[] 遮蔽 maxIsolationLevel——如实记录为防御性机制）；③ strict 新增强制 schema 后 W29 的 strict 测试（registerPlugin 无 schema）全量回归抓出 2 处补齐。全量 **423 内核**（413→+10）+ **97 前端**，干净从零 `tsc -b` 零错误。文档：VISION §3.1 偏差③更新（信任推定/Schema 已落地）、architecture.md §12、CHANGELOG [0.8.0]、DEV_PLAN 波次 8。 |
+| 2026-09-02 | **W32 落地（重放时间线，v0.9.0）**：内核闭环后转向 PRODUCT_PLAN P1 产品面。`web/public/lib.js` 追加 4 个 DOM-free 纯函数：`summarizeValue`（字符串/JSON 截断摘要）、`callFacts`（提取通道/函数/输入 digest/输出摘要/耗时/token + 治理标记：限流/熔断/越权/预算/压缩/路由）、`buildTimeline`（窗口→有序步）、`flaggedSteps`（过滤纯路由步）。bridge 两个端点：`GET /api/replay/timeline`（读 `host.currentRecordJournal()` 快照）、`POST /api/replay/fork {at}`（`restoreSnapshot(slice(0,at+1))` 截断续录——**分叉复用内核既有原语，零内核改动**；`RecordJournal.append` 用 `records.length` 作 orderIndex 所以续录自动顺延）。回放台视图新增时间线卡：步列表+治理徽标、上/下步导航、每步详情面板、分叉按钮（`api.replayFork`）。前端测试 +6（console-core 时间线组：空窗口/字段提取/治理标记/flagged 过滤/截断/索引）。**坑**：① bash heredoc 里 `$` 被 shell 展开（模板字符串损坏）——改用 python 写入；② css-coverage 抓出视图新增 `tl-step` class 未定义——删掉只用现有类。全量 **103 前端**（97→+6）+ **423 内核不变**（本轮不触碰内核）。端到端冒烟：4 步窗口出时间线、fork #1 后窗口 3 步且续录 orderIndex=2。版本升 0.9.0，CHANGELOG [0.9.0]，DEV_PLAN 波次 9。 |
+
 
 

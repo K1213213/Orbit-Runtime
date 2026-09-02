@@ -38,7 +38,8 @@ import {
   deriveBilling,
   deriveNotifications,
   deriveSystemHealth,
-  suggestNextSteps
+  suggestNextSteps,
+  buildTimeline
 } from "./public/lib.js";
 import {
   chunkText,
@@ -1089,6 +1090,27 @@ const api = {
   },
 
   /* ---- replay studio (runs on a throwaway host) ---- */
+
+  /* W32 · PRODUCT_PLAN P1.1 —— 重放时间线与分叉（作用于真实录制窗口）。 */
+  async replayTimeline() {
+    const j = host.currentRecordJournal();
+    if (!j) return { active: false, total: 0, steps: [] };
+    const steps = buildTimeline(j.snapshot());
+    return { active: true, total: steps.length, steps };
+  },
+
+  /* 分叉：保留 0..at 的历史，丢弃其后，从 at 继续 live 录制新实验。 */
+  async replayFork(body) {
+    const j = host.currentRecordJournal();
+    if (!j) throw new Error("当前没有录制窗口（先发起一次录制）");
+    const at = Number(body?.at);
+    if (!Number.isInteger(at) || at < 0 || at >= j.size()) {
+      throw new RangeError(`fork index ${String(at)} 超出窗口 [0, ${j.size() - 1}]`);
+    }
+    const snapshot = j.snapshot().slice(0, at + 1);
+    j.restoreSnapshot(snapshot);
+    return { forkedAt: at, remaining: j.size(), branch: body?.branch ?? null };
+  },
 
   async replayDemo() {
     const lab = new OrbitRuntimeHost();
@@ -2407,6 +2429,11 @@ const server = http.createServer(async (req, res) => {
 
         /* ---- trace / replay / graph / routing ---- */
         if (method === "GET" && seg[0] === "trace") return api.trace(query);
+        if (method === "GET" && seg[0] === "replay" && seg[1] === "timeline")
+          return api.replayTimeline();
+        if (method === "POST" && seg[0] === "replay" && seg[1] === "fork") {
+          needRole(); return api.replayFork(await readBody(req));
+        }
         if (method === "POST" && seg[0] === "replay" && seg[1] === "demo") { needRole(); return api.replayDemo(); }
         if (method === "GET" && seg[0] === "graph" && seg.length === 1) return api.graph();
         if (method === "GET" && seg[0] === "graph" && seg[1] === "isolation")

@@ -154,6 +154,8 @@ export const api = {
   audit: (params = {}) => request("GET", `/api/audit${qs(params)}`),
   auditExport: (format, params = {}) => request("GET", `/api/audit/export${qs({ format, ...params })}`),
   auditChain: () => request("GET", "/api/audit/chain"),
+  replayTimeline: () => request("GET", "/api/replay/timeline"),
+  replayFork: (body) => request("POST", "/api/replay/fork", body),
   notifications: () => request("GET", "/api/notifications"),
   notificationsRead: (ids) => request("POST", "/api/notifications/read", { ids }),
 

@@ -712,3 +712,61 @@ export function channelLabel(key) {
   if (key === undefined || key === null || key === "") return key ?? "—";
   return CHANNEL_LABEL[key] ?? key;
 }
+
+/* ---------------------------------------------------------------------------
+ * 重放时间线（W32 · PRODUCT_PLAN P1.1）
+ * 把录制窗口的 call 序列展开为可 step-through 的时间线。纯函数、DOM-free，
+ * 视图层只负责渲染；同一份数据供 bridge 端点与前端共用。
+ * ------------------------------------------------------------------------- */
+
+/** 输出摘要：字符串直接截断，其他值 JSON 化后截断。 */
+export function summarizeValue(value, maxLen = 140) {
+  if (value === undefined || value === null) return String(value);
+  if (typeof value === "string") {
+    return value.length > maxLen ? value.slice(0, maxLen) + "…" : value;
+  }
+  try {
+    const s = JSON.stringify(value);
+    return s.length > maxLen ? s.slice(0, maxLen) + "…" : s;
+  } catch {
+    return String(value);
+  }
+}
+
+/**
+ * 从一条 GatewayCallRecord 提取展示事实：通道、函数、输入摘要、输出摘要、
+ * 耗时、token 估值与治理决策标记（限流/熔断/越权/预算/压缩/路由）。
+ */
+export function callFacts(record) {
+  const d = record?.decision ?? {};
+  const b = record?.behavior ?? {};
+  const facts = [];
+  const rateLimited = b.rateLimited ?? d.rateLimited ?? false;
+  if (rateLimited) facts.push({ key: "rate-limited", tone: "warn", label: "限流" });
+  if (d.tripAllowed === false) facts.push({ key: "tripped", tone: "err", label: "熔断" });
+  if (d.pactPass === false) facts.push({ key: "no-pact", tone: "err", label: "越权" });
+  const strategy = d.budget?.strategy;
+  if (strategy && strategy !== "normal") facts.push({ key: "budget", tone: "warn", label: "预算 " + strategy });
+  if (d.compression?.applied) facts.push({ key: "compressed", tone: "ok", label: "压缩" });
+  const route = d.route ?? b.route ?? "native";
+  facts.push({ key: "route", tone: "neutral", label: route === "pae" ? "PAE" : "原生" });
+  return {
+    channel: record?.channelKind ?? "?",
+    func: record?.funcName ?? "?",
+    inputDigest: (record?.inputDigest ?? "").slice(0, 10),
+    output: summarizeValue(record?.outputSnapshot),
+    ms: record?.durationMs ?? 0,
+    tokens: b.tokensEstimated ?? d.tokensEstimated,
+    facts
+  };
+}
+
+/** 录制窗口 → 时间线步骤（index 即 call 序号，分叉/跳转都按它定位）。 */
+export function buildTimeline(records) {
+  return (records ?? []).map((r, index) => ({ index: index, ...callFacts(r) }));
+}
+
+/** 时间线里被治理干预过的步（限流/熔断/越权/预算/压缩），供摘要与徽标。 */
+export function flaggedSteps(timeline) {
+  return (timeline ?? []).filter((s) => s.facts.some((f) => f.key !== "route"));
+}

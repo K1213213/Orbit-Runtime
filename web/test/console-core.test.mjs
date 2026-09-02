@@ -5,13 +5,17 @@ import {
   NAV_GROUPS,
   NAV_ITEMS,
   NAV_PATHS,
+  buildTimeline,
+  callFacts,
   deriveSystemHealth,
+  flaggedSteps,
   fuzzyScore,
   missingRenderers,
   navItemOf,
   parseArgv,
   searchCommands,
-  suggestNextSteps
+  suggestNextSteps,
+  summarizeValue
 } from "../public/lib.js";
 
 /**
@@ -265,4 +269,78 @@ test("next steps: once there is a trace, replay is offered", () => {
 test("next steps: the list is bounded so it never becomes a wall of advice", () => {
   const steps = suggestNextSteps(makeState({ sandboxes: [], plugins: [], traceCount: 9 }), 2);
   assert.ok(steps.length <= 2);
+});
+
+/* ---------------------------------------------------------------- W32 重放时间线 */
+
+test("timeline: empty window builds an empty timeline", () => {
+  assert.deepEqual(buildTimeline([]), []);
+  assert.deepEqual(buildTimeline(undefined), []);
+});
+
+test("timeline: callFacts extracts channel, func, digest, output and route", () => {
+  const facts = callFacts({
+    channelKind: "mem-kv-store",
+    funcName: "readEntry",
+    inputDigest: "d9f2ab7c",
+    outputSnapshot: { value: "hi" },
+    durationMs: 3,
+    decision: { route: "native" }
+  });
+  assert.equal(facts.channel, "mem-kv-store");
+  assert.equal(facts.func, "readEntry");
+  assert.equal(facts.inputDigest, "d9f2ab7c".slice(0, 10));
+  assert.match(facts.output, /"value":"hi"/);
+  assert.equal(facts.ms, 3);
+  assert.ok(facts.facts.some((f) => f.key === "route" && f.label === "原生"));
+});
+
+test("timeline: governance interventions surface as facts", () => {
+  const facts = callFacts({
+    channelKind: "llm-access",
+    funcName: "chat",
+    outputSnapshot: "x".repeat(300),
+    durationMs: 10,
+    decision: {
+      route: "pae",
+      tripAllowed: false,
+      pactPass: true,
+      budget: { allow: false, strategy: "shrink" },
+      compression: { level: "normal", applied: true, bytesSaved: 12 }
+    }
+  });
+  const keys = facts.facts.map((f) => f.key);
+  assert.ok(keys.includes("tripped"), "trip rejection is flagged");
+  assert.ok(keys.includes("budget"), "budget shrink is flagged");
+  assert.ok(keys.includes("compressed"), "compression is flagged");
+  assert.ok(keys.includes("route") && facts.facts.find((f) => f.key === "route").label === "PAE");
+});
+
+test("timeline: flaggedSteps filters out the routine route-only steps", () => {
+  const timeline = buildTimeline([
+    { channelKind: "mem-kv-store", funcName: "a", outputSnapshot: 1, durationMs: 1, decision: { route: "native" } },
+    { channelKind: "llm-access", funcName: "b", outputSnapshot: 2, durationMs: 2, decision: { route: "pae", rateLimited: true } },
+    { channelKind: "mem-kv-store", funcName: "c", outputSnapshot: 3, durationMs: 3, decision: { route: "native" } }
+  ]);
+  assert.equal(timeline.length, 3);
+  const flagged = flaggedSteps(timeline);
+  assert.equal(flagged.length, 1);
+  assert.equal(flagged[0].index, 1);
+  assert.equal(flagged[0].func, "b");
+});
+
+test("timeline: summarizeValue truncates long strings and JSON", () => {
+  assert.equal(summarizeValue("ab".repeat(200)).endsWith("…"), true);
+  assert.equal(summarizeValue({ big: "x".repeat(500) }).endsWith("…"), true);
+  assert.equal(summarizeValue(42), "42");
+  assert.equal(summarizeValue(null), "null");
+  assert.equal(summarizeValue("short"), "short");
+});
+
+test("timeline: buildTimeline indexes steps by call order", () => {
+  const t = buildTimeline([
+    { channelKind: "a", funcName: "f1", outputSnapshot: null, durationMs: 1, decision: {} },
+    { channelKind: "b", funcName: "f2", outputSnapshot: null, durationMs: 2, decision: {} }
+  ]);
+  assert.deepEqual(t.map((s) => s.index), [0, 1]);
 });

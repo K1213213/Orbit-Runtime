@@ -90,7 +90,77 @@ export async function renderReplay(root) {
   runBtn.addEventListener("click", run);
   card.append(body);
   wrap.append(intro, card, resultWrap);
+
+  /* ---- W32 · 录制窗口时间线（PRODUCT_PLAN P1.1）：step-through + 分叉 ---- */
+  const tlCard = el("div", "card mt16");
+  tlCard.append(el("div", "card-head", `<h3>录制窗口时间线</h3><span class="sub">step-through · 分叉实验（P1.1）</span>`));
+  const tlBody = el("div", "card-body");
+  const tlStatus = el("div", "hint", "加载中…");
+  tlBody.append(tlStatus);
+  tlCard.append(tlBody);
+  wrap.append(tlCard);
+
+  async function refreshTimeline() {
+    const t = await api.replayTimeline().catch(() => ({ active: false, total: 0, steps: [] }));
+    tlBody.replaceChildren();
+    if (!t.active || t.total === 0) {
+      tlBody.append(el("div", "hint",
+        "当前没有活跃录制窗口。到「运行」页发起一次录制，或先运行上方一键回放（demo 在独立临时主机，不进入本窗口）。"));
+      return;
+    }
+    const steps = t.steps;
+    let cur = 0;
+    const list = el("div", "col");
+    const detail = el("div", "hint");
+    const nav = el("div", "row mt8");
+    const factBadges = (step) =>
+      step.facts.map((f) => `<span class="badge ${esc(f.tone)}">${esc(f.label)}</span>`).join("");
+    function renderDetail(i) {
+      const s = steps[i];
+      detail.innerHTML = `<b>#${s.index} ${esc(s.channel)}.${esc(s.func)}</b> · ${s.ms}ms · tokens ${s.tokens ?? "—"}<br>` +
+        `<span class="sub">输入 digest</span> <span class="mono muted">${esc(s.inputDigest)}</span><br>` +
+        `<span class="sub">输出</span> ${esc(s.output)}<br>${factBadges(s)}`;
+    }
+    function renderList() {
+      list.replaceChildren(...steps.map((s, i) => {
+        const row = el("button", "btn ghost", "");
+        row.type = "button";
+        row.style.justifyContent = "flex-start";
+        row.style.opacity = i === cur ? "1" : "0.62";
+        row.style.fontWeight = i === cur ? "600" : "400";
+        row.innerHTML = `<span class="mono">#${s.index}</span>&nbsp; ${esc(s.channel)}.${esc(s.func)} ${factBadges(s)}`;
+        row.addEventListener("click", () => { cur = i; renderList(); renderDetail(i); });
+        return row;
+      }));
+    }
+    const prev = el("button", "btn sm", "◀ 上一步");
+    const next = el("button", "btn sm", "下一步 ▶");
+    const pos = el("span", "mono");
+    const forkBtn = el("button", "btn sm warn", `✂ 在此分叉 (#0)`);
+    prev.type = next.type = forkBtn.type = "button";
+    prev.addEventListener("click", () => { if (cur > 0) { cur -= 1; refreshNav(); } });
+    next.addEventListener("click", () => { if (cur < steps.length - 1) { cur += 1; refreshNav(); } });
+    forkBtn.addEventListener("click", async () => {
+      forkBtn.disabled = true;
+      try {
+        const r = await api.replayFork({ at: cur, branch: `branch-${Date.now()}` });
+        toast(`已分叉：保留 0..${r.forkedAt}，从 #${r.forkedAt} 继续新实验`, "ok");
+        await refreshTimeline();
+      } catch (err) { toast(err.message, "err"); } finally { forkBtn.disabled = false; }
+    });
+    function refreshNav() {
+      pos.textContent = `#${cur} / ${steps.length - 1}`;
+      forkBtn.innerHTML = `✂ 在此分叉 (#${cur})`;
+      renderList();
+      renderDetail(cur);
+    }
+    nav.append(prev, pos, next, forkBtn);
+    tlBody.append(list, nav, detail);
+    refreshNav();
+  }
+
   root.append(wrap);
+  refreshTimeline();
 
   // 自动演示一次，让页面打开即有结果
   run();

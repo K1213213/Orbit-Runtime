@@ -39,6 +39,7 @@
 | **v0.8.0** | W31 | **信任推定与契约化**：VISION §3.1 最后两维落地 | 隔离级上限（strict 封顶 L1）+ 渐进式 Schema 校验（strict 强制声明）；profile 哈希含新维；VISION §3.1 全维度有代码实现 |
 | **v0.9.0** | W32 | **重放时间线**（PRODUCT_PLAN P1.1）| 录制窗口展开为可 step-through 时间线（输入/输出/成本/决策）+ 分叉实验；bridge timeline/fork 端点 + 控制台时间线卡 |
 | **v0.10.0** | W33 | **合规报告**（PRODUCT_PLAN P2）| 档位 + 审计链状态 + 治理干预收敛为可导出报告（md/json/pdf）；审计页报告卡；状态诚实推导（EMPTY/UNSIGNED/PASS/FAIL） |
+| **v0.11.0** | W35 | **报告签章**（PRODUCT_PLAN P2）| ED25519 报告签名（seed 确定性派生）；公钥即可第三方独立验证；orbit verify-report CLI；控制台导出签名 + 公钥端点 |
 
 版本号策略：宪章前语义化版本不承诺稳定 API（pre-alpha），v0.x.minor = 波次，patch = 修复。
 
@@ -166,6 +167,18 @@ schema/隔离级维度进 profile 哈希 · 全量回归只增不减。
 **波次 10 门禁**：报告纯函数 DOM-free 可测 · 审计状态诚实推导（未签名≠一致，断裂≠通过）·
 导出动作记入审计流 · 视图标识符全定义（view-refs 绿）· 内核 423 不受扰动 · 前端回归只增不减。
 
+### 波次 11 · v0.11.0 报告签章（W35，PRODUCT_PLAN P2）
+
+合规报告从内部工具输出升级为可独立验证的签章文件（第三方持公钥即可验真伪）。
+
+| 阶段 | 内容 | 依据 |
+|---|---|---|
+| **W35 ✅** | `core-hub/audit/report_signing.ts`（ED25519：seed 确定性派生密钥对 / sign / verify——指纹+摘要+签名三查）+ bridge export 签名（ORBIT_REPORT_SIGNING_KEY）与 public-key 端点 + 审计页签名状态徽标 + `orbit verify-report` CLI（PEM 文件/内联/seed 三形态）+ 7 例测试 | PRODUCT_PLAN P2（见下方进度日志） |
+
+**波次 11 门禁**：seed 同值同密钥（确定性）· 报告 body 摘要含于签名（篡改必被发现）·
+验证只需公钥（无需原系统/共享秘密）· PEM 文件往返指纹不漂移 · CLI 篡改报告退出非零 ·
+全量回归只增不减。
+
 ---
 
 ## 3. 贯穿性工作流（非周任务，持续）
@@ -233,6 +246,8 @@ schema/隔离级维度进 profile 哈希 · 全量回归只增不减。
 | 2026-09-02 | **W32 落地（重放时间线，v0.9.0）**：内核闭环后转向 PRODUCT_PLAN P1 产品面。`web/public/lib.js` 追加 4 个 DOM-free 纯函数：`summarizeValue`（字符串/JSON 截断摘要）、`callFacts`（提取通道/函数/输入 digest/输出摘要/耗时/token + 治理标记：限流/熔断/越权/预算/压缩/路由）、`buildTimeline`（窗口→有序步）、`flaggedSteps`（过滤纯路由步）。bridge 两个端点：`GET /api/replay/timeline`（读 `host.currentRecordJournal()` 快照）、`POST /api/replay/fork {at}`（`restoreSnapshot(slice(0,at+1))` 截断续录——**分叉复用内核既有原语，零内核改动**；`RecordJournal.append` 用 `records.length` 作 orderIndex 所以续录自动顺延）。回放台视图新增时间线卡：步列表+治理徽标、上/下步导航、每步详情面板、分叉按钮（`api.replayFork`）。前端测试 +6（console-core 时间线组：空窗口/字段提取/治理标记/flagged 过滤/截断/索引）。**坑**：① bash heredoc 里 `$` 被 shell 展开（模板字符串损坏）——改用 python 写入；② css-coverage 抓出视图新增 `tl-step` class 未定义——删掉只用现有类。全量 **103 前端**（97→+6）+ **423 内核不变**（本轮不触碰内核）。端到端冒烟：4 步窗口出时间线、fork #1 后窗口 3 步且续录 orderIndex=2。版本升 0.9.0，CHANGELOG [0.9.0]，DEV_PLAN 波次 9。 |
 | 2026-09-02 | **W33 落地（合规报告，v0.10.0）**：PRODUCT_PLAN P2 起点，把 W29 档位 + W30 审计链 + W32 时间线串成可出示产物。lib.js 追加 `buildComplianceReport`（收敛 governance/audit/window → meta/governance/audit/interventions/determinism/summary；审计状态诚实推导：total=0→EMPTY、!signed→UNSIGNED、一致→PASS、断裂→FAIL+brokeAt）与 `countInterventions`（按 fact key 统计限流/熔断/越权/预算/压缩，纯路由不计）。bridge `GET /api/compliance`（组装 host.currentGovernanceProfile + verifyAuditChain + buildTimeline 窗口）与 `GET /api/compliance/export`（md 模板/json/pdf——pdf 复用零依赖 buildPdf，导出动作 `audit("compliance.export", ...)` 记入平台审计流）。审计页链卡下加"合规报告"卡：档位+审计状态徽标+干预 chips+md/json/pdf 导出按钮。前端测试 +4（PASS/UNSIGNED+FAIL+EMPTY 三态/干预统计/空窗口）。**坑**：① 视图用了未导入的 `downloadBlob`（不存在全局——审计页自己的导出用内联 Blob，照抄）；② view-refs 门禁抓出 `badgeEl` 用了没 import——补入 audit.js 的 app.js import。全量 **107 前端**（103→+4）+ **423 内核不变**（本轮零内核改动）。冒烟：signed strict host 出 PASS 报告、unsigned host 诚实报 EMPTY/UNSIGNED。版本升 0.10.0，CHANGELOG [0.10.0]，DEV_PLAN 波次 10。 |
 | 2026-09-02 | **W34 落地（文档站，M6b 收口，非版本波次）**：开源发布的最后一个代码缺口补上。`tools/render-md.mjs`：零依赖 Markdown 子集渲染器（ATX 标题/围栏代码/管道表格/引用/列表/hr/段落 + 行内粗体/代码/链接），纯函数无 I/O；`tools/build-site.mjs`：渲染 README + docs/* + blog/* → Bio-Lineage 主题静态站 `site/`（9 页），`npm run docsite`，site/ 进 .gitignore（生成物不提交）；CI 新增 Docsite tests + build 步；`tools/render-md.test.mjs` 8 例（含 architecture.md 真实文档 golden 检查：无原始 md 泄漏）。**裁决**：工具波次不升产品版本（内核/控制台零改动）——CHANGELOG 引入 [Unreleased] 惯例记工具波次。**坑**：① `new URL(...).pathname` 在含空格路径把空格编码成 %20（Windows "project workspace"）——用 `fileURLToPath`；② python heredoc 忘 import io 直接 NameError——检查前置；③ 渲染器输出列表带换行，测试断言勿连写标签。 |
+| 2026-09-02 | **W35 落地（报告签章，v0.11.0）**：PRODUCT_PLAN P2 商业化关键一步——合规报告可被外部审计采信。`core-hub/audit/report_signing.ts`：`deriveReportKeyPair(seed)`（32 字节 hex seed 确定性派生 ED25519 密钥对，RFC 8410 PKCS8 DER 包裹；运维备份 seed、验证方持公钥 PEM）、`signComplianceReport`（签 stableJson body 除 sig 外全部；ed25519 确定性签名同报同签）、`verifyComplianceReport`（signer 指纹 + body digest + 签名三查）。bridge：export json 在设 ORBIT_REPORT_SIGNING_KEY 时签名（md/pdf 带签名行）、`GET /api/compliance/public-key` 交付验证公钥；审计页报告卡加签名状态徽标。CLI `orbit verify-report <report.json> --public-key <pem路径|内联PEM|hex seed>`：独立验证、篡改退出非零。测试 +7（report_signing：seed 确定性/往返/摘要篡改/错钥/未签/签名变异）。**坑**：① PEM 导出尾随换行使文件往返后指纹漂移（79bd→b050）——导出 trim；② CLI public-key 需区分 PEM 路径/内联/seed 三形态；③ report_signing 与 audit_chain 重复导出 stableJson——复用。全量 **430 内核**（423→+7）+ **107 前端**，干净从零 `tsc -b` 零错误。版本升 0.11.0，CHANGELOG [0.11.0]，DEV_PLAN 波次 11。 |
+
 
 
 

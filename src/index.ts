@@ -49,7 +49,11 @@ export {
   auditChainHash,
   chainTailOf,
   stableJson,
-  AUDIT_GENESIS_HASH
+  AUDIT_GENESIS_HASH,
+  deriveReportKeyPair,
+  signComplianceReport,
+  verifyComplianceReport,
+  publicKeyFingerprint
 } from "@orbit/core-hub";
 export type { AuditChainReport } from "@orbit/core-hub";
 

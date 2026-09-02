@@ -1,6 +1,6 @@
 {
   "name": "@orbit/sandbox-runtime",
-  "version": "0.10.0",
+  "version": "0.11.0",
   "private": true,
   "description": "Agent sandboxes, the impact-domain graph and graph-driven isolation domains.",
   "license": "Apache-2.0",

@@ -447,6 +447,40 @@ async function cmdAudit(tracePath, opts) {
   }
 }
 
+async function cmdVerifyReport(reportPath, opts) {
+  if (!reportPath) {
+    fail("verify-report requires <report.json>", 2);
+    return;
+  }
+  if (!opts["public-key"]) {
+    fail("verify-report requires --public-key <pem|hex-seed>", 2);
+    return;
+  }
+  const file = path.resolve(process.cwd(), reportPath);
+  const report = JSON.parse(await fs.promises.readFile(file, "utf8"));
+  // The public key may be a PEM file path, an inline PEM string, or the
+  // operator's 32-byte hex seed (from which the public key is derived
+  // deterministically).
+  const keyArg = opts["public-key"];
+  let publicKeyPem = keyArg;
+  const looksLikePath = !keyArg.includes("-----BEGIN") && keyArg.includes(".");
+  if (looksLikePath) {
+    publicKeyPem = (await fs.promises.readFile(path.resolve(process.cwd(), keyArg), "utf8")).trim();
+  }
+  if (!publicKeyPem.includes("-----BEGIN")) {
+    publicKeyPem = orbit.deriveReportKeyPair(publicKeyPem).publicKeyPem;
+  }
+  const result = orbit.verifyComplianceReport(report, publicKeyPem);
+  if (isJsonFlag(opts.json)) {
+    out({ file, ok: result.ok, reason: result.reason ?? null });
+  } else if (result.ok) {
+    process.stdout.write(`verify-report ${file}\n  result : ✓ signature valid (ed25519 · ${report.sig.publicKeyFingerprint})\n`);
+  } else {
+    process.stdout.write(`verify-report ${file}\n  result : ✗ ${result.reason}\n`);
+    process.exitCode = 1;
+  }
+}
+
 function printUsage() {
   process.stdout.write(
     `orbit ${PKG.version} — deterministic-replay CLI for Orbit Agent Runtime
@@ -456,6 +490,7 @@ Usage:
   orbit replay <trace.jsonl> [--via script.js] [--config orbit.config.json]
   orbit diff <a.jsonl> <b.jsonl>
   orbit audit <trace.wal.jsonl> [--key <hmac-key>] [--json]
+  orbit verify-report <report.json> --public-key <pem|hex-seed> [--json]
   orbit --version
   orbit help
 
@@ -502,6 +537,9 @@ async function main() {
         break;
       case "audit":
         await cmdAudit(positionals[0], { key: flags.key, json });
+        break;
+      case "verify-report":
+        await cmdVerifyReport(positionals[0], { "public-key": flags["public-key"], json });
         break;
       case "help":
       case undefined:

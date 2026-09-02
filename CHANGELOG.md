@@ -4,6 +4,43 @@ All notable changes to Orbit Agent Runtime are documented here. This project
 follows a pre-alpha versioning scheme: `v0.x.minor` marks a release wave,
 `patch` marks fixes. Until `v1.0` the public API is not yet stability-promised.
 
+## [0.11.0] — 2026-09-02 · Signed compliance reports (W35, P2)
+
+The compliance report becomes a *signed document*: a third party holding only
+the public key can verify that the report was produced by the operator and has
+not been altered — no shared secret, no access to the original system. This is
+the step that turns an internal tool output into something an external auditor
+can accept.
+
+### Added
+- **`core-hub/audit/report_signing.ts`** — ED25519 report signing (node:crypto
+  native, zero dependencies):
+  - `deriveReportKeyPair(seed)` — a 32-byte hex seed deterministically derives
+    the key pair (RFC 8410 PKCS8 wrap); operators back up a seed, verifiers get
+    a PEM public key.
+  - `signComplianceReport(report, seed)` — signs the stable key-sorted JSON
+    body (everything except `sig`); ed25519 signing is deterministic, so the
+    same report + seed always yields the same signature.
+  - `verifyComplianceReport(report, publicKeyPem)` — checks signer
+    fingerprint, body digest and the signature itself.
+- **Console** — `GET /api/compliance/export?format=json` signs the report when
+  `ORBIT_REPORT_SIGNING_KEY` is set; md/pdf exports carry a signature line;
+  `GET /api/compliance/public-key` hands out the verifier key + fingerprint;
+  the audit page report card shows live signing status.
+- **CLI** — `orbit verify-report <report.json> --public-key <pem-file|seed>`:
+  independent verification, non-zero exit on any tampering.
+- **Tests** — `report_signing.test.ts`: seed determinism, round-trip, digest
+  tamper detection, wrong-key rejection, unsigned rejection, signature
+  mutation.
+
+### Changed
+- PEM exports are trimmed so a key survives file round-trips byte-identically
+  (a trailing newline made fingerprints drift across write/read).
+
+### Verification
+- Kernel suite: **430/430** (423 → +7 report_signing). Console 107/107.
+- CLI smoke: PEM verification `✓ signature valid`, a doctored report exits 1.
+
 ## [Unreleased] — Doc site (W34, M6b closeout)
 
 The open-source launch's last code gap closes: the architecture documents

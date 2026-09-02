@@ -1,6 +1,6 @@
 {
   "name": "@orbit/infra-common",
-  "version": "0.10.0",
+  "version": "0.11.0",
   "private": true,
   "description": "Domain contracts, pure utilities and error types \u2014 the dependency-free floor of the kernel.",
   "license": "Apache-2.0",

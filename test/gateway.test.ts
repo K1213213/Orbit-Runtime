@@ -55,7 +55,7 @@ test("gateway: record computes and stores the full decision snapshot", async () 
   assert.equal(rec.decision!.compression.applied, false);
   assert.equal(rec.decision!.route, "native");
   assert.equal(rec.decision!.rateLimited, false);
-  assert.equal(rec.runFingerprint!.kernelVersion, "0.10.0");
+  assert.equal(rec.runFingerprint!.kernelVersion, "0.11.0");
   assert.equal(out, null); // key not set in the mock KV
   await host.shutdownHost();
 });

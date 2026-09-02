@@ -70,10 +70,21 @@ export async function renderAudit(root) {
 
   api.complianceReport().then((r) => {
     const tone = r.audit.status === "PASS" ? "ok" : r.audit.status === "FAIL" ? "err" : "neutral";
+    api.compliancePublicKey().then((k) => {
+      const kb = document.querySelector("[data-comp-sig]");
+      if (kb && k && k.configured) {
+        kb.textContent = `签名启用 · ED25519 · ${k.fingerprint}`;
+        kb.className = "badge ok";
+      } else if (kb) {
+        kb.textContent = "报告未签名（配置 ORBIT_REPORT_SIGNING_KEY 启用）";
+        kb.className = "badge neutral";
+      }
+    }).catch(() => {});
     const row = el("div", "row spread", [
       el("div", "col", [
         el("span", "strong", `${r.governance.tier} · 审计 ${r.audit.status}`),
-        el("span", "sub", `${r.audit.entries} 条审计 · ${r.determinism.calls} 次录制调用 · ${r.determinism.flagged} 次治理干预`)
+        el("span", "sub", `${r.audit.entries} 条审计 · ${r.determinism.calls} 次录制调用 · ${r.determinism.flagged} 次治理干预`),
+        (() => { const b = el("span", "badge neutral", "签名状态…"); b.dataset.compSig = ""; return b; })()
       ]),
       el("div", "row", [
         ...Object.entries(r.interventions).map(([k, v]) => badgeEl(`${k} ${v}`, "neutral"))

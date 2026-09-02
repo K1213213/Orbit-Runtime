@@ -158,6 +158,7 @@ export const api = {
   replayFork: (body) => request("POST", "/api/replay/fork", body),
   complianceReport: () => request("GET", "/api/compliance"),
   complianceExport: (format) => request("GET", `/api/compliance/export${qs({ format })}`),
+  compliancePublicKey: () => request("GET", "/api/compliance/public-key"),
   notifications: () => request("GET", "/api/notifications"),
   notificationsRead: (ids) => request("POST", "/api/notifications/read", { ids }),
 

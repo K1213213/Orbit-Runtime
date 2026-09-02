@@ -55,6 +55,7 @@ import {
   evalBranch
 } from "./public/kb.js";
 import { KERNEL_VERSION } from "../packages/infra-common/dist/utils/versionIdGen.js";
+import { signComplianceReport, deriveReportKeyPair, publicKeyFingerprint } from "../packages/core-hub/dist/audit/report_signing.js";
 import { McpPaeAdapter } from "../packages/pae-engine/dist/pae/adapters/mcp/McpPaeAdapter.js";
 import { StdioMcpTransport } from "../packages/pae-engine/dist/pae/adapters/mcp/transport.js";
 
@@ -1127,39 +1128,54 @@ const api = {
     });
   },
 
+  /* W35: the public key + fingerprint to hand to report verifiers. */
+  compliancePublicKey() {
+    const seed = process.env.ORBIT_REPORT_SIGNING_KEY;
+    if (!seed) return { configured: false };
+    const pair = deriveReportKeyPair(seed);
+    return { configured: true, publicKeyPem: pair.publicKeyPem, fingerprint: publicKeyFingerprint(pair.publicKeyPem) };
+  },
+
   complianceExport(format = "md") {
     const r = this.complianceData();
-    audit("compliance.export", format, `导出合规报告（审计 ${r.audit.status}）`);
+    // W35: when the operator provides a report signing seed (ED25519), the
+    // JSON report is signed so a third party holding the public key can
+    // verify it — independent of this system.
+    const signingSeed = process.env.ORBIT_REPORT_SIGNING_KEY;
+    const report = signingSeed ? signComplianceReport(r, signingSeed) : r;
+    audit("compliance.export", format, `导出合规报告（审计 ${report.audit.status}${report.sig ? " · 已签名" : ""}）`);
     if (format === "json") {
-      return { format: "json", filename: `orbit-compliance-${r.meta.generatedAt.slice(0, 10)}.json`, mime: "application/json", content: JSON.stringify(r, null, 2) };
+      const body = JSON.stringify(report, null, 2);
+      return { format: "json", filename: `orbit-compliance-${report.meta.generatedAt.slice(0, 10)}.json`, mime: "application/json", content: body };
     }
     if (format === "pdf") {
-      const g = r.governance;
+      const g = report.governance;
       const lines = [
         "Orbit Agent Runtime - Compliance Report",
-        `Version: ${r.meta.version}`,
-        `Generated: ${r.meta.generatedAt}`,
+        `Version: ${report.meta.version}`,
+        `Generated: ${report.meta.generatedAt}`,
         "",
         `Governance tier: ${g.profile} (${g.tier})`,
         `Compression: ${g.compression} | Rate limit: ${g.limiter} | Trip: ${g.trip}`,
         `PAE admission: ${g.paeAdmission} | Trace: ${g.traceDurability} | Isolation cap: ${g.maxIsolationLevel} | Schema: ${g.schemaMode}`,
         "",
-        `Audit chain: ${r.audit.status} (${r.audit.entries} entries, signed=${r.audit.signed}) - ${r.audit.text}`,
+        `Audit chain: ${report.audit.status} (${report.audit.entries} entries, signed=${report.audit.signed}) - ${report.audit.text}`,
         "",
-        `Recorded window: ${r.determinism.calls} calls, ${r.determinism.flagged} governance interventions`,
-        ...Object.entries(r.interventions).map(([k, v]) => `  - ${k}: ${v}`),
+        `Recorded window: ${report.determinism.calls} calls, ${report.determinism.flagged} governance interventions`,
+        ...Object.entries(report.interventions).map(([k, v]) => `  - ${k}: ${v}`),
         "",
-        `Conclusion: ${r.summary}`
+        `Conclusion: ${report.summary}`
       ];
       return { format: "pdf", filename: `orbit-compliance-${r.meta.generatedAt.slice(0, 10)}.pdf`, mime: "application/pdf", content: this.buildPdf(lines) };
     }
     const esc_ = (s) => String(s ?? "").replace(/\|/g, "\\|");
-    const g = r.governance;
+    const g = report.governance;
     const rows = [
       `# Orbit Agent Runtime 合规报告`,
       "",
-      `- 产品版本：${esc_(r.meta.version)}`,
-      `- 生成时间：${esc_(r.meta.generatedAt)}`,
+      `- 产品版本：${esc_(report.meta.version)}`,
+      `- 生成时间：${esc_(report.meta.generatedAt)}`,
+      `- 签名：${report.sig ? `ED25519 · 公钥指纹 ${report.sig.publicKeyFingerprint}` : "未签名（配置 ORBIT_REPORT_SIGNING_KEY 启用）"}`,
       "",
       "## 治理档位",
       "",
@@ -1176,17 +1192,17 @@ const api = {
       "",
       "## 审计链（防篡改）",
       "",
-      `- 状态：**${r.audit.status}**（${r.audit.entries} 条，signed=${r.audit.signed}）`,
-      `- 说明：${esc_(r.audit.text)}`,
+      `- 状态：**${report.audit.status}**（${report.audit.entries} 条，signed=${report.audit.signed}）`,
+      `- 说明：${esc_(report.audit.text)}`,
       "",
       "## 治理干预（录制窗口）",
       "",
-      `- 调用数：${r.determinism.calls} · 干预步：${r.determinism.flagged}`,
-      ...Object.entries(r.interventions).map(([k, v]) => `- ${esc_(k)}：${v}`),
+      `- 调用数：${report.determinism.calls} · 干预步：${report.determinism.flagged}`,
+      ...Object.entries(report.interventions).map(([k, v]) => `- ${esc_(k)}：${v}`),
       "",
       "## 结论",
       "",
-      esc_(r.summary)
+      esc_(report.summary)
     ];
     return { format: "md", filename: `orbit-compliance-${r.meta.generatedAt.slice(0, 10)}.md`, mime: "text/markdown", content: rows.join("\n") };
   },
@@ -2583,6 +2599,8 @@ const server = http.createServer(async (req, res) => {
           return api.complianceData();
         if (method === "GET" && seg[0] === "compliance" && seg[1] === "export") {
           needRole(); return api.complianceExport(String(query.format ?? "md")); }
+        if (method === "GET" && seg[0] === "compliance" && seg[1] === "public-key")
+          return api.compliancePublicKey();
         if (method === "GET" && seg[0] === "audit" && seg.length === 1) return api.auditEvents(query);
         if (method === "GET" && seg[0] === "notifications" && seg.length === 1) return api.notifications(needSession());
         if (method === "POST" && seg[0] === "notifications" && seg[1] === "read") {

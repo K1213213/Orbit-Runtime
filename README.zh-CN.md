@@ -303,7 +303,7 @@ orbit-agent-runtime/
 | M4 | **成本感知路由** —— 通道成本/延迟/质量档案，沙箱按轮预算调度 | ✅ 已完成 |
 | M5 | 产品化攻坚：基准测试、插件示例、CI、npm 发布 | ✅ 已完成 |
 | M6 | **开源发布** —— `orbit` CLI（`record`/`replay`/`diff`） | ✅ 已完成（CLI + audit 命令已交付） |
-| M6b | **开源发布** —— 文档站 / 落地页、首个公开 npm 版本 | 待办（npm publish 一步之遥；`prepublishOnly` 已配好门禁） |
+| M6b | **开源发布** —— 文档站 / 落地页、首个公开 npm 版本 | npm 发布 ✅（orbit-agent-runtime 0.8.0+ 已上线）；文档站待建 |
 
 > M5/M6 对应 [docs/PRODUCT_PLAN.md](./docs/PRODUCT_PLAN.md) 的 P0 里程碑
 > （P0.1 真能力落地 → P0.2 CLI 发布 → P0.3 开源发布）。

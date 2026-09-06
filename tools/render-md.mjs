@@ -114,6 +114,26 @@ export function renderMarkdown(md) {
       continue;
     }
 
+    // `![alt text](img/foo.png)` → a captioned figure. Block-level; the alt
+    // text doubles as the visible caption (docsite has no dimensions here).
+    const im = /^!\[([^\]]*)\]\(([^)\s]+)\)\s*$/.exec(line);
+    if (im) {
+      closeList(0);
+      const alt = im[1] || "screenshot";
+      const src = im[2];
+      out.push(
+        '<figure class="img"><img src="' +
+          escapeHtml(src) +
+          '" alt="' +
+          escapeHtml(alt) +
+          '" loading="lazy"><figcaption>' +
+          renderInline(alt) +
+          "</figcaption></figure>"
+      );
+      i += 1;
+      continue;
+    }
+
     if (/^\s*\|.*\|\s*$/.test(line) && lines[i + 1]?.includes("-")) {
       closeList(0);
       const t = parseTable(lines, i);

@@ -74,6 +74,40 @@ can accept.
 - Kernel suite: **430/430** (423 → +7 report_signing). Console 107/107.
 - CLI smoke: PEM verification `✓ signature valid`, a doctored report exits 1.
 
+## [Unreleased] — Blog: product introduction (W38)
+
+Third post, and the first product-facing one (the other two are deep dives):
+
+- `docs/blog/what-is-orbit-runtime.md` — *Orbit Runtime：一个把"可复现 · 可证明
+  · 可核算"做成内核的 Agent 运行时*: opens on three production embarrassments
+  (can't reproduce, can't prove the log, can't attribute cost); states the
+  anti-goals first (no orchestration framework, no model, no tool ecosystem,
+  not an observability platform); the three axioms with runnable snippets; the
+  governance dial (sandbox / standard / strict); a five-minute CLI path; who
+  should use it and who should not; and an honest status section (pre-alpha,
+  hash chains do not stop a lying signer, no SaaS yet).
+- Every snippet and every table value was executed/checked against this tree
+  before writing: record→replay output is identical, and the tier table
+  (sandbox L2/optional/all/memory · standard L2/declared/all/optional ·
+  strict L1/required/none/required) matches `resolveGovernanceProfile`.
+- Docsite: rendered and listed first in the blog group (11 pages).
+
+## [Unreleased] — Blog: audit hash chain (W37)
+
+Second technical blog, closing the "provable" half of the story (the first
+covered "reproducible"):
+
+- `docs/blog/audit-chain-provable-logs.md` — *日志是证据吗？——给 Agent 审计
+  轨迹加一条哈希链*: why append-only logs are descriptions, not evidence;
+  how prevHash/chainHash turns "delete one entry" into "break at entry k";
+  the three honest design calls (crash recovery that heals the truncated tail
+  before the first append, UNSIGNED reported as UNSIGNED rather than pass, and
+  HMAC's boundary closed with ED25519 report signing); and what a hash chain
+  canNOT prove (a lying signer, key custody, O(n) verification).
+- Every snippet and both CLI invocations in the post were executed against
+  this tree before publishing (`orbit audit` + `orbit verify-report`).
+- Docsite: the post is rendered and linked in the blog group (10 pages).
+
 ## [Unreleased] — Doc site (W34, M6b closeout)
 
 The open-source launch's last code gap closes: the architecture documents

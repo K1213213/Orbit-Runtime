@@ -54,6 +54,23 @@ test("renderer: paragraphs join continuation lines", () => {
   assert.match(html, /<p>line one line two<\/p>/);
 });
 
+test("renderer: images become a captioned figure", () => {
+  const md = "![工作台总览](img/01-overview.png)\n";
+  const html = renderMarkdown(md);
+  assert.match(html, /<figure class="img">/);
+  assert.match(html, /<img src="img\/01-overview\.png" alt="工作台总览" loading="lazy">/);
+  assert.match(html, /<figcaption>工作台总览<\/figcaption>/);
+});
+
+test("renderer: image alt is escaped and has a sensible fallback", () => {
+  const html = renderMarkdown("![] (img/a.png)\n");
+  // The regex requires the parentheses to be adjacent; a space before '(' is
+  // not an image — it falls through to a paragraph rather than mis-rendering.
+  assert.ok(!html.includes("<figure"), "no space before paren is not an image");
+  const empty = renderMarkdown("![](img/a.png)\n");
+  assert.match(empty, /<img src="img\/a\.png" alt="screenshot"/);
+});
+
 test("renderer: renders the real architecture doc without raw markdown leaking", async () => {
   const { readFile } = await import("node:fs/promises");
   const raw = await readFile(new URL("../docs/architecture.md", import.meta.url), "utf8");

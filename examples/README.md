@@ -17,6 +17,10 @@ node examples/cli-record-replay.mjs
 
 # 5. LangGraph-style orchestration on a provable runtime (P1.2)
 node examples/langgraph-orchestration.mjs
+
+# 6. the full lifecycle of one governed run: boot → record → audit → replay
+#    → restart (WAL recovery) → signed compliance report, all in strict tier
+node examples/full-lifecycle.mjs
 ```
 
 | Example | Shows |
@@ -26,6 +30,7 @@ node examples/langgraph-orchestration.mjs
 | `mcp-adapter.mjs` | Spawning a real MCP server child, `initialize` → `tools/list` handshake, recorded call, then replay **after the peer is dead** (the frozen output is injected, the child is never re-entered) |
 | `cli-record-replay.mjs` | The three-command reproducibility story: `orbit record` → `orbit replay` (zero channel calls) → `orbit diff` (digest-chain reconciliation) |
 | `langgraph-orchestration.mjs` | P1.2 — a minimal LangGraph-style StateGraph whose agent nodes call tools through the Orbit gateway: the SAME graph runs twice, record (real tool side effects) then replay (frozen outputs, zero re-execution), and the final answer is byte-identical while the signed audit chain verifies PASS |
+| `full-lifecycle.mjs` | The complete production story in one script, on the **strict** tier: WAL-persisted + audit-signed boot → governed recorded calls → `verifyAuditChain()` PASS → byte-identical replay with zero channel calls → drift rejection → process restart with full audit/record recovery → an ED25519-signed compliance report that a third party verifies (and rejects when tampered or signed by the wrong key) |
 
 The imports use relative paths so the examples run inside the repository;
 after `npm i orbit-runtime` they become plain package imports:

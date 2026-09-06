@@ -6,7 +6,7 @@
  * and writes static HTML to site/. Pure tooling — nothing here ships in the
  * npm package or runs in the kernel.
  */
-import { readFile, writeFile, mkdir, readdir } from "node:fs/promises";
+import { readFile, writeFile, mkdir, readdir, copyFile } from "node:fs/promises";
 import { join, basename, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { renderMarkdown, escapeHtml } from "./render-md.mjs";
@@ -61,6 +61,10 @@ ul, ol { padding-left: 22px; }
 .badges { margin: 12px 0; }
 .badges span { display: inline-block; border: 1px solid var(--line); border-radius: 999px; padding: 2px 12px;
   font-size: 12px; margin-right: 6px; color: var(--muted); }
+figure.img { margin: 18px 0; }
+figure.img img { display: block; width: 100%; border: 1px solid var(--line); border-radius: 10px;
+  background: var(--surface-2); }
+figure.img figcaption { color: var(--muted); font-size: 12px; text-align: center; margin-top: 6px; }
 `;
 
 function layout(title, bodyHtml, navHtml) {
@@ -72,15 +76,15 @@ function layout(title, bodyHtml, navHtml) {
 <body><div class="layout">${navHtml}<main><article>${bodyHtml}</article></main></div></body></html>`;
 }
 
-function navHtml(pages, active) {
+function navHtml(pages, active, version) {
   const groups = [
-    ["产品", ["index", "promo", "guide"]],
+    ["产品", ["index", "promo", "usage", "console", "guide"]],
     ["架构", ["VISION", "architecture", "UPGRADE_PLAN"]],
     ["路线", ["PRODUCT_PLAN", "DEV_PLAN", "CHANGELOG"]],
-    ["博客", ["blog/why-agent-bugs-unreproducible"]]
+    ["博客", ["blog/what-is-orbit-runtime", "blog/why-agent-bugs-unreproducible", "blog/audit-chain-provable-logs"]]
   ];
   const seen = new Set();
-  let out = `<nav><div class="brand">Orbit <span>Runtime</span></div><div class="ver">v0.10.0 · Apache-2.0</div>`;
+  let out = `<nav><div class="brand">Orbit <span>Runtime</span></div><div class="ver">v${version} · Apache-2.0</div>`;
   for (const [grp, ids] of groups) {
     out += `<div class="grp">${grp}</div>`;
     for (const id of ids) {
@@ -99,6 +103,8 @@ async function main() {
   const docs = [
     { id: "index", file: "README.md", label: "产品首页" },
     { id: "promo", file: "docs/PROMO.md", label: "产品宣传" },
+    { id: "usage", file: "docs/usage.md", label: "使用文档 · 快速上手" },
+    { id: "console", file: "docs/console.md", label: "使用文档 · 控制台导览" },
     { id: "guide", file: "docs/guide.md", label: "开发者指南" },
     { id: "VISION", file: "docs/VISION.md", label: "架构宪章" },
     { id: "architecture", file: "docs/architecture.md", label: "内核设计" },
@@ -106,7 +112,9 @@ async function main() {
     { id: "PRODUCT_PLAN", file: "docs/PRODUCT_PLAN.md", label: "产品计划" },
     { id: "DEV_PLAN", file: "docs/DEV_PLAN.md", label: "开发计划" },
     { id: "CHANGELOG", file: "CHANGELOG.md", label: "变更日志" },
-    { id: "blog/why-agent-bugs-unreproducible", file: "docs/blog/why-agent-bugs-unreproducible.md", label: "博客 · Agent bug 为何不可复现" }
+    { id: "blog/why-agent-bugs-unreproducible", file: "docs/blog/why-agent-bugs-unreproducible.md", label: "博客 · Agent bug 为何不可复现" },
+    { id: "blog/audit-chain-provable-logs", file: "docs/blog/audit-chain-provable-logs.md", label: "博客 · 日志是证据吗（审计哈希链）" },
+    { id: "blog/what-is-orbit-runtime", file: "docs/blog/what-is-orbit-runtime.md", label: "博客 · 产品介绍：什么是 Orbit Runtime" }
   ];
   const pages = [];
   for (const d of docs) {
@@ -114,10 +122,17 @@ async function main() {
     const body = renderMarkdown(raw);
     pages.push({ id: d.id, href: `${d.id === "index" ? "index.html" : d.id + ".html"}`, label: d.label, body, file: d.file });
   }
-  const nav = navHtml(pages, "");
+  // Mirror docs/img/ -> site/img/ so screenshots resolve from any rendered page.
+  const imgSrc = join(ROOT, "docs", "img");
+  const imgDst = join(SITE, "img");
+  await mkdir(imgDst, { recursive: true });
+  for (const f of await readdir(imgSrc)) {
+    if (/\.(png|jpe?g|gif|webp)$/i.test(f)) await copyFile(join(imgSrc, f), join(imgDst, f));
+  }
+  const nav = navHtml(pages, "", version);
   for (const p of pages) {
     const active = p.id;
-    const full = layout(p.label, p.body, navHtml(pages, active));
+    const full = layout(p.label, p.body, navHtml(pages, active, version));
     const outPath = join(SITE, p.id === "index" ? "index.html" : p.id + ".html");
     await mkdir(join(SITE, p.id.includes("/") ? p.id.split("/")[0] : "."), { recursive: true });
     await writeFile(outPath, full, "utf8");

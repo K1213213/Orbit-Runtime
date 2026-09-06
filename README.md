@@ -3,7 +3,7 @@
 > **Deterministic · Provable · Governable**
 > A plugin-based agent runtime kernel with hot plugin registration, provable fault isolation, full-chain traceability and sandboxed execution.
 
-**English** · [简体中文](./README.zh-CN.md)
+**English** · [简体中文](./README.zh-CN.md) · 📖 [Blog — zzuCharles @ cnblogs](https://www.cnblogs.com/zzuyczhang)
 
 **Project status:** `pre-alpha` · **License:** Apache-2.0 · **Track:** open-source product (see [roadmap](#roadmap))
 

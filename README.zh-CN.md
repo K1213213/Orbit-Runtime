@@ -3,7 +3,7 @@
 > **Deterministic · Provable · Governable**
 > 面向插件化智能体的轻量运行内核：插件热注册、可证明的故障隔离、全链路轨迹溯源、沙箱化执行。
 
-[English](./README.md) · **简体中文**
+[English](./README.md) · **简体中文** · 📖 [博客 — zzuCharles @ 博客园](https://www.cnblogs.com/zzuyczhang)
 
 **项目状态：** `pre-alpha` · **许可证：** Apache-2.0 · **轨道：** 开源产品（见[路线图](#设计路线图)）
 

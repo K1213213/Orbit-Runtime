@@ -120,5 +120,6 @@ const host = bootHost({ governance: "strict" });
 
 - GitHub: [github.com/K1213213/Orbit-Runtime](https://github.com/K1213213/Orbit-Runtime)
 - npm: `npm install orbit-runtime`
+- 📖 Blog: [zzuCharles — 博客园](https://www.cnblogs.com/zzuyczhang)（后续博客持续更新）
 - License: Apache-2.0 · 547 tests · v0.12.0
 - **START WITH 5 MINUTES · 4 COMMANDS · 0 DEPENDENCIES**

@@ -74,7 +74,7 @@ function layout(title, bodyHtml, navHtml) {
 
 function navHtml(pages, active) {
   const groups = [
-    ["产品", ["index", "guide"]],
+    ["产品", ["index", "promo", "guide"]],
     ["架构", ["VISION", "architecture", "UPGRADE_PLAN"]],
     ["路线", ["PRODUCT_PLAN", "DEV_PLAN", "CHANGELOG"]],
     ["博客", ["blog/why-agent-bugs-unreproducible"]]
@@ -98,6 +98,7 @@ async function main() {
   const version = JSON.parse(await readFile(join(ROOT, "package.json"), "utf8")).version;
   const docs = [
     { id: "index", file: "README.md", label: "产品首页" },
+    { id: "promo", file: "docs/PROMO.md", label: "产品宣传" },
     { id: "guide", file: "docs/guide.md", label: "开发者指南" },
     { id: "VISION", file: "docs/VISION.md", label: "架构宪章" },
     { id: "architecture", file: "docs/architecture.md", label: "内核设计" },
